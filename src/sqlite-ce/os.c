@@ -1,0 +1,730 @@
+/*
+** SQLite/CE OS Layer Implementation
+**
+** This file implements the SQLite OS abstraction layer for Windows CE.
+** It replaces os.c entirely for CE builds - do not include os.c in the
+** project when building for CE.
+**
+** See docs/PORTING.md for design rationale and implementation notes.
+*/
+
+/*
+** IMPORTANT: config_wince.h must be included first.
+** It defines OS_WIN=0 and OS_WINCE=1, and provides the OsFile structure
+** and off_t type that os.h would normally provide under OS_WIN.
+*/
+#include "config/config_wince.h"
+
+#include <windows.h>
+#include "../../sqlite-2.8.17/src/os.h"
+#include "../../sqlite-2.8.17/src/sqliteInt.h"
+
+/*
+** Note on include paths:
+** These relative paths assume the VS6 project is in projects/vc6/
+** and will need adjustment based on actual project location.
+** Alternatively, set up include paths in project settings.
+*/
+
+/*============================================================================
+** Debug/Trace support
+**============================================================================*/
+
+#ifdef SQLITE_CE_TRACE
+/*
+** Output a trace message. On CE we use OutputDebugString.
+** Messages can be viewed in the debugger output window.
+*/
+void ce_trace_output(const char *zMsg) {
+    wchar_t wzMsg[512];
+    if (zMsg) {
+        MultiByteToWideChar(CP_UTF8, 0, zMsg, -1, wzMsg, 512);
+        OutputDebugStringW(wzMsg);
+        OutputDebugStringW(L"\r\n");
+    }
+}
+#endif
+
+/*============================================================================
+** String conversion helpers
+**
+** Windows CE only provides Unicode (wide character) APIs, but SQLite uses
+** char* strings internally (UTF-8 assumed). These functions convert between.
+**============================================================================*/
+
+/*
+** Convert a UTF-8 string to wide characters.
+** Assumes wzWide has room for nWide characters including null terminator.
+*/
+static void ce_utf8_to_wide(const char *zUtf8, wchar_t *wzWide, int nWide) {
+    if (zUtf8 == NULL || wzWide == NULL || nWide <= 0) {
+        if (wzWide && nWide > 0) wzWide[0] = 0;
+        return;
+    }
+    MultiByteToWideChar(CP_UTF8, 0, zUtf8, -1, wzWide, nWide);
+}
+
+/*
+** Convert a wide character string to UTF-8.
+** Assumes zUtf8 has room for nUtf8 bytes including null terminator.
+*/
+static void ce_wide_to_utf8(const wchar_t *wzWide, char *zUtf8, int nUtf8) {
+    if (wzWide == NULL || zUtf8 == NULL || nUtf8 <= 0) {
+        if (zUtf8 && nUtf8 > 0) zUtf8[0] = 0;
+        return;
+    }
+    WideCharToMultiByte(CP_UTF8, 0, wzWide, -1, zUtf8, nUtf8, NULL, NULL);
+}
+
+/*============================================================================
+** File Operations
+**============================================================================*/
+
+/*
+** Delete the named file.
+*/
+int sqliteOsDelete(const char *zFilename) {
+    wchar_t wzFilename[SQLITE_CE_MAX_PATH];
+    
+    CE_TRACE("sqliteOsDelete");
+    ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
+    DeleteFileW(wzFilename);
+    
+    return SQLITE_OK;
+}
+
+/*
+** Return TRUE if the named file exists.
+*/
+int sqliteOsFileExists(const char *zFilename) {
+    wchar_t wzFilename[SQLITE_CE_MAX_PATH];
+    DWORD attrs;
+    
+    ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
+    attrs = GetFileAttributesW(wzFilename);
+    
+    return (attrs != 0xFFFFFFFF);
+}
+
+/*
+** Attempt to open a file for both reading and writing. If that fails,
+** try opening it read-only. If the file does not exist, try to create it.
+*/
+int sqliteOsOpenReadWrite(
+    const char *zFilename,
+    OsFile *id,
+    int *pReadonly
+) {
+    wchar_t wzFilename[SQLITE_CE_MAX_PATH];
+    HANDLE h;
+    
+    CE_TRACE("sqliteOsOpenReadWrite");
+    ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
+    
+    /* Try read-write first */
+    h = CreateFileW(wzFilename,
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+    
+    if (h == INVALID_HANDLE_VALUE) {
+        /* Fall back to read-only */
+        h = CreateFileW(wzFilename,
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            NULL,
+            OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL);
+        
+        if (h == INVALID_HANDLE_VALUE) {
+            CE_TRACE("sqliteOsOpenReadWrite: CANTOPEN");
+            return SQLITE_CANTOPEN;
+        }
+        *pReadonly = 1;
+    } else {
+        *pReadonly = 0;
+    }
+    
+    id->h = h;
+    id->locked = 0;
+    
+    return SQLITE_OK;
+}
+
+/*
+** Attempt to open a new file for exclusive access.
+*/
+int sqliteOsOpenExclusive(const char *zFilename, OsFile *id, int delFlag) {
+    wchar_t wzFilename[SQLITE_CE_MAX_PATH];
+    HANDLE h;
+    DWORD fileflags;
+    
+    CE_TRACE("sqliteOsOpenExclusive");
+    ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
+    
+    if (delFlag) {
+        fileflags = FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE;
+    } else {
+        fileflags = FILE_ATTRIBUTE_NORMAL;
+    }
+    
+    h = CreateFileW(wzFilename,
+        GENERIC_READ | GENERIC_WRITE,
+        0,  /* No sharing - exclusive */
+        NULL,
+        CREATE_ALWAYS,
+        fileflags,
+        NULL);
+    
+    if (h == INVALID_HANDLE_VALUE) {
+        CE_TRACE("sqliteOsOpenExclusive: CANTOPEN");
+        return SQLITE_CANTOPEN;
+    }
+    
+    id->h = h;
+    id->locked = 0;
+    
+    return SQLITE_OK;
+}
+
+/*
+** Attempt to open a file for read-only access.
+*/
+int sqliteOsOpenReadOnly(const char *zFilename, OsFile *id) {
+    wchar_t wzFilename[SQLITE_CE_MAX_PATH];
+    HANDLE h;
+    
+    CE_TRACE("sqliteOsOpenReadOnly");
+    ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
+    
+    h = CreateFileW(wzFilename,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+    
+    if (h == INVALID_HANDLE_VALUE) {
+        CE_TRACE("sqliteOsOpenReadOnly: CANTOPEN");
+        return SQLITE_CANTOPEN;
+    }
+    
+    id->h = h;
+    id->locked = 0;
+    
+    return SQLITE_OK;
+}
+
+/*
+** Open a directory. This is a no-op on Windows CE (and Windows generally)
+** as directory syncing isn't needed for file system consistency.
+*/
+int sqliteOsOpenDirectory(const char *zDirname, OsFile *id) {
+    /* No-op on CE - directory syncing not required */
+    return SQLITE_OK;
+}
+
+/*
+** Create a temporary file name.
+*/
+int sqliteOsTempFileName(char *zBuf) {
+    static const char zChars[] =
+        "abcdefghijklmnopqrstuvwxyz"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "0123456789";
+    int i, j;
+    char zDir[SQLITE_CE_MAX_PATH];
+    
+    CE_TRACE("sqliteOsTempFileName");
+    
+#if CE_HAS_GETTEMPPATH
+    {
+        wchar_t wzTempPath[SQLITE_CE_MAX_PATH];
+        GetTempPathW(SQLITE_CE_MAX_PATH - 30, wzTempPath);
+        ce_wide_to_utf8(wzTempPath, zDir, SQLITE_CE_MAX_PATH);
+        
+        /* Remove trailing backslash */
+        for (i = strlen(zDir); i > 0 && zDir[i-1] == '\\'; i--) {}
+        zDir[i] = 0;
+    }
+#else
+    /* CE 2.0 doesn't have GetTempPath - use our configured default */
+    strcpy(zDir, SQLITE_CE_TEMP_DIRECTORY);
+#endif
+    
+    /* Generate random filename, retry until we find one that doesn't exist */
+    for (;;) {
+        sprintf(zBuf, "%s\\" TEMP_FILE_PREFIX, zDir);
+        j = strlen(zBuf);
+        sqliteRandomness(15, &zBuf[j]);
+        for (i = 0; i < 15; i++, j++) {
+            zBuf[j] = zChars[((unsigned char)zBuf[j]) % (sizeof(zChars) - 1)];
+        }
+        zBuf[j] = 0;
+        
+        if (!sqliteOsFileExists(zBuf)) break;
+    }
+    
+    return SQLITE_OK;
+}
+
+/*
+** Close a file.
+*/
+int sqliteOsClose(OsFile *id) {
+    CE_TRACE("sqliteOsClose");
+    CloseHandle(id->h);
+    return SQLITE_OK;
+}
+
+/*
+** Read data from a file into a buffer.
+*/
+int sqliteOsRead(OsFile *id, void *pBuf, int amt) {
+    DWORD got;
+    
+    if (!ReadFile(id->h, pBuf, amt, &got, NULL)) {
+        CE_TRACE("sqliteOsRead: ReadFile failed");
+        got = 0;
+    }
+    
+    if (got == (DWORD)amt) {
+        return SQLITE_OK;
+    } else {
+        CE_TRACE("sqliteOsRead: IOERR (short read)");
+        return SQLITE_IOERR;
+    }
+}
+
+/*
+** Write data from a buffer into a file.
+*/
+int sqliteOsWrite(OsFile *id, const void *pBuf, int amt) {
+    DWORD wrote;
+    int rc;
+    
+    while (amt > 0) {
+        rc = WriteFile(id->h, pBuf, amt, &wrote, NULL);
+        if (!rc || wrote == 0) {
+            CE_TRACE("sqliteOsWrite: FULL");
+            return SQLITE_FULL;
+        }
+        amt -= wrote;
+        pBuf = &((const char *)pBuf)[wrote];
+    }
+    
+    return SQLITE_OK;
+}
+
+/*
+** Move the read/write pointer in a file.
+*/
+int sqliteOsSeek(OsFile *id, off_t offset) {
+    LONG upperBits = (LONG)(offset >> 32);
+    LONG lowerBits = (LONG)(offset & 0xFFFFFFFF);
+    DWORD result;
+    
+    result = SetFilePointer(id->h, lowerBits, &upperBits, FILE_BEGIN);
+    
+    if (result == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR) {
+        CE_TRACE("sqliteOsSeek: SetFilePointer failed");
+        return SQLITE_IOERR;
+    }
+    
+    return SQLITE_OK;
+}
+
+/*
+** Sync the file to disk.
+*/
+int sqliteOsSync(OsFile *id) {
+    CE_TRACE("sqliteOsSync");
+    if (FlushFileBuffers(id->h)) {
+        return SQLITE_OK;
+    } else {
+        CE_TRACE("sqliteOsSync: IOERR");
+        return SQLITE_IOERR;
+    }
+}
+
+/*
+** Truncate an open file to a specified size.
+*/
+int sqliteOsTruncate(OsFile *id, off_t nByte) {
+    LONG upperBits = (LONG)(nByte >> 32);
+    LONG lowerBits = (LONG)(nByte & 0xFFFFFFFF);
+    
+    CE_TRACE("sqliteOsTruncate");
+    SetFilePointer(id->h, lowerBits, &upperBits, FILE_BEGIN);
+    if (!SetEndOfFile(id->h)) {
+        CE_TRACE("sqliteOsTruncate: IOERR");
+        return SQLITE_IOERR;
+    }
+    
+    return SQLITE_OK;
+}
+
+/*
+** Determine the current size of a file in bytes.
+*/
+int sqliteOsFileSize(OsFile *id, off_t *pSize) {
+    DWORD upperBits;
+    DWORD lowerBits;
+    
+    lowerBits = GetFileSize(id->h, &upperBits);
+    
+    if (lowerBits == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) {
+        CE_TRACE("sqliteOsFileSize: IOERR");
+        return SQLITE_IOERR;
+    }
+    
+    *pSize = (((off_t)upperBits) << 32) + lowerBits;
+    return SQLITE_OK;
+}
+
+/*============================================================================
+** File Locking
+**
+** CE 2.0 does not have LockFileEx(). We implement a simplified locking
+** scheme that assumes single-process access for CE 2.0, and use proper
+** locking for CE 2.11+.
+**============================================================================*/
+
+/*
+** Locking byte range constants - same as desktop Windows SQLite
+*/
+#define N_LOCKBYTE       10239
+#define FIRST_LOCKBYTE   (0xFFFFFFFF - N_LOCKBYTE)
+
+#if CE_HAS_LOCKFILEEX
+
+/*
+** CE 2.11+ locking using LockFileEx for shared locks
+*/
+
+int sqliteOsReadLock(OsFile *id) {
+    int res;
+    int lk;
+    int cnt = 100;
+    OVERLAPPED ovlp;
+    
+    CE_TRACE("sqliteOsReadLock (LockFileEx path)");
+    
+    if (id->locked > 0) {
+        /* Already have a read lock */
+        return SQLITE_OK;
+    }
+    
+    /* Get a random lock byte */
+    sqliteRandomness(sizeof(lk), &lk);
+    lk = (lk & 0x7FFFFFFF) % N_LOCKBYTE + 1;
+    
+    /* Acquire coordination lock */
+    while (cnt-- > 0 && (res = LockFile(id->h, FIRST_LOCKBYTE, 0, 1, 0)) == 0) {
+        Sleep(1);
+    }
+    
+    if (res) {
+        /* Release any existing write lock */
+        UnlockFile(id->h, FIRST_LOCKBYTE + 1, 0, N_LOCKBYTE, 0);
+        
+        /* Acquire shared read lock */
+        memset(&ovlp, 0, sizeof(ovlp));
+        ovlp.Offset = FIRST_LOCKBYTE + 1;
+        ovlp.OffsetHigh = 0;
+        
+        res = LockFileEx(id->h, LOCKFILE_FAIL_IMMEDIATELY, 0, N_LOCKBYTE, 0, &ovlp);
+        
+        /* Release coordination lock */
+        UnlockFile(id->h, FIRST_LOCKBYTE, 0, 1, 0);
+    }
+    
+    if (res) {
+        id->locked = lk;
+        return SQLITE_OK;
+    } else {
+        CE_TRACE("sqliteOsReadLock: BUSY");
+        return SQLITE_BUSY;
+    }
+}
+
+int sqliteOsWriteLock(OsFile *id) {
+    int res;
+    int cnt = 100;
+    
+    CE_TRACE("sqliteOsWriteLock (LockFileEx path)");
+    
+    if (id->locked < 0) {
+        /* Already have a write lock */
+        return SQLITE_OK;
+    }
+    
+    /* Acquire coordination lock */
+    while (cnt-- > 0 && (res = LockFile(id->h, FIRST_LOCKBYTE, 0, 1, 0)) == 0) {
+        Sleep(1);
+    }
+    
+    if (res) {
+        /* Release any existing read lock */
+        if (id->locked > 0) {
+            UnlockFile(id->h, FIRST_LOCKBYTE + 1, 0, N_LOCKBYTE, 0);
+        }
+        
+        /* Acquire exclusive write lock */
+        res = LockFile(id->h, FIRST_LOCKBYTE + 1, 0, N_LOCKBYTE, 0);
+        
+        /* Release coordination lock */
+        UnlockFile(id->h, FIRST_LOCKBYTE, 0, 1, 0);
+    }
+    
+    if (res) {
+        id->locked = -1;
+        return SQLITE_OK;
+    } else {
+        CE_TRACE("sqliteOsWriteLock: BUSY");
+        return SQLITE_BUSY;
+    }
+}
+
+int sqliteOsUnlock(OsFile *id) {
+    CE_TRACE("sqliteOsUnlock (LockFileEx path)");
+    
+    if (id->locked == 0) {
+        return SQLITE_OK;
+    }
+    
+    UnlockFile(id->h, FIRST_LOCKBYTE + 1, 0, N_LOCKBYTE, 0);
+    id->locked = 0;
+    
+    return SQLITE_OK;
+}
+
+#else /* !CE_HAS_LOCKFILEEX - CE 2.0 simple locking */
+
+/*
+** CE 2.0 locking - single process assumption
+** We just track lock state internally without actual file locks.
+** This is safe as long as only one process accesses the database.
+*/
+
+int sqliteOsReadLock(OsFile *id) {
+    CE_TRACE("sqliteOsReadLock (no-op path)");
+    
+    if (id->locked < 0) {
+        /* Downgrade from write to read */
+        id->locked = 1;
+    } else if (id->locked == 0) {
+        id->locked = 1;
+    }
+    /* Already have read lock - do nothing */
+    return SQLITE_OK;
+}
+
+int sqliteOsWriteLock(OsFile *id) {
+    CE_TRACE("sqliteOsWriteLock (no-op path)");
+    id->locked = -1;
+    return SQLITE_OK;
+}
+
+int sqliteOsUnlock(OsFile *id) {
+    CE_TRACE("sqliteOsUnlock (no-op path)");
+    id->locked = 0;
+    return SQLITE_OK;
+}
+
+#endif /* CE_HAS_LOCKFILEEX */
+
+/*============================================================================
+** Miscellaneous OS Functions
+**============================================================================*/
+
+/*
+** Get information to seed the random number generator.
+** The buffer is 256 bytes.
+*/
+int sqliteOsRandomSeed(char *zBuf) {
+    SYSTEMTIME st;
+    DWORD ticks;
+    
+    /* Initialize buffer to zero (required - see SQLite comments) */
+    memset(zBuf, 0, 256);
+    
+#ifndef SQLITE_TEST
+    /* Get system time */
+    GetSystemTime(&st);
+    memcpy(zBuf, &st, sizeof(st));
+    
+    /* Add tick count for additional entropy */
+    ticks = GetTickCount();
+    memcpy(&zBuf[sizeof(SYSTEMTIME)], &ticks, sizeof(ticks));
+    
+    /* On CE we could also use CeGenRandom if available (CE 3.0+) */
+    /* but GetTickCount provides reasonable entropy for SQLite's needs */
+#endif
+    
+    return SQLITE_OK;
+}
+
+/*
+** Sleep for a little while. Return the amount of time slept in ms.
+*/
+int sqliteOsSleep(int ms) {
+    Sleep(ms);
+    return ms;
+}
+
+/*
+** Find the current time (in Universal Coordinated Time).
+** Write the current time and date as a Julian Day number into *prNow.
+** Return 0 on success, 1 on failure.
+*/
+int sqliteOsCurrentTime(double *prNow) {
+#if CE_HAS_GETSYSTEMTIMEASFILETIME
+    FILETIME ft;
+    double now;
+    
+    GetSystemTimeAsFileTime(&ft);
+    
+    /* FILETIME: 100-nanosecond intervals since January 1, 1601 (JD 2305813.5) */
+    now = ((double)ft.dwHighDateTime) * 4294967296.0;
+    *prNow = (now + ft.dwLowDateTime) / 864000000000.0 + 2305813.5;
+#else
+    /* CE 2.0 fallback - use GetSystemTime and calculate Julian Day */
+    SYSTEMTIME st;
+    int Y, M, D;
+    int A, B;
+    double JD;
+    
+    GetSystemTime(&st);
+    
+    Y = st.wYear;
+    M = st.wMonth;
+    D = st.wDay;
+    
+    /* Julian Day calculation algorithm */
+    if (M <= 2) {
+        Y -= 1;
+        M += 12;
+    }
+    A = Y / 100;
+    B = 2 - A + (A / 4);
+    
+    JD = (int)(365.25 * (Y + 4716)) + (int)(30.6001 * (M + 1)) + D + B - 1524.5;
+    
+    /* Add time of day as fraction */
+    JD += st.wHour / 24.0
+        + st.wMinute / 1440.0
+        + st.wSecond / 86400.0
+        + st.wMilliseconds / 86400000.0;
+    
+    *prNow = JD;
+#endif
+    
+#ifdef SQLITE_TEST
+    {
+        extern int sqlite_current_time;
+        if (sqlite_current_time) {
+            *prNow = sqlite_current_time / 86400.0 + 2440587.5;
+        }
+    }
+#endif
+    
+    return 0;
+}
+
+/*============================================================================
+** Mutex / Critical Section
+**============================================================================*/
+
+static int inMutex = 0;
+
+#if THREADSAFE
+static CRITICAL_SECTION cs;
+static int csInitialized = 0;
+#endif
+
+/*
+** Enter the global mutex.
+*/
+void sqliteOsEnterMutex(void) {
+#if THREADSAFE
+    if (!csInitialized) {
+        InitializeCriticalSection(&cs);
+        csInitialized = 1;
+    }
+    EnterCriticalSection(&cs);
+#endif
+    inMutex = 1;
+}
+
+/*
+** Leave the global mutex.
+*/
+void sqliteOsLeaveMutex(void) {
+    inMutex = 0;
+#if THREADSAFE
+    LeaveCriticalSection(&cs);
+#endif
+}
+
+/*============================================================================
+** Full Pathname Conversion
+**============================================================================*/
+
+/*
+** Turn a relative pathname into a full pathname.
+** Returns a pointer to memory obtained from sqliteMalloc().
+** Caller must free with sqliteFree().
+*/
+char *sqliteOsFullPathname(const char *zRelative) {
+    char *zFull;
+    int nByte;
+    
+    /*
+    ** On CE, we don't have a true "current directory" concept in the
+    ** same way as desktop Windows. Paths starting with \ are absolute.
+    ** For relative paths, we prepend \.
+    */
+    if (zRelative[0] == '\\' || zRelative[0] == '/') {
+        /* Already absolute */
+        nByte = strlen(zRelative) + 1;
+        zFull = sqliteMalloc(nByte);
+        if (zFull) {
+            strcpy(zFull, zRelative);
+        }
+    } else if (zRelative[0] != '\0' && zRelative[1] == ':') {
+        /* Has drive letter (unusual on CE but handle it) */
+        nByte = strlen(zRelative) + 1;
+        zFull = sqliteMalloc(nByte);
+        if (zFull) {
+            strcpy(zFull, zRelative);
+        }
+    } else {
+        /* Relative path - prepend backslash to make it absolute */
+        nByte = strlen(zRelative) + 2;
+        zFull = sqliteMalloc(nByte);
+        if (zFull) {
+            zFull[0] = '\\';
+            strcpy(&zFull[1], zRelative);
+        }
+    }
+    
+    /* Convert forward slashes to backslashes for consistency */
+    if (zFull) {
+        char *p;
+        for (p = zFull; *p; p++) {
+            if (*p == '/') *p = '\\';
+        }
+    }
+    
+    return zFull;
+}
+
+/*============================================================================
+** End of os_wince.c
+**============================================================================*/
