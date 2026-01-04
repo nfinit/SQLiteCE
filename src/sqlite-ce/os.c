@@ -13,35 +13,206 @@
 ** It defines OS_WIN=0 and OS_WINCE=1, and provides the OsFile structure
 ** and off_t type that os.h would normally provide under OS_WIN.
 */
-#include "config/config_wince.h"
+#include "config.h"
 
 #include <windows.h>
-#include "../../sqlite-2.8.17/src/os.h"
-#include "../../sqlite-2.8.17/src/sqliteInt.h"
+#include <stdarg.h>
 
 /*
-** Note on include paths:
-** These relative paths assume the VS6 project is in projects/vc6/
-** and will need adjustment based on actual project location.
-** Alternatively, set up include paths in project settings.
+** CE 2.0 SDK may be missing some constants. Define them here.
 */
+#ifndef CP_UTF8
+#define CP_UTF8 65001
+#endif
+#ifndef INVALID_SET_FILE_POINTER
+#define INVALID_SET_FILE_POINTER ((DWORD)-1)
+#endif
+
+#include "os.h"
+#include "sqliteInt.h"
+
+/*============================================================================
+** sprintf implementation for CE
+** CE 2.0 lacks standard sprintf. We implement a minimal version.
+**============================================================================*/
+
+int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
+    char *p = buf;
+    const char *f = fmt;
+    char tmp[32];
+    
+    while (*f) {
+        if (*f != '%') {
+            *p++ = *f++;
+            continue;
+        }
+        f++; /* skip '%' */
+        
+        /* Handle flags and width (simplified - just skip them) */
+        while (*f == '-' || *f == '+' || *f == ' ' || *f == '#' || *f == '0') f++;
+        while (*f >= '0' && *f <= '9') f++;
+        if (*f == '.') {
+            f++;
+            while (*f >= '0' && *f <= '9') f++;
+        }
+        /* Handle length modifiers */
+        if (*f == 'l') f++;
+        if (*f == 'l') f++;  /* ll */
+        
+        switch (*f) {
+            case 'd': case 'i': {
+                int val = va_arg(ap, int);
+                int neg = 0;
+                char *t = tmp + sizeof(tmp) - 1;
+                *t = '\0';
+                if (val < 0) { neg = 1; val = -val; }
+                if (val == 0) *--t = '0';
+                while (val > 0) { *--t = '0' + (val % 10); val /= 10; }
+                if (neg) *--t = '-';
+                while (*t) *p++ = *t++;
+                break;
+            }
+            case 'u': {
+                unsigned val = va_arg(ap, unsigned);
+                char *t = tmp + sizeof(tmp) - 1;
+                *t = '\0';
+                if (val == 0) *--t = '0';
+                while (val > 0) { *--t = '0' + (val % 10); val /= 10; }
+                while (*t) *p++ = *t++;
+                break;
+            }
+            case 'x': case 'X': {
+                unsigned val = va_arg(ap, unsigned);
+                char *t = tmp + sizeof(tmp) - 1;
+                const char *hex = (*f == 'X') ? "0123456789ABCDEF" : "0123456789abcdef";
+                *t = '\0';
+                if (val == 0) *--t = '0';
+                while (val > 0) { *--t = hex[val & 0xF]; val >>= 4; }
+                while (*t) *p++ = *t++;
+                break;
+            }
+            case 'p': {
+                unsigned long val = (unsigned long)va_arg(ap, void*);
+                char *t = tmp + sizeof(tmp) - 1;
+                *t = '\0';
+                if (val == 0) *--t = '0';
+                while (val > 0) { *--t = "0123456789abcdef"[val & 0xF]; val >>= 4; }
+                *--t = 'x'; *--t = '0';
+                while (*t) *p++ = *t++;
+                break;
+            }
+            case 's': {
+                const char *s = va_arg(ap, const char*);
+                if (!s) s = "(null)";
+                while (*s) *p++ = *s++;
+                break;
+            }
+            case 'c': {
+                char c = (char)va_arg(ap, int);
+                *p++ = c;
+                break;
+            }
+            case '%':
+                *p++ = '%';
+                break;
+            case 'g': case 'f': {
+                /* Floating point - very simplified */
+                double val = va_arg(ap, double);
+                int intpart = (int)val;
+                int neg = 0;
+                char *t;
+                if (val < 0) { neg = 1; intpart = -intpart; val = -val; }
+                t = tmp + sizeof(tmp) - 1;
+                *t = '\0';
+                if (intpart == 0) *--t = '0';
+                while (intpart > 0) { *--t = '0' + (intpart % 10); intpart /= 10; }
+                if (neg) *--t = '-';
+                while (*t) *p++ = *t++;
+                /* Fractional part - 6 digits */
+                *p++ = '.';
+                val = val - (int)val;
+                { int i; for (i = 0; i < 6; i++) {
+                    val *= 10;
+                    *p++ = '0' + (int)val;
+                    val -= (int)val;
+                }}
+                break;
+            }
+            default:
+                *p++ = '%';
+                *p++ = *f;
+                break;
+        }
+        f++;
+    }
+    *p = '\0';
+    return (int)(p - buf);
+}
+
+int ce_sprintf(char *buf, const char *fmt, ...) {
+    va_list ap;
+    int ret;
+    va_start(ap, fmt);
+    ret = ce_vsprintf(buf, fmt, ap);
+    va_end(ap);
+    return ret;
+}
 
 /*============================================================================
 ** Debug/Trace support
 **============================================================================*/
 
-#ifdef SQLITE_CE_TRACE
 /*
-** Output a trace message. On CE we use OutputDebugString.
-** Messages can be viewed in the debugger output window.
+** Output a UTF-8 string to debugger via OutputDebugStringW.
 */
-void ce_trace_output(const char *zMsg) {
+static void ce_debug_output(const char *zMsg) {
     wchar_t wzMsg[512];
     if (zMsg) {
-        MultiByteToWideChar(CP_UTF8, 0, zMsg, -1, wzMsg, 512);
+        MultiByteToWideChar(CP_ACP, 0, zMsg, -1, wzMsg, 512);
         OutputDebugStringW(wzMsg);
-        OutputDebugStringW(L"\r\n");
     }
+}
+
+#ifdef SQLITE_CE_TRACE
+void ce_trace_output(const char *zMsg) {
+    ce_debug_output(zMsg);
+    OutputDebugStringW(L"\r\n");
+}
+#endif
+
+/*
+** Assertion failure handler - outputs to debugger and breaks.
+*/
+void ce_assert_fail(const char *exp, const char *file, int line) {
+    char zBuf[512];
+    sprintf(zBuf, "ASSERT FAILED: %s at %s:%d", exp, file, line);
+    ce_debug_output(zBuf);
+    OutputDebugStringW(L"\r\n");
+    DebugBreak();
+}
+
+/*
+** Debug printf/fprintf implementations for stdio.h shim.
+*/
+#ifdef SQLITE_DEBUG
+#include <stdarg.h>
+int ce_printf(const char *fmt, ...) {
+    char zBuf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsprintf(zBuf, fmt, ap);
+    va_end(ap);
+    ce_debug_output(zBuf);
+    return 0;
+}
+int ce_fprintf(FILE *f, const char *fmt, ...) {
+    char zBuf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsprintf(zBuf, fmt, ap);
+    va_end(ap);
+    ce_debug_output(zBuf);
+    return 0;
 }
 #endif
 
@@ -55,13 +226,14 @@ void ce_trace_output(const char *zMsg) {
 /*
 ** Convert a UTF-8 string to wide characters.
 ** Assumes wzWide has room for nWide characters including null terminator.
+** Note: CE 2.0 may not support CP_UTF8, so we use CP_ACP for compatibility.
 */
 static void ce_utf8_to_wide(const char *zUtf8, wchar_t *wzWide, int nWide) {
     if (zUtf8 == NULL || wzWide == NULL || nWide <= 0) {
         if (wzWide && nWide > 0) wzWide[0] = 0;
         return;
     }
-    MultiByteToWideChar(CP_UTF8, 0, zUtf8, -1, wzWide, nWide);
+    MultiByteToWideChar(CP_ACP, 0, zUtf8, -1, wzWide, nWide);
 }
 
 /*
@@ -117,8 +289,14 @@ int sqliteOsOpenReadWrite(
 ) {
     wchar_t wzFilename[SQLITE_CE_MAX_PATH];
     HANDLE h;
+    DWORD err;
     
     CE_TRACE("sqliteOsOpenReadWrite");
+    if (zFilename) {
+        CE_TRACE(zFilename);
+    } else {
+        CE_TRACE("(null filename)");
+    }
     ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
     
     /* Try read-write first */
@@ -131,6 +309,8 @@ int sqliteOsOpenReadWrite(
         NULL);
     
     if (h == INVALID_HANDLE_VALUE) {
+        err = GetLastError();
+        CE_TRACE("CreateFileW RW failed");
         /* Fall back to read-only */
         h = CreateFileW(wzFilename,
             GENERIC_READ,
@@ -151,6 +331,7 @@ int sqliteOsOpenReadWrite(
     
     id->h = h;
     id->locked = 0;
+    CE_TRACE("sqliteOsOpenReadWrite: OK");
     
     return SQLITE_OK;
 }

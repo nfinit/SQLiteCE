@@ -1027,6 +1027,7 @@ void sqliteVdbeDelete(Vdbe *p){
 **
 **         X == byteSwap(byteSwap(X))
 */
+#ifndef sqliteVdbeByteSwap
 int sqliteVdbeByteSwap(int x){
   union {
      char zBuf[sizeof(int)];
@@ -1038,6 +1039,7 @@ int sqliteVdbeByteSwap(int x){
   ux.zBuf[0] = (x>>24)&0xff;
   return ux.i;
 }
+#endif
 
 /*
 ** If a MoveTo operation is pending on the given cursor, then do that

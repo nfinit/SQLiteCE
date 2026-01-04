@@ -20,6 +20,15 @@
 #define CONFIG_WINCE_H
 
 /*
+** Byte swap macro - use unsigned to avoid sign extension issues
+*/
+#define sqliteVdbeByteSwap(X) ((int)( \
+    ((((unsigned int)(X)) & 0xFFu) << 24) | \
+    ((((unsigned int)(X)) & 0xFF00u) << 8) | \
+    ((((unsigned int)(X)) >> 8) & 0xFF00u) | \
+    ((((unsigned int)(X)) >> 24) & 0xFFu) ))
+
+/*
 ** Verify we're actually building for Windows CE
 */
 #if !defined(_WIN32_WCE) && !defined(UNDER_CE)
@@ -32,10 +41,22 @@
 #endif
 
 /*
+** VS6 doesn't support 'long long'. Use __int64 instead.
+** Define this before sqliteInt.h is included.
+*/
+#define SQLITE_PTR_SZ 4
+#define INTPTR_TYPE int
+
+/*
 ** OS type flags for SQLite
 ** We set OS_WIN to 0 so that os.h's OS_WIN blocks don't activate.
-** Our os_wince.c provides the complete implementation.
+** Our os.c provides the complete implementation.
+** Use #undef in case os.h was somehow included first.
 */
+#undef OS_WINCE
+#undef OS_WIN
+#undef OS_UNIX
+#undef OS_MAC
 #define OS_WINCE 1
 #define OS_WIN   0
 #define OS_UNIX  0
@@ -106,6 +127,11 @@
 #define SQLITE_DISABLE_LFS 1
 
 /*
+** Use in-memory temp storage to avoid temp file issues on CE
+*/
+#define TEMP_STORE 2
+
+/*
 ** Memory tuning for constrained devices
 ** Defaults are aggressive for 16MB devices like the HP 620LX
 ** Override these in project settings if targeting beefier hardware
@@ -135,10 +161,12 @@
 #  define SQLITE_CE_MAX_PATH 260
 #endif
 
-/* Buffer size for temp filenames */
+/* Buffer size for temp filenames - undef in case os.h defined it */
+#undef SQLITE_TEMPNAME_SIZE
 #define SQLITE_TEMPNAME_SIZE (SQLITE_CE_MAX_PATH + 50)
 
 /* Minimum sleep granularity in milliseconds */
+#undef SQLITE_MIN_SLEEP_MS
 #define SQLITE_MIN_SLEEP_MS 1
 
 /*============================================================================
@@ -164,7 +192,7 @@
 
 #if defined(SHx) || defined(SH3) || defined(SH4) || defined(_SH3_) || defined(_SH4_)
 #  define SQLITE_CE_PROCESSOR "SH3"
-#  define SQLITE_CE_BIG_ENDIAN 1
+#  define SQLITE_CE_BIG_ENDIAN 0  /* SH3 in WinCE devices is little-endian */
 #elif defined(MIPS) || defined(_MIPS_)
 #  define SQLITE_CE_PROCESSOR "MIPS"
 #  define SQLITE_CE_BIG_ENDIAN 0  /* Usually little-endian on CE */
@@ -180,10 +208,11 @@
 #endif
 
 /*============================================================================
-** OsFile structure
-** This must match what os.h expects. Under OS_WIN, it's:
-**   struct OsFile { HANDLE h; int locked; };
-** We define it here for when os.h is included with OS_WIN=0
+** OsFile structure and off_t type
+** Since we set OS_WIN=0, OS_UNIX=0, OS_MAC=0, os.h won't define these.
+** We define them here and then define _SQLITE_OS_H_ to prevent the original
+** os.h from being included (which would fail to define OsFile and cause
+** syntax errors in the function prototypes).
 **============================================================================*/
 
 /* Forward declare HANDLE if windows.h not yet included */
@@ -201,11 +230,44 @@ struct OsFile {
 ** off_t type for file offsets
 ** CE doesn't have this in its headers
 */
-#if defined(_MSC_VER)
+#ifndef _OFF_T_DEFINED
+#define _OFF_T_DEFINED
 typedef __int64 off_t;
-#else
-typedef long long off_t;
-#endif
+#endif /* _OFF_T_DEFINED */
+
+/*
+** Declare the OS interface functions that would normally come from os.h
+** We define _SQLITE_OS_H_ to prevent the original os.h from being included.
+*/
+#ifndef _SQLITE_OS_H_
+#define _SQLITE_OS_H_
+
+int sqliteOsDelete(const char*);
+int sqliteOsFileExists(const char*);
+int sqliteOsFileRename(const char*, const char*);
+int sqliteOsOpenReadWrite(const char*, OsFile*, int*);
+int sqliteOsOpenExclusive(const char*, OsFile*, int);
+int sqliteOsOpenReadOnly(const char*, OsFile*);
+int sqliteOsOpenDirectory(const char*, OsFile*);
+int sqliteOsTempFileName(char*);
+int sqliteOsClose(OsFile*);
+int sqliteOsRead(OsFile*, void*, int amt);
+int sqliteOsWrite(OsFile*, const void*, int amt);
+int sqliteOsSeek(OsFile*, off_t offset);
+int sqliteOsSync(OsFile*);
+int sqliteOsTruncate(OsFile*, off_t size);
+int sqliteOsFileSize(OsFile*, off_t *pSize);
+int sqliteOsReadLock(OsFile*);
+int sqliteOsWriteLock(OsFile*);
+int sqliteOsUnlock(OsFile*);
+int sqliteOsRandomSeed(char*);
+int sqliteOsSleep(int ms);
+int sqliteOsCurrentTime(double*);
+void sqliteOsEnterMutex(void);
+void sqliteOsLeaveMutex(void);
+char *sqliteOsFullPathname(const char*);
+
+#endif /* _SQLITE_OS_H_ */
 
 /*============================================================================
 ** Optional feature omissions for code size reduction
@@ -224,7 +286,7 @@ typedef long long off_t;
 **============================================================================*/
 
 /* #define SQLITE_DEBUG 1 */
-/* #define SQLITE_CE_TRACE 1 */
+#define SQLITE_CE_TRACE 1
 
 #ifdef SQLITE_CE_TRACE
 #  define CE_TRACE(msg) ce_trace_output(msg)

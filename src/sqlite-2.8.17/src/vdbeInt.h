@@ -297,7 +297,9 @@ void sqliteVdbeAggReset(Agg*);
 void sqliteVdbeKeylistFree(Keylist*);
 void sqliteVdbePopStack(Vdbe*,int);
 int sqliteVdbeCursorMoveto(Cursor*);
+#ifndef sqliteVdbeByteSwap
 int sqliteVdbeByteSwap(int);
+#endif
 #if !defined(NDEBUG) || defined(VDBE_PROFILE)
 void sqliteVdbePrintOp(FILE*, int, Op*);
 #endif

@@ -1172,9 +1172,35 @@ static int memRbtreeKeySize(RbtCursor* pCur, int *pSize)
   return SQLITE_OK;
 }
 
+/* Debug globals for diagnosing rowid issue */
+static int s_rbtreeKeyDebug_pNode = 0;
+static int s_rbtreeKeyDebug_pKey = 0;
+static int s_rbtreeKeyDebug_nKey = 0;
+static unsigned char s_rbtreeKeyDebug_bytes[8] = {0};
+
+/* Function to retrieve debug info - safer than exporting data */
+void sqliteRbtreeGetDebugInfo(int *pNode, int *pKey, int *nKey, unsigned char *bytes) {
+    if (pNode) *pNode = s_rbtreeKeyDebug_pNode;
+    if (pKey) *pKey = s_rbtreeKeyDebug_pKey;
+    if (nKey) *nKey = s_rbtreeKeyDebug_nKey;
+    if (bytes) {
+        int i;
+        for (i = 0; i < 4; i++) bytes[i] = s_rbtreeKeyDebug_bytes[i];
+    }
+}
+
 static int memRbtreeKey(RbtCursor* pCur, int offset, int amt, char *zBuf)
 {
   if( !pCur->pNode ) return 0;
+  
+  /* Capture debug info */
+  s_rbtreeKeyDebug_pNode = (pCur->pNode != 0);
+  s_rbtreeKeyDebug_pKey = (pCur->pNode->pKey != 0);
+  s_rbtreeKeyDebug_nKey = pCur->pNode->nKey;
+  if( pCur->pNode->pKey && amt <= 8 ){
+    memcpy(s_rbtreeKeyDebug_bytes, (char*)pCur->pNode->pKey + offset, amt < 8 ? amt : 8);
+  }
+  
   if( !pCur->pNode->pKey || ((amt + offset) <= pCur->pNode->nKey) ){
     memcpy(zBuf, ((char*)pCur->pNode->pKey)+offset, amt);
   }else{
