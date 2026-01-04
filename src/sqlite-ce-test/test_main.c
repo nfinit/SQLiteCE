@@ -13,9 +13,6 @@ static HWND g_hwndMain;
 static HWND g_hwndOutput;
 static HWND g_hwndRunBtn;
 
-/* Debug function from DLL */
-__declspec(dllimport) void sqliteRbtreeGetDebugInfo(int *pNode, int *pKey, int *nKey, unsigned char *bytes);
-
 /* Output buffer */
 static char g_szOutput[16000];
 static int g_nOutput = 0;
@@ -338,22 +335,6 @@ static void RunTests(void) {
             Output("  last_insert_rowid="); IntToStr(sqlite_last_insert_rowid(testdb), buf); OutputLine(buf);
             OutputLine("  SELECT rowid,x FROM t:");
             sqlite_exec(testdb, "SELECT rowid,x FROM t", QueryCallback, &rowCount, NULL);
-            
-            /* Get debug info via function call */
-            {
-                int dbg_pNode, dbg_pKey, dbg_nKey;
-                unsigned char dbg_bytes[4];
-                sqliteRbtreeGetDebugInfo(&dbg_pNode, &dbg_pKey, &dbg_nKey, dbg_bytes);
-                Output("  rbtree pNode="); IntToStr(dbg_pNode, buf); OutputLine(buf);
-                Output("  rbtree pKey="); IntToStr(dbg_pKey, buf); OutputLine(buf);
-                Output("  rbtree nKey="); IntToStr(dbg_nKey, buf); OutputLine(buf);
-                Output("  rbtree bytes: ");
-                IntToStr(dbg_bytes[0], buf); Output(buf); Output(" ");
-                IntToStr(dbg_bytes[1], buf); Output(buf); Output(" ");
-                IntToStr(dbg_bytes[2], buf); Output(buf); Output(" ");
-                IntToStr(dbg_bytes[3], buf); OutputLine(buf);
-            }
-            
             sqlite_close(testdb);
         } else {
             Output("  open failed: "); OutputLine(err ? err : "unknown");
@@ -609,23 +590,30 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 RunPersistentTest();
             } else if (LOWORD(wParam) == 104) { /* Save Log button */
                 HANDLE hFile;
-                const wchar_t *logPath = L"\\My Documents\\Synchronized Files\\sqlite_test.log";
-                const wchar_t *logPathAlt = L"\\Temp\\sqlite_test.log";
-                const char *savedMsg = "Log saved to \\My Documents\\Synchronized Files\\";
+                SYSTEMTIME st;
+                wchar_t logPath[128];
+                wchar_t logPathAlt[128];
+                int usedAlt = 0;
+                
+                GetLocalTime(&st);
+                wsprintfW(logPath, L"\\My Documents\\Synchronized Files\\sqlite_%04d%02d%02d_%02d%02d%02d.log",
+                    st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+                wsprintfW(logPathAlt, L"\\Temp\\sqlite_%04d%02d%02d_%02d%02d%02d.log",
+                    st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
                 
                 hFile = CreateFileW(logPath,
                     GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
                 if (hFile == INVALID_HANDLE_VALUE) {
                     hFile = CreateFileW(logPathAlt,
                         GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-                    savedMsg = "Log saved to \\Temp\\";
+                    usedAlt = 1;
                 }
                 if (hFile != INVALID_HANDLE_VALUE) {
                     DWORD written;
                     WriteFile(hFile, g_szOutput, g_nOutput, &written, NULL);
                     CloseHandle(hFile);
                     OutputLine("");
-                    OutputLine(savedMsg);
+                    OutputLine(usedAlt ? "Log saved to \\Temp\\" : "Log saved to Synchronized Files");
                 }
             }
             return 0;

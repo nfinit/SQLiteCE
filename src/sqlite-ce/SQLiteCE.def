@@ -43,4 +43,3 @@ EXPORTS
     sqlite_encode_binary
     sqlite_decode_binary
     sqlite_progress_handler
-    sqliteRbtreeGetDebugInfo

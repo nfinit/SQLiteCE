@@ -20,7 +20,9 @@
 #define CONFIG_WINCE_H
 
 /*
-** Byte swap macro - use unsigned to avoid sign extension issues
+** Byte swap macro - use shifts/masks instead of union type-punning.
+** The pristine sqliteVdbeByteSwap() uses a union trick that breaks
+** under SH3 optimization (strict aliasing / reordering issues).
 */
 #define sqliteVdbeByteSwap(X) ((int)( \
     ((((unsigned int)(X)) & 0xFFu) << 24) | \
