@@ -11,7 +11,7 @@
 /* Include our CE config first - this defines OS_WIN=0, OsFile, off_t */
 #include "config.h"
 
-/* Now include the real os.h from sqlite-2.8.17/src */
-#include "../../sqlite-2.8.17/src/os.h"
+/* Now include the real os.h from sqlite */
+#include "../sqlite/os.h"
 
 #endif /* _OS_H_CE_WRAPPER_ */
