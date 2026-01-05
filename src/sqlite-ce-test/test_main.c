@@ -1,52 +1,81 @@
 /*
 ** SQLite/CE Test Harness
 **
-** Simple GUI app to validate SQLite/CE DLL functionality.
-** Creates a window with test output and runs basic database operations.
+** Modular test framework for validating SQLite/CE DLL functionality.
 */
 
 #include <windows.h>
+#include <commctrl.h>
 #include "sqlite.h"
 
-/* Window handles */
-static HWND g_hwndMain;
-static HWND g_hwndOutput;
-static HWND g_hwndRunBtn;
+/* Rich Edit message - may not be in CE headers */
+#ifndef EM_SETBKGNDCOLOR
+#define EM_SETBKGNDCOLOR (WM_USER + 67)
+#endif
 
-/* Output buffer */
+/*============================================================================
+** Output and UI
+**============================================================================*/
+
+static HWND g_hwndMain;
+static HWND g_hwndCB;      /* Command bar */
+static HWND g_hwndOutput;
+static HINSTANCE g_hInst;
+static WNDPROC g_pfnEditProc;  /* Original edit control proc */
+
+/* Subclass proc to make edit read-only while keeping white background */
+static LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_KEYDOWN:
+            /* Ignore modifier keys alone */
+            if (wParam == VK_CONTROL || wParam == VK_MENU || wParam == VK_SHIFT)
+                return 0;
+            /* Pass Ctrl/Alt combos to parent for shortcuts */
+            if (GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_MENU) < 0) {
+                SendMessage(GetParent(hwnd), msg, wParam, lParam);
+                return 0;
+            }
+            return 0;  /* Block other keys */
+        case WM_CHAR:
+        case WM_PASTE:
+        case WM_CUT:
+        case WM_CLEAR:
+            return 0;  /* Block input */
+    }
+    return CallWindowProc(g_pfnEditProc, hwnd, msg, wParam, lParam);
+}
+
 static char g_szOutput[16000];
 static int g_nOutput = 0;
+static int g_batchMode = 0;
+static wchar_t g_wzOutput[16000];  /* Wide buffer - static to avoid stack overflow */
 
-/* Test counters */
-static int g_nTests = 0;
-static int g_nPassed = 0;
-
-/*
-** Convert UTF-8/ANSI to wide string and set window text
-*/
 static void SetOutputText(void) {
-    wchar_t wzBuf[16000];
-    MultiByteToWideChar(CP_ACP, 0, g_szOutput, -1, wzBuf, 16000);
-    SetWindowTextW(g_hwndOutput, wzBuf);
+    if (g_batchMode) return;
+    MultiByteToWideChar(CP_ACP, 0, g_szOutput, -1, g_wzOutput, 16000);
+    SetWindowTextW(g_hwndOutput, g_wzOutput);
     SendMessage(g_hwndOutput, EM_SETSEL, g_nOutput, g_nOutput);
     SendMessage(g_hwndOutput, EM_SCROLLCARET, 0, 0);
 }
 
-/*
-** Append text to output buffer and update display
-*/
+static void FlushOutput(void) {
+    g_batchMode = 0;
+    SetOutputText();
+}
+
+static void ClearOutput(void) {
+    g_szOutput[0] = '\0';
+    g_nOutput = 0;
+}
+
 static void Output(const char *sz) {
-    int len = 0;
     const char *p = sz;
-    while (*p++) len++;
-    
-    if (g_nOutput + len < sizeof(g_szOutput) - 1) {
-        char *d = g_szOutput + g_nOutput;
-        p = sz;
-        while (*p) *d++ = *p++;
-        *d = '\0';
-        g_nOutput += len;
+    char *d = g_szOutput + g_nOutput;
+    while (*p && g_nOutput < sizeof(g_szOutput) - 1) {
+        *d++ = *p++;
+        g_nOutput++;
     }
+    *d = '\0';
     SetOutputText();
 }
 
@@ -55,616 +84,851 @@ static void OutputLine(const char *sz) {
     Output("\r\n");
 }
 
-/*
-** Simple integer to string
-*/
-static void IntToStr(int val, char *buf) {
-    char tmp[16];
-    char *p = tmp + 15;
+static void OutputInt(const char *prefix, int val) {
+    char buf[16];
+    char *p = buf + 15;
     int neg = 0;
     *p = '\0';
     if (val < 0) { neg = 1; val = -val; }
     if (val == 0) *--p = '0';
     while (val > 0) { *--p = '0' + (val % 10); val /= 10; }
     if (neg) *--p = '-';
-    while (*p) *buf++ = *p++;
-    *buf = '\0';
+    Output(prefix);
+    OutputLine(p);
 }
 
-/*
-** Test assertion
-*/
-static void Test(const char *name, int condition) {
+/*============================================================================
+** Test Framework
+**============================================================================*/
+
+static int g_nTests = 0;
+static int g_nPassed = 0;
+static sqlite *g_db = NULL;  /* Shared database handle for tests */
+
+/* Test function type - returns 1 for pass, 0 for fail */
+typedef int (*TestFunc)(void);
+
+typedef struct {
+    const char *name;
+    TestFunc func;
+} TestCase;
+
+/* Debug context for failed tests */
+static char g_debugContext[64];
+
+static void SetDebugContext(const char *fmt, int val) {
+    char *p = g_debugContext;
+    const char *f = fmt;
+    while (*f && p < g_debugContext + 60) {
+        if (*f == '%' && *(f+1) == 'd') {
+            /* Insert integer */
+            char tmp[16];
+            char *t = tmp + 15;
+            int neg = 0;
+            int v = val;
+            *t = '\0';
+            if (v < 0) { neg = 1; v = -v; }
+            if (v == 0) *--t = '0';
+            while (v > 0) { *--t = '0' + (v % 10); v /= 10; }
+            if (neg) *--t = '-';
+            while (*t) *p++ = *t++;
+            f += 2;
+        } else {
+            *p++ = *f++;
+        }
+    }
+    *p = '\0';
+}
+
+static void ClearDebugContext(void) {
+    g_debugContext[0] = '\0';
+}
+
+/* Record test result */
+static void RecordTest(const char *name, int passed) {
     g_nTests++;
-    if (condition) {
+    if (passed) {
         g_nPassed++;
-        Output("[PASS] ");
+        Output("  [PASS] ");
+        OutputLine(name);
     } else {
-        Output("[FAIL] ");
+        Output("  [FAIL] ");
+        Output(name);
+        if (g_debugContext[0]) {
+            Output(" (");
+            Output(g_debugContext);
+            Output(")");
+        }
+        Output("\r\n");
     }
-    OutputLine(name);
+    ClearDebugContext();
 }
 
-/*
-** Callback for sqlite_exec - just count rows and display
-*/
-static int QueryCallback(void *pArg, int argc, char **argv, char **colNames) {
-    int *pCount = (int *)pArg;
-    int i;
-    (*pCount)++;
-    
-    for (i = 0; i < argc; i++) {
-        if (i > 0) Output(", ");
-        Output(colNames[i]);
-        Output("=");
-        Output(argv[i] ? argv[i] : "NULL");
-    }
-    Output("\r\n");
+/* Helper: execute SQL and check for success */
+static int ExecOK(const char *sql) {
+    return sqlite_exec(g_db, sql, NULL, NULL, NULL) == SQLITE_OK;
+}
+
+/* Helper: execute SQL and return row count */
+static int g_callbackCount;
+static int CountCallback(void *arg, int argc, char **argv, char **cols) {
+    (void)arg; (void)argc; (void)argv; (void)cols;
+    g_callbackCount++;
     return 0;
 }
 
-/*
-** Run all tests
-*/
-static void RunTests(void) {
-    sqlite *db = NULL;
-    char *zErr = NULL;
-    int rc;
-    int rowCount;
-    char buf[64];
-    const char *zTestDb = "\\Temp\\sqlitetest.db";
-    HANDLE hFile;
-    DWORD dwWritten;
+static int CountRows(const char *sql) {
+    g_callbackCount = 0;
+    sqlite_exec(g_db, sql, CountCallback, NULL, NULL);
+    return g_callbackCount;
+}
+
+/* Helper: get single integer result */
+static int g_intResult;
+static int g_verboseMode = 0;  /* Set to 1 to see raw values */
+
+/* Simple atoi that handles negatives (CE 2.0 atoi may not) */
+static int myatoi(const char *s) {
+    int val = 0;
+    int neg = 0;
+    if (*s == '-') { neg = 1; s++; }
+    while (*s >= '0' && *s <= '9') {
+        val = val * 10 + (*s - '0');
+        s++;
+    }
+    return neg ? -val : val;
+}
+
+static int IntCallback(void *arg, int argc, char **argv, char **cols) {
+    (void)arg; (void)cols;
+    if (argc > 0 && argv[0]) {
+        if (g_verboseMode) {
+            Output("    [VERBOSE] raw: '");
+            Output(argv[0]);
+            Output("'\r\n");
+        }
+        g_intResult = myatoi(argv[0]);
+    }
+    return 0;
+}
+
+static int GetInt(const char *sql) {
+    g_intResult = -99999;  /* Unlikely value to detect if callback ran */
+    sqlite_exec(g_db, sql, IntCallback, NULL, NULL);
+    return g_intResult;
+}
+
+/*============================================================================
+** Test Cases - Basic Operations
+**============================================================================*/
+
+static int test_open_memory(void) {
+    sqlite *db = sqlite_open(":memory:", 0, NULL);
+    if (db) { sqlite_close(db); return 1; }
+    return 0;
+}
+
+static int test_open_file(void) {
+    sqlite *db;
+    DeleteFileW(L"\\Temp\\test_open.db");
+    db = sqlite_open("\\Temp\\test_open.db", 0, NULL);
+    if (!db) return 0;
+    sqlite_close(db);
+    DeleteFileW(L"\\Temp\\test_open.db");
+    return 1;
+}
+
+static int test_create_table(void) {
+    return ExecOK("CREATE TABLE t1(a, b, c)");
+}
+
+static int test_drop_table(void) {
+    ExecOK("CREATE TABLE t_drop(x)");
+    return ExecOK("DROP TABLE t_drop");
+}
+
+/*============================================================================
+** Test Cases - CRUD Operations
+**============================================================================*/
+
+static int test_insert(void) {
+    int ok;
+    ExecOK("CREATE TABLE t_ins(id INTEGER PRIMARY KEY, val TEXT)");
+    ok = ExecOK("INSERT INTO t_ins VALUES(1, 'hello')");
+    ExecOK("DROP TABLE t_ins");
+    return ok;
+}
+
+static int test_insert_null_id(void) {
+    int ok, rowid;
+    ExecOK("CREATE TABLE t_ins2(id INTEGER PRIMARY KEY, val TEXT)");
+    ok = ExecOK("INSERT INTO t_ins2(val) VALUES('auto')");
+    rowid = sqlite_last_insert_rowid(g_db);
+    ExecOK("DROP TABLE t_ins2");
+    return ok && rowid == 1;
+}
+
+static int test_select(void) {
+    int count;
+    ExecOK("CREATE TABLE t_sel(x)");
+    ExecOK("INSERT INTO t_sel VALUES(1)");
+    ExecOK("INSERT INTO t_sel VALUES(2)");
+    count = CountRows("SELECT * FROM t_sel");
+    ExecOK("DROP TABLE t_sel");
+    return count == 2;
+}
+
+static int test_select_rowid(void) {
+    int rowid;
+    ExecOK("CREATE TABLE t_rowid(x)");
+    ExecOK("INSERT INTO t_rowid VALUES('test')");
+    rowid = GetInt("SELECT rowid FROM t_rowid");
+    ExecOK("DROP TABLE t_rowid");
+    return rowid == 1;
+}
+
+static int test_select_explicit_id(void) {
+    int id;
+    ExecOK("CREATE TABLE t_expid(id INTEGER PRIMARY KEY, x)");
+    ExecOK("INSERT INTO t_expid VALUES(100, 'test')");
+    id = GetInt("SELECT id FROM t_expid");
+    ExecOK("DROP TABLE t_expid");
+    return id == 100;
+}
+
+static int test_update(void) {
+    int val;
+    ExecOK("CREATE TABLE t_upd(id INTEGER PRIMARY KEY, val INTEGER)");
+    ExecOK("INSERT INTO t_upd VALUES(1, 10)");
+    ExecOK("UPDATE t_upd SET val = 20 WHERE id = 1");
+    val = GetInt("SELECT val FROM t_upd WHERE id = 1");
+    ExecOK("DROP TABLE t_upd");
+    return val == 20;
+}
+
+static int test_delete(void) {
+    int count;
+    ExecOK("CREATE TABLE t_del(id INTEGER PRIMARY KEY)");
+    ExecOK("INSERT INTO t_del VALUES(1)");
+    ExecOK("INSERT INTO t_del VALUES(2)");
+    ExecOK("DELETE FROM t_del WHERE id = 1");
+    count = CountRows("SELECT * FROM t_del");
+    ExecOK("DROP TABLE t_del");
+    return count == 1;
+}
+
+/*============================================================================
+** Test Cases - Data Types
+**============================================================================*/
+
+static int test_type_integer(void) {
+    int val;
+    ExecOK("CREATE TABLE t_int(v INTEGER)");
+    ExecOK("INSERT INTO t_int VALUES(12345)");
+    val = GetInt("SELECT v FROM t_int");
+    ExecOK("DROP TABLE t_int");
+    return val == 12345;
+}
+
+static int test_type_negative(void) {
+    int val;
+    ExecOK("CREATE TABLE t_neg(v INTEGER)");
+    ExecOK("INSERT INTO t_neg VALUES(-999)");
+    val = GetInt("SELECT v FROM t_neg");
+    ExecOK("DROP TABLE t_neg");
+    if (val != -999) SetDebugContext("expected -999, got %d", val);
+    return val == -999;
+}
+
+static int test_type_text(void) {
+    int count;
+    ExecOK("CREATE TABLE t_txt(v TEXT)");
+    ExecOK("INSERT INTO t_txt VALUES('hello world')");
+    count = CountRows("SELECT * FROM t_txt WHERE v = 'hello world'");
+    ExecOK("DROP TABLE t_txt");
+    return count == 1;
+}
+
+static int test_type_null(void) {
+    int count;
+    ExecOK("CREATE TABLE t_null(v)");
+    ExecOK("INSERT INTO t_null VALUES(NULL)");
+    count = CountRows("SELECT * FROM t_null WHERE v IS NULL");
+    ExecOK("DROP TABLE t_null");
+    return count == 1;
+}
+
+/*============================================================================
+** Test Cases - Persistence
+**============================================================================*/
+
+static int test_persistence(void) {
+    const char *path = "\\Temp\\test_persist.db";
+    sqlite *db1, *db2, *saved_db;
+    int ok = 0;
     
-    g_szOutput[0] = '\0';
-    g_nOutput = 0;
+    DeleteFileW(L"\\Temp\\test_persist.db");
+    
+    /* Create and populate */
+    db1 = sqlite_open(path, 0, NULL);
+    if (!db1) return 0;
+    sqlite_exec(db1, "CREATE TABLE p(x)", NULL, NULL, NULL);
+    sqlite_exec(db1, "INSERT INTO p VALUES(42)", NULL, NULL, NULL);
+    sqlite_close(db1);
+    
+    /* Reopen and verify */
+    db2 = sqlite_open(path, 0, NULL);
+    if (!db2) return 0;
+    saved_db = g_db;
+    g_db = db2;
+    ok = (GetInt("SELECT x FROM p") == 42);
+    sqlite_close(db2);
+    g_db = saved_db;
+    
+    DeleteFileW(L"\\Temp\\test_persist.db");
+    return ok;
+}
+
+/*============================================================================
+** Test Cases - Multiple Rows
+**============================================================================*/
+
+static int test_multiple_rows(void) {
+    int count;
+    ExecOK("CREATE TABLE t_multi(id INTEGER PRIMARY KEY, name TEXT)");
+    ExecOK("INSERT INTO t_multi VALUES(100, 'Alice')");
+    ExecOK("INSERT INTO t_multi VALUES(200, 'Bob')");
+    ExecOK("INSERT INTO t_multi VALUES(300, 'Charlie')");
+    count = CountRows("SELECT * FROM t_multi");
+    ExecOK("DROP TABLE t_multi");
+    return count == 3;
+}
+
+static int test_order_by(void) {
+    int first;
+    ExecOK("CREATE TABLE t_ord(v INTEGER)");
+    ExecOK("INSERT INTO t_ord VALUES(3)");
+    ExecOK("INSERT INTO t_ord VALUES(1)");
+    ExecOK("INSERT INTO t_ord VALUES(2)");
+    first = GetInt("SELECT v FROM t_ord ORDER BY v LIMIT 1");
+    ExecOK("DROP TABLE t_ord");
+    return first == 1;
+}
+
+static int test_count(void) {
+    int count;
+    ExecOK("CREATE TABLE t_cnt(x)");
+    ExecOK("INSERT INTO t_cnt VALUES(1)");
+    ExecOK("INSERT INTO t_cnt VALUES(2)");
+    ExecOK("INSERT INTO t_cnt VALUES(3)");
+    count = GetInt("SELECT COUNT(*) FROM t_cnt");
+    ExecOK("DROP TABLE t_cnt");
+    return count == 3;
+}
+
+/*============================================================================
+** System Diagnostics (informational, no pass/fail)
+**============================================================================*/
+
+static void RunDiagnostics(void) {
+    OutputLine("--- System Information ---");
+    
+    /* SQLite version */
+    Output("  SQLite version: ");
+    OutputLine(sqlite_libversion());
+    
+    /* Pointer size */
+    OutputInt("  sizeof(void*): ", sizeof(void*));
+    OutputInt("  sizeof(int): ", sizeof(int));
+    OutputInt("  sizeof(long): ", sizeof(long));
+    
+    /* Endianness test */
+    {
+        unsigned int x = 0x01020304;
+        unsigned char *p = (unsigned char *)&x;
+        Output("  Byte order: ");
+        if (p[0] == 0x04) {
+            OutputLine("Little-endian");
+        } else if (p[0] == 0x01) {
+            OutputLine("Big-endian");
+        } else {
+            OutputLine("Unknown");
+        }
+        Output("  Test bytes: ");
+        OutputInt("", p[0]);
+        Output(" ");
+        OutputInt("", p[1]);
+        Output(" ");
+        OutputInt("", p[2]);
+        Output(" ");
+        OutputInt("", p[3]);
+        OutputLine("");
+    }
+    
+    /* Byte swap test */
+    {
+        int orig = 0x01020304;
+        #define BYTESWAP(X) ((int)( \
+            ((((unsigned int)(X)) & 0xFFu) << 24) | \
+            ((((unsigned int)(X)) & 0xFF00u) << 8) | \
+            ((((unsigned int)(X)) >> 8) & 0xFF00u) | \
+            ((((unsigned int)(X)) >> 24) & 0xFFu) ))
+        int swapped = BYTESWAP(orig);
+        OutputInt("  Byteswap 0x01020304: ", swapped);
+        OutputInt("  Expected 0x04030201: ", 0x04030201);
+        Output("  Byteswap: ");
+        OutputLine(swapped == 0x04030201 ? "OK" : "MISMATCH");
+    }
+    
+    /* intToKey/keyToInt round-trip (critical for rowid) */
+    {
+        int orig = 100;
+        unsigned int key = BYTESWAP((unsigned int)orig ^ 0x80000000u);
+        int back = (int)(BYTESWAP(key) ^ 0x80000000u);
+        OutputInt("  intToKey(100): ", (int)key);
+        OutputInt("  keyToInt back: ", back);
+        Output("  Round-trip: ");
+        OutputLine(back == orig ? "OK" : "MISMATCH");
+    }
+    
+    OutputLine("");
+    OutputLine("--- File System ---");
+    
+    /* Test \Temp directory */
+    {
+        DWORD attr = GetFileAttributesW(L"\\Temp");
+        Output("  \\Temp exists: ");
+        OutputLine(attr != 0xFFFFFFFF ? "YES" : "NO");
+    }
+    
+    /* Test file creation */
+    {
+        HANDLE hFile = CreateFileW(L"\\Temp\\_test_.tmp",
+            GENERIC_READ | GENERIC_WRITE, 0, NULL,
+            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            DWORD written;
+            int ok = WriteFile(hFile, "test", 4, &written, NULL);
+            CloseHandle(hFile);
+            DeleteFileW(L"\\Temp\\_test_.tmp");
+            Output("  File write test: ");
+            OutputLine(ok && written == 4 ? "OK" : "FAIL");
+        } else {
+            OutputLine("  File write test: FAIL (create)");
+        }
+    }
+    
+    OutputLine("");
+}
+
+/*============================================================================
+** Test Cases - Advanced
+**============================================================================*/
+
+static int test_transaction_commit(void) {
+    int ok;
+    ExecOK("CREATE TABLE tr(x)");
+    ExecOK("BEGIN");
+    ExecOK("INSERT INTO tr VALUES(1)");
+    ExecOK("COMMIT");
+    ok = (GetInt("SELECT x FROM tr") == 1);
+    ExecOK("DROP TABLE tr");
+    return ok;
+}
+
+static int test_transaction_rollback(void) {
+    int ok;
+    ExecOK("CREATE TABLE tr(x)");
+    ExecOK("INSERT INTO tr VALUES(1)");
+    ExecOK("BEGIN");
+    ExecOK("INSERT INTO tr VALUES(2)");
+    ExecOK("ROLLBACK");
+    ok = (CountRows("SELECT * FROM tr") == 1);
+    ExecOK("DROP TABLE tr");
+    return ok;
+}
+
+static int test_like(void) {
+    int ok;
+    ExecOK("CREATE TABLE lk(s TEXT)");
+    ExecOK("INSERT INTO lk VALUES('hello')");
+    ExecOK("INSERT INTO lk VALUES('world')");
+    ExecOK("INSERT INTO lk VALUES('help')");
+    ok = (CountRows("SELECT * FROM lk WHERE s LIKE 'hel%'") == 2);
+    ExecOK("DROP TABLE lk");
+    return ok;
+}
+
+static int test_is_null(void) {
+    int ok;
+    ExecOK("CREATE TABLE nu(x)");
+    ExecOK("INSERT INTO nu VALUES(1)");
+    ExecOK("INSERT INTO nu VALUES(NULL)");
+    ok = (CountRows("SELECT * FROM nu WHERE x IS NULL") == 1);
+    ExecOK("DROP TABLE nu");
+    return ok;
+}
+
+static int test_sum(void) {
+    int ok;
+    ExecOK("CREATE TABLE sm(x INTEGER)");
+    ExecOK("INSERT INTO sm VALUES(10)");
+    ExecOK("INSERT INTO sm VALUES(20)");
+    ExecOK("INSERT INTO sm VALUES(30)");
+    ok = (GetInt("SELECT SUM(x) FROM sm") == 60);
+    ExecOK("DROP TABLE sm");
+    return ok;
+}
+
+static int test_min_max(void) {
+    int ok;
+    ExecOK("CREATE TABLE mm(x INTEGER)");
+    ExecOK("INSERT INTO mm VALUES(5)");
+    ExecOK("INSERT INTO mm VALUES(15)");
+    ExecOK("INSERT INTO mm VALUES(10)");
+    ok = (GetInt("SELECT MIN(x) FROM mm") == 5) &&
+         (GetInt("SELECT MAX(x) FROM mm") == 15);
+    ExecOK("DROP TABLE mm");
+    return ok;
+}
+
+static int test_join(void) {
+    int ok;
+    ExecOK("CREATE TABLE j1(id INTEGER, name TEXT)");
+    ExecOK("CREATE TABLE j2(id INTEGER, value INTEGER)");
+    ExecOK("INSERT INTO j1 VALUES(1, 'Alice')");
+    ExecOK("INSERT INTO j1 VALUES(2, 'Bob')");
+    ExecOK("INSERT INTO j2 VALUES(1, 100)");
+    ExecOK("INSERT INTO j2 VALUES(2, 200)");
+    ok = (CountRows("SELECT * FROM j1, j2 WHERE j1.id = j2.id") == 2);
+    ExecOK("DROP TABLE j1");
+    ExecOK("DROP TABLE j2");
+    return ok;
+}
+
+/*============================================================================
+** Test Registry
+**============================================================================*/
+
+static TestCase g_tests[] = {
+    /* Basic operations */
+    { "Open :memory: database",     test_open_memory },
+    { "Open file database",         test_open_file },
+    { "CREATE TABLE",               test_create_table },
+    { "DROP TABLE",                 test_drop_table },
+    
+    /* CRUD */
+    { "INSERT with explicit id",    test_insert },
+    { "INSERT with auto id",        test_insert_null_id },
+    { "SELECT rows",                test_select },
+    { "SELECT rowid",               test_select_rowid },
+    { "SELECT explicit INTEGER PK", test_select_explicit_id },
+    { "UPDATE",                     test_update },
+    { "DELETE",                     test_delete },
+    
+    /* Data types */
+    { "INTEGER type",               test_type_integer },
+    { "Negative INTEGER",           test_type_negative },
+    { "TEXT type",                  test_type_text },
+    { "NULL value",                 test_type_null },
+    
+    /* Multiple rows */
+    { "Multiple row insert",        test_multiple_rows },
+    { "ORDER BY",                   test_order_by },
+    { "COUNT(*)",                   test_count },
+    
+    /* Persistence */
+    { "File persistence",           test_persistence },
+    
+    /* Advanced */
+    { "Transaction COMMIT",         test_transaction_commit },
+    { "Transaction ROLLBACK",       test_transaction_rollback },
+    { "LIKE pattern",               test_like },
+    { "IS NULL",                    test_is_null },
+    { "SUM aggregate",              test_sum },
+    { "MIN/MAX aggregate",          test_min_max },
+    { "JOIN",                       test_join },
+    
+    { NULL, NULL }
+};
+
+/*============================================================================
+** Test Runner
+**============================================================================*/
+
+static void RunTests(void) {
+    TestCase *t;
+    int result;
+    DWORD startTick, endTick;
+    
+    ClearOutput();
     g_nTests = 0;
     g_nPassed = 0;
     
-    OutputLine("=== SQLite/CE Test Harness ===");
-    OutputLine("");
+    /* Show immediate feedback before batch mode */
+    OutputLine("Running tests...");
+    FlushOutput();
     
-    /* Diagnostic: Test raw file creation first */
-    OutputLine("--- Diagnostics ---");
+    ClearOutput();
+    g_batchMode = 1;
     
-    /* Test atoi */
-    Output("atoi(\"100\")=");
-    IntToStr(atoi("100"), buf);
-    OutputLine(buf);
-    
-    /* Test intToKey/keyToInt round-trip - this is what SQLite uses for INTEGER PRIMARY KEY */
-    {
-        int orig = 100;
-        unsigned int key = (orig) ^ 0x80000000;  /* intToKey without swap */
-        int back = (key) ^ 0x80000000;           /* keyToInt without swap */
-        Output("intToKey(100)="); IntToStr((int)key, buf); OutputLine(buf);
-        Output("keyToInt back="); IntToStr(back, buf); OutputLine(buf);
-    }
-    
-    /* Test CreateDirectoryW */
-    rc = CreateDirectoryW(L"\\Temp", NULL);
-    Output("CreateDirectory \\Temp: ");
-    if (rc) {
-        OutputLine("Created");
-    } else {
-        DWORD err = GetLastError();
-        if (err == ERROR_ALREADY_EXISTS || err == 6) {
-            OutputLine("OK (exists)");
-        } else {
-            IntToStr(err, buf);
-            Output("err=");
-            OutputLine(buf);
-        }
-    }
-    
-    /* Test raw CreateFileW */
-    hFile = CreateFileW(L"\\Temp\\test.tmp",
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        NULL,
-        CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        NULL);
-    Output("CreateFileW: ");
-    if (hFile != INVALID_HANDLE_VALUE) {
-        OutputLine("OK");
-        /* Try writing */
-        rc = WriteFile(hFile, "test", 4, &dwWritten, NULL);
-        Output("WriteFile: ");
-        if (rc && dwWritten == 4) {
-            OutputLine("OK");
-        } else {
-            IntToStr(GetLastError(), buf);
-            Output("err=");
-            OutputLine(buf);
-        }
-        CloseHandle(hFile);
-        DeleteFileW(L"\\Temp\\test.tmp");
-    } else {
-        IntToStr(GetLastError(), buf);
-        Output("err=");
-        OutputLine(buf);
-    }
-    
-    /* Show sqlite version */
+    OutputLine("=== SQLite/CE Test Suite ===");
     Output("SQLite version: ");
     OutputLine(sqlite_libversion());
-    
-    /* Test in-memory database first */
     OutputLine("");
-    OutputLine("Testing :memory: database...");
-    db = sqlite_open(":memory:", 0, &zErr);
-    Output(":memory: open: ");
-    if (db) {
-        OutputLine("OK");
-        rc = sqlite_exec(db, "CREATE TABLE t(x)", NULL, NULL, &zErr);
-        Output("CREATE TABLE: ");
-        OutputLine(rc == SQLITE_OK ? "OK" : "FAIL");
-        sqlite_close(db);
-        db = NULL;
-    } else {
-        Output("FAIL - ");
-        OutputLine(zErr ? zErr : "unknown");
-        if (zErr) sqlite_freemem(zErr);
+    
+    startTick = GetTickCount();
+    
+    g_db = sqlite_open(":memory:", 0, NULL);
+    if (!g_db) {
+        OutputLine("Failed to open test database");
+        FlushOutput();
+        return;
     }
+    
+    for (t = g_tests; t->name; t++) {
+        result = t->func();
+        RecordTest(t->name, result);
+    }
+    
+    sqlite_close(g_db);
+    g_db = NULL;
+    
+    endTick = GetTickCount();
     
     OutputLine("");
-    OutputLine("--- SQLite File Tests ---");
-    
-    /* Delete any existing test database */
-    if (DeleteFileW(L"\\Temp\\sqlitetest.db")) {
-        OutputLine("Deleted old test database");
-    }
-    DeleteFileW(L"\\Temp\\sqlitetest.db-journal");
-    
-    /* Also try root - in case path handling puts it there */
-    DeleteFileW(L"\\sqlitetest.db");
-    DeleteFileW(L"\\sqlitetest.db-journal");
-    
-    /* Test 1: Open database */
-    OutputLine("Opening database: \\Temp\\sqlitetest.db");
-    db = sqlite_open(zTestDb, 0, &zErr);
-    Test("sqlite_open returns non-NULL", db != NULL);
-    if (!db) {
-        Output("Error: ");
-        OutputLine(zErr ? zErr : "unknown");
-        if (zErr) sqlite_freemem(zErr);
-        goto done;
-    }
-    
-    /* Check if file was actually created */
+    OutputInt("Tests:  ", g_nTests);
+    OutputInt("Passed: ", g_nPassed);
+    OutputInt("Failed: ", g_nTests - g_nPassed);
+    Output("Time:   ");
     {
-        DWORD attrs = GetFileAttributesW(L"\\Temp\\sqlitetest.db");
-        Output("File exists after open: ");
-        OutputLine(attrs != 0xFFFFFFFF ? "YES" : "NO");
+        char buf[24];
+        char *p;
+        int ms = (int)(endTick - startTick);
+        buf[20] = ' '; buf[21] = 'm'; buf[22] = 's'; buf[23] = '\0';
+        p = buf + 20;
+        if (ms == 0) *--p = '0';
+        while (ms > 0) { *--p = '0' + (ms % 10); ms /= 10; }
+        OutputLine(p);
     }
-    
-    /* Test 2: Create table - drop first if exists */
-    OutputLine("");
-    OutputLine("Creating table...");
-    rc = sqlite_exec(db, "DROP TABLE test", NULL, NULL, NULL);
-    Output("DROP TABLE rc="); IntToStr(rc, buf); OutputLine(buf);
-    
-    rc = sqlite_exec(db, "CREATE TABLE test(id INTEGER PRIMARY KEY, name TEXT, value REAL)", NULL, NULL, &zErr);
-    Output("CREATE TABLE rc="); IntToStr(rc, buf); OutputLine(buf);
-    Test("CREATE TABLE", rc == SQLITE_OK);
-    if (rc != SQLITE_OK) {
-        Output("Error: ");
-        OutputLine(zErr ? zErr : "unknown");
-        if (zErr) sqlite_freemem(zErr);
-    }
-    
-    /* Show table schema */
-    OutputLine("Table info:");
-    sqlite_exec(db, "PRAGMA table_info(test)", QueryCallback, &rowCount, NULL);
-    
-    /* Also create a table without INTEGER PRIMARY KEY for comparison */
-    sqlite_exec(db, "DROP TABLE test2", NULL, NULL, NULL);
-    sqlite_exec(db, "CREATE TABLE test2(id INTEGER, name TEXT)", NULL, NULL, NULL);
-    
-    /* Verify table is empty */
-    rowCount = 0;
-    sqlite_exec(db, "SELECT * FROM test", QueryCallback, &rowCount, NULL);
-    Output("Rows after CREATE: "); IntToStr(rowCount, buf); OutputLine(buf);
-    
-    /* Test 3: Insert data - use very different IDs */
-    OutputLine("");
-    OutputLine("Inserting rows...");
-    
-    /* First test: auto-generated rowid */
-    rc = sqlite_exec(db, "INSERT INTO test(name,value) VALUES('Test', 999)", NULL, NULL, &zErr);
-    Output("  auto-id rc="); IntToStr(rc, buf); OutputLine(buf);
-    if (zErr) { Output("  err="); OutputLine(zErr); sqlite_freemem(zErr); zErr = NULL; }
-    Output("  auto last_insert_rowid="); IntToStr(sqlite_last_insert_rowid(db), buf); OutputLine(buf);
-    sqlite_exec(db, "DELETE FROM test", NULL, NULL, NULL);
-    
-    /* Test intToKey/keyToInt at runtime with actual values */
-    {
-        int orig = 100;
-        unsigned int key;
-        int back;
-        unsigned char *kb;
-        
-        key = (unsigned int)orig ^ 0x80000000u;
-        kb = (unsigned char *)&key;
-        Output("  100 as key bytes: ");
-        IntToStr(kb[0], buf); Output(buf); Output(" ");
-        IntToStr(kb[1], buf); Output(buf); Output(" ");
-        IntToStr(kb[2], buf); Output(buf); Output(" ");
-        IntToStr(kb[3], buf); OutputLine(buf);
-        
-        back = (int)(key ^ 0x80000000u);
-        Output("  round-trip: "); IntToStr(back, buf); OutputLine(buf);
-    }
-    
-    /* Check struct packing - mimic CellHdr */
-    {
-        struct TestCellHdr {
-            unsigned int leftChild;
-            unsigned short nKey;
-            unsigned short iNext;
-            unsigned char nKeyHi;
-            unsigned char nDataHi;
-            unsigned short nData;
-        };
-        int testVal, swapped;
-        
-        Output("  sizeof(TestCellHdr)="); IntToStr(sizeof(struct TestCellHdr), buf); OutputLine(buf);
-        
-        /* Test byte swap locally using same macro as DLL */
-        #define TEST_BYTESWAP(X) \
-            (((((int)(X)) & 0xFF) << 24) | ((((int)(X)) & 0xFF00) << 8) | \
-             ((((int)(X)) >> 8) & 0xFF00) | ((((int)(X)) >> 24) & 0xFF))
-        
-        testVal = 0x80000001;
-        swapped = TEST_BYTESWAP(testVal);
-        Output("  local byteswap(0x80000001)="); IntToStr(swapped, buf); OutputLine(buf);
-        Output("  expected 0x01000080="); IntToStr(0x01000080, buf); OutputLine(buf);
-    }
-    
-    /* Minimal rowid test - fresh db, single insert, immediate query */
-    OutputLine("");
-    OutputLine("Minimal rowid test:");
-    {
-        sqlite *testdb;
-        char *err = NULL;
-        testdb = sqlite_open(":memory:", 0, &err);
-        if (testdb) {
-            sqlite_exec(testdb, "CREATE TABLE t(x)", NULL, NULL, NULL);
-            sqlite_exec(testdb, "INSERT INTO t VALUES('hello')", NULL, NULL, NULL);
-            Output("  last_insert_rowid="); IntToStr(sqlite_last_insert_rowid(testdb), buf); OutputLine(buf);
-            OutputLine("  SELECT rowid,x FROM t:");
-            sqlite_exec(testdb, "SELECT rowid,x FROM t", QueryCallback, &rowCount, NULL);
-            sqlite_close(testdb);
-        } else {
-            Output("  open failed: "); OutputLine(err ? err : "unknown");
-        }
-    }
-    
-    /* Test regular INTEGER column (not PRIMARY KEY) */
-    sqlite_exec(db, "INSERT INTO test2(id,name) VALUES(100,'Test')", NULL, NULL, NULL);
-    OutputLine("test2 (regular INTEGER):");
-    sqlite_exec(db, "SELECT * FROM test2", QueryCallback, &rowCount, NULL);
-    OutputLine("test2 rowid (auto-generated):");
-    Output("  C API last_insert_rowid: "); IntToStr(sqlite_last_insert_rowid(db), buf); OutputLine(buf);
-    sqlite_exec(db, "SELECT last_insert_rowid() as lirid", QueryCallback, &rowCount, NULL);
-    sqlite_exec(db, "SELECT rowid, * FROM test2", QueryCallback, &rowCount, NULL);
-    
-    sqlite_exec(db, "DELETE FROM test2", NULL, NULL, NULL);
-    
-    rc = sqlite_exec(db, "INSERT INTO test(id,name,value) VALUES(100, 'Alice', 314)", NULL, NULL, &zErr);
-    Output("  row1 rc="); IntToStr(rc, buf); OutputLine(buf);
-    Test("INSERT row 1", rc == SQLITE_OK);
-    if (zErr) { Output("  err="); OutputLine(zErr); sqlite_freemem(zErr); zErr = NULL; }
-    Output("  last_insert_rowid="); IntToStr(sqlite_last_insert_rowid(db), buf); OutputLine(buf);
-    rowCount = 0;
-    sqlite_exec(db, "SELECT * FROM test", QueryCallback, &rowCount, NULL);
-    Output("  count="); IntToStr(rowCount, buf); OutputLine(buf);
-    
-    rc = sqlite_exec(db, "INSERT INTO test(id,name,value) VALUES(200, 'Bob', 271)", NULL, NULL, &zErr);
-    Output("  row2 rc="); IntToStr(rc, buf); OutputLine(buf);
-    Test("INSERT row 2", rc == SQLITE_OK);
-    if (zErr) { Output("  err="); OutputLine(zErr); sqlite_freemem(zErr); zErr = NULL; }
-    rowCount = 0;
-    sqlite_exec(db, "SELECT * FROM test", QueryCallback, &rowCount, NULL);
-    Output("  count="); IntToStr(rowCount, buf); OutputLine(buf);
-    
-    rc = sqlite_exec(db, "INSERT INTO test(id,name,value) VALUES(300, 'Charlie', 141)", NULL, NULL, &zErr);
-    Output("  row3 rc="); IntToStr(rc, buf); OutputLine(buf);
-    Test("INSERT row 3", rc == SQLITE_OK);
-    if (zErr) { Output("  err="); OutputLine(zErr); sqlite_freemem(zErr); zErr = NULL; }
-    rowCount = 0;
-    sqlite_exec(db, "SELECT * FROM test", QueryCallback, &rowCount, NULL);
-    Output("  count="); IntToStr(rowCount, buf); OutputLine(buf);
-    
-    /* Test 4: Select data */
-    OutputLine("");
-    OutputLine("Selecting rows...");
-    rowCount = 0;
-    rc = sqlite_exec(db, "SELECT * FROM test ORDER BY id", QueryCallback, &rowCount, &zErr);
-    Test("SELECT returns SQLITE_OK", rc == SQLITE_OK);
-    Test("SELECT returns 3 rows", rowCount == 3);
-    
-    /* Test 5: Update - use id=200 which exists */
-    OutputLine("");
-    OutputLine("Updating row...");
-    rc = sqlite_exec(db, "UPDATE test SET value = 9.99 WHERE id = 200", NULL, NULL, &zErr);
-    Test("UPDATE", rc == SQLITE_OK);
-    
-    /* Test 6: Verify update */
-    rowCount = 0;
-    rc = sqlite_exec(db, "SELECT * FROM test WHERE id = 200", QueryCallback, &rowCount, &zErr);
-    Test("SELECT after UPDATE", rc == SQLITE_OK && rowCount == 1);
-    
-    /* Test 7: Delete - use id=300 which exists */
-    OutputLine("");
-    OutputLine("Deleting row...");
-    rc = sqlite_exec(db, "DELETE FROM test WHERE id = 300", NULL, NULL, &zErr);
-    Test("DELETE", rc == SQLITE_OK);
-    
-    /* Test 8: Count remaining - should be 2 */
-    rowCount = 0;
-    rc = sqlite_exec(db, "SELECT COUNT(*) as cnt FROM test", QueryCallback, &rowCount, &zErr);
-    Test("COUNT after DELETE", rc == SQLITE_OK);
-    
-    /* Test 9: Close database */
-    OutputLine("");
-    OutputLine("Closing database...");
-    sqlite_close(db);
-    db = NULL;
-    Test("sqlite_close", 1); /* If we get here, it worked */
-    
-    /* Test 10: Reopen and verify persistence */
-    OutputLine("");
-    OutputLine("Reopening to verify persistence...");
-    db = sqlite_open(zTestDb, 0, &zErr);
-    Test("Reopen database", db != NULL);
-    if (db) {
-        rowCount = 0;
-        rc = sqlite_exec(db, "SELECT * FROM test", QueryCallback, &rowCount, &zErr);
-        Test("Data persisted (2 rows)", rc == SQLITE_OK && rowCount == 2);
-        sqlite_close(db);
-        db = NULL;
-    }
-    
-done:
-    if (db) sqlite_close(db);
-    
-    /* Summary */
-    OutputLine("");
-    OutputLine("=== Summary ===");
-    Output("Tests: ");
-    IntToStr(g_nTests, buf);
-    OutputLine(buf);
-    Output("Passed: ");
-    IntToStr(g_nPassed, buf);
-    OutputLine(buf);
-    Output("Failed: ");
-    IntToStr(g_nTests - g_nPassed, buf);
-    OutputLine(buf);
     
     if (g_nPassed == g_nTests) {
         OutputLine("");
         OutputLine("*** ALL TESTS PASSED ***");
     }
     
-    /* Cleanup test file */
-    DeleteFileW(L"\\Temp\\sqlitetest.db");
+    FlushOutput();
 }
 
-/*
-** Persistent database test - creates/updates a database that survives across runs
-*/
-static void RunPersistentTest(void) {
-    sqlite *db = NULL;
-    char *zErr = NULL;
-    int rc;
-    int rowCount;
-    int runCount = 0;
-    char buf[64];
-    const char *zPersistDb = "\\My Documents\\persistent.db";
-    
-    g_szOutput[0] = '\0';
-    g_nOutput = 0;
-    
-    OutputLine("=== Persistent Database Test ===");
-    OutputLine("");
-    Output("Database: ");
-    OutputLine(zPersistDb);
-    OutputLine("");
-    
-    /* Open or create the database */
-    db = sqlite_open(zPersistDb, 0, &zErr);
-    if (!db) {
-        Output("Failed to open: ");
-        OutputLine(zErr ? zErr : "unknown");
-        if (zErr) sqlite_freemem(zErr);
-        return;
-    }
-    OutputLine("Database opened OK");
-    
-    /* Try to create table - ignore error if it already exists */
-    rc = sqlite_exec(db, 
-        "CREATE TABLE runs(id INTEGER PRIMARY KEY, timestamp TEXT)",
-        NULL, NULL, &zErr);
-    if (rc != SQLITE_OK && zErr) {
-        /* Check if it's just "table already exists" - that's OK */
-        if (zErr[0] == 't' && zErr[1] == 'a') {
-            /* "table runs already exists" - ignore */
-            sqlite_freemem(zErr);
-            zErr = NULL;
-        } else {
-            Output("CREATE TABLE error: ");
-            OutputLine(zErr);
-            sqlite_freemem(zErr);
-        }
-    }
-    
-    /* Insert a new run record with simple counter */
-    rc = sqlite_exec(db, 
-        "INSERT INTO runs(timestamp) VALUES('run')",
-        NULL, NULL, &zErr);
-    if (rc == SQLITE_OK) {
-        OutputLine("Inserted new run record");
-    } else {
-        Output("INSERT error: ");
-        OutputLine(zErr ? zErr : "unknown");
-        if (zErr) sqlite_freemem(zErr);
-    }
-    
-    /* Count total runs */
-    OutputLine("");
-    OutputLine("All runs recorded in this database:");
-    rowCount = 0;
-    rc = sqlite_exec(db, "SELECT id, timestamp FROM runs ORDER BY id", 
-        QueryCallback, &rowCount, &zErr);
-    
-    OutputLine("");
-    Output("Total runs: ");
-    IntToStr(rowCount, buf);
-    OutputLine(buf);
-    
-    sqlite_close(db);
-    
-    OutputLine("");
-    OutputLine("Database saved. Run test again to see count increase!");
-    OutputLine("Check \\My Documents\\persistent.db in File Explorer.");
+/*============================================================================
+** Window Procedure and Entry Point
+**============================================================================*/
+
+/* Menu IDs */
+#define IDM_RUN      201
+#define IDM_SAVE     202
+#define IDM_VERBOSE  203
+#define IDM_SYNCFOLD 204
+#define IDM_FONTSIZE 205
+
+static HMENU g_hMenu;
+static int g_useSyncFolder = 1;  /* Default: try Sync folder first */
+static int g_fontSizes[] = {10, 12, 14, 16};
+static int g_fontSizeIdx = 2;  /* Default: 14 */
+static HFONT g_hFont;
+
+static void SetOutputFont(void) {
+    HFONT hOld = g_hFont;
+    LOGFONTW lf;
+    memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = g_fontSizes[g_fontSizeIdx];
+    lf.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
+    lstrcpyW(lf.lfFaceName, L"Courier New");
+    g_hFont = CreateFontIndirectW(&lf);
+    SendMessage(g_hwndOutput, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    if (hOld) DeleteObject(hOld);
 }
 
-/*
-** Window procedure
-*/
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
             RECT rc;
+            int cbHeight;
+            HMENU hMenuBar, hMenuOpt;
+            TBBUTTON tbButtons[2];
+            
+            /* Create command bar */
+            g_hwndCB = CommandBar_Create(g_hInst, hwnd, 1);
+            
+            /* Add menu bar with Run (direct action) and Options (popup) */
+            hMenuBar = CreateMenu();
+            AppendMenuW(hMenuBar, MF_STRING, IDM_RUN, L"&Run");
+            hMenuOpt = CreatePopupMenu();
+            AppendMenuW(hMenuOpt, MF_STRING, IDM_VERBOSE, L"&Verbose\tAlt+V");
+            AppendMenuW(hMenuOpt, MF_STRING | MF_CHECKED, IDM_SYNCFOLD, L"Save to &Sync Folder");
+            AppendMenuW(hMenuBar, MF_POPUP, (UINT)hMenuOpt, L"&Options");
+            
+            CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hMenuBar, 0);
+            g_hMenu = hMenuBar;
+            
+            /* Add toolbar buttons */
+            CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_STD_SMALL_COLOR, 15, 0, 0);
+            
+            memset(tbButtons, 0, sizeof(tbButtons));
+            tbButtons[0].iBitmap = STD_FILESAVE;
+            tbButtons[0].idCommand = IDM_SAVE;
+            tbButtons[0].fsState = TBSTATE_ENABLED;
+            tbButtons[0].fsStyle = TBSTYLE_BUTTON;
+            
+            tbButtons[1].iBitmap = STD_FIND;  /* Magnifier for font size */
+            tbButtons[1].idCommand = IDM_FONTSIZE;
+            tbButtons[1].fsState = TBSTATE_ENABLED;
+            tbButtons[1].fsStyle = TBSTYLE_BUTTON;
+            
+            CommandBar_AddButtons(g_hwndCB, 2, tbButtons);
+            
+            CommandBar_AddAdornments(g_hwndCB, 0, 0);
+            cbHeight = CommandBar_Height(g_hwndCB);
+            
             GetClientRect(hwnd, &rc);
             
-            /* Create output edit control */
-            g_hwndOutput = CreateWindowW(L"EDIT", L"",
-                WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_LEFT,
-                5, 5, rc.right - 10, rc.bottom - 40,
-                hwnd, (HMENU)101, NULL, NULL);
+            g_hwndOutput = CreateWindowW(
+                L"EDIT", L"Tap Run to begin.",
+                WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE,
+                0, cbHeight, rc.right, rc.bottom - cbHeight,
+                hwnd, (HMENU)101, g_hInst, NULL);
             
-            /* Create Run Tests button */
-            g_hwndRunBtn = CreateWindowW(L"BUTTON", L"Run Tests",
-                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                5, rc.bottom - 30, 80, 25,
-                hwnd, (HMENU)102, NULL, NULL);
+            /* Subclass to block input while keeping white background */
+            g_pfnEditProc = (WNDPROC)SetWindowLong(g_hwndOutput, GWL_WNDPROC, (LONG)EditSubclassProc);
             
-            /* Create Persistent Test button */
-            CreateWindowW(L"BUTTON", L"Persistent",
-                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                90, rc.bottom - 30, 75, 25,
-                hwnd, (HMENU)103, NULL, NULL);
-            
-            /* Create Save Log button */
-            CreateWindowW(L"BUTTON", L"Save Log",
-                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                170, rc.bottom - 30, 70, 25,
-                hwnd, (HMENU)104, NULL, NULL);
+            SetOutputFont();
             
             return 0;
         }
         
         case WM_SIZE: {
             RECT rc;
+            int cbHeight = CommandBar_Height(g_hwndCB);
             GetClientRect(hwnd, &rc);
-            MoveWindow(g_hwndOutput, 5, 5, rc.right - 10, rc.bottom - 40, TRUE);
-            MoveWindow(g_hwndRunBtn, 5, rc.bottom - 30, 80, 25, TRUE);
-            MoveWindow(GetDlgItem(hwnd, 103), 90, rc.bottom - 30, 75, 25, TRUE);
-            MoveWindow(GetDlgItem(hwnd, 104), 170, rc.bottom - 30, 70, 25, TRUE);
+            MoveWindow(g_hwndOutput, 0, cbHeight, rc.right, rc.bottom - cbHeight, TRUE);
             return 0;
         }
         
         case WM_COMMAND:
-            if (LOWORD(wParam) == 102) { /* Run Tests button */
-                wchar_t wzRunning[] = L"Running tests...";
-                SetWindowTextW(g_hwndOutput, wzRunning);
-                UpdateWindow(g_hwndOutput);
-                RunTests();
-            } else if (LOWORD(wParam) == 103) { /* Persistent DB button */
-                wchar_t wzRunning[] = L"Running persistent test...";
-                SetWindowTextW(g_hwndOutput, wzRunning);
-                UpdateWindow(g_hwndOutput);
-                RunPersistentTest();
-            } else if (LOWORD(wParam) == 104) { /* Save Log button */
-                HANDLE hFile;
-                SYSTEMTIME st;
-                wchar_t logPath[128];
-                wchar_t logPathAlt[128];
-                int usedAlt = 0;
-                
-                GetLocalTime(&st);
-                wsprintfW(logPath, L"\\My Documents\\Synchronized Files\\sqlite_%04d%02d%02d_%02d%02d%02d.log",
-                    st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-                wsprintfW(logPathAlt, L"\\Temp\\sqlite_%04d%02d%02d_%02d%02d%02d.log",
-                    st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-                
-                hFile = CreateFileW(logPath,
-                    GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-                if (hFile == INVALID_HANDLE_VALUE) {
-                    hFile = CreateFileW(logPathAlt,
-                        GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-                    usedAlt = 1;
+            switch (LOWORD(wParam)) {
+                case IDOK:
+                    DestroyWindow(hwnd);
+                    break;
+                case IDM_RUN:
+                    RunTests();
+                    break;
+                case IDM_SAVE: {
+                    HANDLE hFile;
+                    SYSTEMTIME st;
+                    wchar_t path[128];
+                    int usedAlt = 0;
+                    
+                    GetLocalTime(&st);
+                    
+                    if (g_useSyncFolder) {
+                        wsprintfW(path, L"\\My Documents\\Synchronized Files\\sqlite_%04d%02d%02d_%02d%02d%02d.log",
+                            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+                        hFile = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+                        if (hFile == INVALID_HANDLE_VALUE) {
+                            wsprintfW(path, L"\\Temp\\sqlite_%04d%02d%02d_%02d%02d%02d.log",
+                                st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+                            hFile = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+                            usedAlt = 1;
+                        }
+                    } else {
+                        wsprintfW(path, L"\\Temp\\sqlite_%04d%02d%02d_%02d%02d%02d.log",
+                            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+                        hFile = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+                    }
+                    
+                    if (hFile != INVALID_HANDLE_VALUE) {
+                        DWORD written;
+                        WriteFile(hFile, g_szOutput, g_nOutput, &written, NULL);
+                        CloseHandle(hFile);
+                        OutputLine("");
+                        OutputLine(usedAlt ? "Log saved to \\Temp\\" : (g_useSyncFolder ? "Log saved to Synchronized Files" : "Log saved to \\Temp\\"));
+                    }
+                    break;
                 }
-                if (hFile != INVALID_HANDLE_VALUE) {
-                    DWORD written;
-                    WriteFile(hFile, g_szOutput, g_nOutput, &written, NULL);
-                    CloseHandle(hFile);
-                    OutputLine("");
-                    OutputLine(usedAlt ? "Log saved to \\Temp\\" : "Log saved to Synchronized Files");
-                }
+                case IDM_VERBOSE:
+                    g_verboseMode = !g_verboseMode;
+                    CheckMenuItem(g_hMenu, IDM_VERBOSE, g_verboseMode ? MF_CHECKED : MF_UNCHECKED);
+                    break;
+                case IDM_SYNCFOLD:
+                    g_useSyncFolder = !g_useSyncFolder;
+                    CheckMenuItem(g_hMenu, IDM_SYNCFOLD, g_useSyncFolder ? MF_CHECKED : MF_UNCHECKED);
+                    break;
+                case IDM_FONTSIZE:
+                    g_fontSizeIdx = (g_fontSizeIdx + 1) % 4;
+                    SetOutputFont();
+                    break;
             }
             return 0;
         
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORSTATIC:
+            /* Make edit control white */
+            SetBkColor((HDC)wParam, RGB(255, 255, 255));
+            return (LRESULT)GetStockObject(WHITE_BRUSH);
+        
+        case WM_KEYDOWN:
+            if (wParam == VK_CONTROL || wParam == VK_MENU || wParam == VK_SHIFT)
+                break;  /* Ignore modifier keys alone */
+            if (GetKeyState(VK_CONTROL) < 0) {
+                if (wParam == 'S') { SendMessage(hwnd, WM_COMMAND, IDM_SAVE, 0); return 0; }
+            }
+            if (GetKeyState(VK_MENU) < 0) {
+                if (wParam == 'V') { SendMessage(hwnd, WM_COMMAND, IDM_VERBOSE, 0); return 0; }
+            }
+            break;
+        
+        case WM_SYSCOMMAND:
+            /* Block menu activation via Alt key alone (SC_KEYMENU with no char) */
+            if ((wParam & 0xFFF0) == SC_KEYMENU && lParam == 0)
+                return 0;
+            break;
+        
         case WM_DESTROY:
+            CommandBar_Destroy(g_hwndCB);
             PostQuitMessage(0);
             return 0;
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-/*
-** Entry point
-*/
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
-    WNDCLASSW wc;
+    WNDCLASSW wc = {0};
     MSG msg;
-    int screenW, screenH;
+    RECT rcWork;
     
-    /* Ensure \Temp exists */
+    (void)hPrev; (void)lpCmd; (void)nShow;
+    
+    g_hInst = hInst;
+    InitCommonControls();
     CreateDirectoryW(L"\\Temp", NULL);
     
-    /* Get screen size */
-    screenW = GetSystemMetrics(SM_CXSCREEN);
-    screenH = GetSystemMetrics(SM_CYSCREEN);
+    /* Get work area (screen minus taskbar) */
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &rcWork, 0);
     
-    /* Register window class */
-    wc.style = 0;
     wc.lpfnWndProc = WndProc;
-    wc.cbClsExtra = 0;
-    wc.cbWndExtra = 0;
     wc.hInstance = hInst;
-    wc.hIcon = NULL;
-    wc.hCursor = NULL;
+    wc.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(1));
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.lpszMenuName = NULL;
     wc.lpszClassName = L"SQLiteCETest";
     RegisterClassW(&wc);
     
-    /* Create main window - use explicit size, not CW_USEDEFAULT */
+    /* Full-screen style typical for CE apps - no caption/border */
     g_hwndMain = CreateWindowW(L"SQLiteCETest", L"SQLite/CE Test",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
-        0, 0, screenW, screenH - 26,  /* Leave room for taskbar */
+        WS_VISIBLE,
+        rcWork.left, rcWork.top, 
+        rcWork.right - rcWork.left, rcWork.bottom - rcWork.top,
         NULL, NULL, hInst, NULL);
     
-    if (!g_hwndMain) return 1;
-    
-    ShowWindow(g_hwndMain, nShow);
-    UpdateWindow(g_hwndMain);
-    
-    /* Message loop */
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);

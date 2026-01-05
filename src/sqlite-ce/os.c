@@ -50,10 +50,22 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
         
         /* Handle flags and width (simplified - just skip them) */
         while (*f == '-' || *f == '+' || *f == ' ' || *f == '#' || *f == '0') f++;
-        while (*f >= '0' && *f <= '9') f++;
+        /* Handle * width specifier - consume the argument */
+        if (*f == '*') {
+            (void)va_arg(ap, int);
+            f++;
+        } else {
+            while (*f >= '0' && *f <= '9') f++;
+        }
         if (*f == '.') {
             f++;
-            while (*f >= '0' && *f <= '9') f++;
+            /* Handle * precision specifier */
+            if (*f == '*') {
+                (void)va_arg(ap, int);
+                f++;
+            } else {
+                while (*f >= '0' && *f <= '9') f++;
+            }
         }
         /* Handle length modifiers */
         if (*f == 'l') f++;
@@ -64,10 +76,12 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 int val = va_arg(ap, int);
                 int neg = 0;
                 char *t = tmp + sizeof(tmp) - 1;
+                unsigned int uval;
                 *t = '\0';
-                if (val < 0) { neg = 1; val = -val; }
-                if (val == 0) *--t = '0';
-                while (val > 0) { *--t = '0' + (val % 10); val /= 10; }
+                if (val < 0) { neg = 1; uval = (unsigned int)(-(val + 1)) + 1; }
+                else { uval = (unsigned int)val; }
+                if (uval == 0) *--t = '0';
+                while (uval > 0) { *--t = '0' + (uval % 10); uval /= 10; }
                 if (neg) *--t = '-';
                 while (*t) *p++ = *t++;
                 break;
