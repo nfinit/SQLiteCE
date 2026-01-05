@@ -1,0 +1,5 @@
+/* SQLiteCETest Resources */
+
+#define IDI_MAIN 1
+
+IDI_MAIN ICON "SQLiteCETest.ico"

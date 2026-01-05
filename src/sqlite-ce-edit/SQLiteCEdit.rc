@@ -1,0 +1,5 @@
+/* SQLiteCEdit Resources */
+
+#define IDI_MAIN 1
+
+IDI_MAIN ICON "SQLiteCEdit.ico"

@@ -929,6 +929,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
         rcWork.right - rcWork.left, rcWork.bottom - rcWork.top,
         NULL, NULL, hInst, NULL);
     
+    /* Set small icon for taskbar */
+#ifndef ICON_SMALL
+#define ICON_SMALL 0
+#endif
+    SendMessage(g_hwndMain, WM_SETICON, ICON_SMALL,
+        (LPARAM)LoadImage(hInst, MAKEINTRESOURCE(1), IMAGE_ICON, 16, 16, 0));
+    
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
