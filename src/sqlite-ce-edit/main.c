@@ -61,7 +61,11 @@ static HWND g_hwndQuery;   /* SQL input */
 static HWND g_hwndResult;  /* Results output */
 static sqlite *g_db = NULL;
 static wchar_t g_szDbPath[MAX_PATH] = {0};
-static HFONT g_hFont = NULL;
+static HFONT g_hFontQuery = NULL;
+static HFONT g_hFontResult = NULL;
+static int g_fontSizes[] = {10, 12, 14, 16};
+static int g_fontSizeQuery = 2;   /* Index into g_fontSizes, default 14 */
+static int g_fontSizeResult = 2;
 static WNDPROC g_pfnQueryProc;   /* Original query edit proc */
 static WNDPROC g_pfnResultProc;  /* Original result edit proc */
 
@@ -73,7 +77,7 @@ static int g_nOutput = 0;
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.1.0"
+#define SQLITECEDIT_VERSION L"0.2.0"
 
 /*============================================================================
 ** Menu IDs
@@ -83,12 +87,18 @@ static int g_nOutput = 0;
 #define IDM_OPEN     102
 #define IDM_CLOSE    103
 #define IDM_EXIT     104
+#define IDM_OPENQUERY  105
+#define IDM_SAVEQUERY  106
+#define IDM_EXPORTCSV  107
+#define IDM_EXPORTDB   108
+#define IDM_IMPORTCSV  109
 #define IDM_EXECUTE  201
 #define IDM_FIND     202
 #define IDM_FINDNEXT 203
 #define IDM_CLEAR    301
 #define IDM_VIEWQUERY  401
 #define IDM_VIEWRESULT 402
+#define IDM_FONTSIZE   403
 #define IDM_ABOUT    501
 
 /*============================================================================
@@ -101,6 +111,7 @@ static int g_showingHint = 0;  /* 1 = showing startup hint in query pane */
 static wchar_t g_lastResultStatus[64] = L"";  /* Saved result status */
 static wchar_t g_findText[128] = L"";  /* Last search text */
 static int g_searchMode = 0;  /* 1 = Enter triggers Find Next */
+static wchar_t g_szQueryPath[MAX_PATH] = L"";  /* Current query file path */
 
 static void UpdateLineCount(void) {
     wchar_t buf[32];
@@ -141,6 +152,40 @@ static void OutputLine(const char *sz) {
     Output("\r\n");
 }
 
+static void UpdateQueryFont(void) {
+    HFONT hOld = g_hFontQuery;
+    LOGFONTW lf;
+    memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = g_fontSizes[g_fontSizeQuery];
+    lf.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
+    lstrcpyW(lf.lfFaceName, L"Courier New");
+    g_hFontQuery = CreateFontIndirectW(&lf);
+    SendMessage(g_hwndQuery, WM_SETFONT, (WPARAM)g_hFontQuery, TRUE);
+    if (hOld) DeleteObject(hOld);
+}
+
+static void UpdateResultFont(void) {
+    HFONT hOld = g_hFontResult;
+    LOGFONTW lf;
+    memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = g_fontSizes[g_fontSizeResult];
+    lf.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
+    lstrcpyW(lf.lfFaceName, L"Courier New");
+    g_hFontResult = CreateFontIndirectW(&lf);
+    SendMessage(g_hwndResult, WM_SETFONT, (WPARAM)g_hFontResult, TRUE);
+    if (hOld) DeleteObject(hOld);
+}
+
+static void CycleFontSize(void) {
+    if (g_viewMode == 0) {
+        g_fontSizeQuery = (g_fontSizeQuery + 1) % 4;
+        UpdateQueryFont();
+    } else {
+        g_fontSizeResult = (g_fontSizeResult + 1) % 4;
+        UpdateResultFont();
+    }
+}
+
 static void FlushOutput(void) {
     wchar_t *wz = (wchar_t *)LocalAlloc(LMEM_FIXED, (g_nOutput + 1) * sizeof(wchar_t));
     if (wz) {
@@ -158,12 +203,22 @@ static const wchar_t *GetFilename(const wchar_t *path);  /* Forward declaration 
 
 static void UpdateDbSize(void) {
     wchar_t buf[64];
-    const wchar_t *name;
+    const wchar_t *fn;
+    wchar_t name[64];
+    wchar_t *p;
     long size = 0;
+    int canClose;
     
     if (!g_db) return;
     
-    name = g_szDbPath[0] == ':' ? L":memory:" : GetFilename(g_szDbPath);
+    if (g_szDbPath[0] == ':') {
+        lstrcpyW(name, L":memory:");
+    } else {
+        fn = GetFilename(g_szDbPath);
+        p = name;
+        while (*fn && *fn != '.' && p < name + 60) *p++ = *fn++;
+        *p = 0;
+    }
     
     /* Get file size for file databases */
     if (g_szDbPath[0] != ':') {
@@ -184,6 +239,11 @@ static void UpdateDbSize(void) {
     else
         wsprintfW(buf, L"%s", name);
     SetStatusDb(buf);
+    
+    /* Enable/disable Close based on whether we have a real file */
+    canClose = (g_szDbPath[0] && g_szDbPath[0] != ':');
+    EnableMenuItem(g_hMenu, IDM_CLOSE, canClose ? MF_ENABLED : MF_GRAYED);
+    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_CLOSE, canClose);
 }
 
 static void SetStatusResult(const wchar_t *sz) {
@@ -198,6 +258,8 @@ static void SetStatusResult(const wchar_t *sz) {
 static void ExecuteQuery(void);  /* Forward declaration */
 static void DoFind(void);        /* Forward declaration */
 static void DoFindNext(void);    /* Forward declaration */
+static void DoOpenQuery(void);   /* Forward declaration */
+static void DoSaveQuery(void);   /* Forward declaration */
 
 /* Subclass proc for query edit - catches Ctrl+Enter */
 static LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -225,14 +287,19 @@ static LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             ExecuteQuery();
             return 0;
         }
-        /* Ctrl+O - Open */
+        /* Ctrl+O - Open Query */
         if (ctrl && wParam == 'O') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_OPEN, 0);
+            DoOpenQuery();
             return 0;
         }
         /* Ctrl+N - New */
         if (ctrl && wParam == 'N') {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_NEW, 0);
+            return 0;
+        }
+        /* Ctrl+S - Save Query */
+        if (ctrl && wParam == 'S') {
+            DoSaveQuery();
             return 0;
         }
         /* Ctrl+F - Find, F3 - Find Next */
@@ -336,14 +403,19 @@ static LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             ExecuteQuery();
             return 0;
         }
-        /* Ctrl+O - Open */
+        /* Ctrl+O - Open Query */
         if (ctrl && wParam == 'O') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_OPEN, 0);
+            DoOpenQuery();
             return 0;
         }
         /* Ctrl+N - New */
         if (ctrl && wParam == 'N') {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_NEW, 0);
+            return 0;
+        }
+        /* Ctrl+S - Save Query */
+        if (ctrl && wParam == 'S') {
+            DoSaveQuery();
             return 0;
         }
         /* Ctrl+F - Find, F3 - Find Next */
@@ -629,21 +701,28 @@ static const wchar_t *GetFilename(const wchar_t *path) {
     return last;
 }
 
-/* Update title bar: "filename - SQLite/CE" or just "SQLite/CE" */
+/* Update title bar: "[query -] database - SQLite/CE" */
 static void UpdateTitle(void) {
     wchar_t title[MAX_PATH];
-    if (g_szDbPath[0]) {
-        const wchar_t *fn = GetFilename(g_szDbPath);
-        wchar_t *p = title;
-        /* Special case for :memory: */
-        if (g_szDbPath[0] == ':') {
-            lstrcpyW(title, L"(memory) - SQLite/CE");
-        } else {
-            while (*fn && p < title + MAX_PATH - 15) *p++ = *fn++;
-            lstrcpyW(p, L" - SQLite/CE");
-        }
+    wchar_t *p = title;
+    const wchar_t *fn;
+    
+    /* Query filename (without extension) */
+    if (g_szQueryPath[0]) {
+        fn = GetFilename(g_szQueryPath);
+        while (*fn && *fn != '.' && p < title + MAX_PATH - 40) *p++ = *fn++;
+        *p++ = ' '; *p++ = '-'; *p++ = ' ';
+    }
+    
+    /* Database name (without extension) */
+    if (g_szDbPath[0] == ':') {
+        lstrcpyW(p, L"(memory) - SQLite/CE");
+    } else if (g_szDbPath[0]) {
+        fn = GetFilename(g_szDbPath);
+        while (*fn && *fn != '.' && p < title + MAX_PATH - 15) *p++ = *fn++;
+        lstrcpyW(p, L" - SQLite/CE");
     } else {
-        lstrcpyW(title, L"SQLite/CE");
+        lstrcpyW(p, L"SQLite/CE");
     }
     SetWindowTextW(g_hwndMain, title);
 }
@@ -654,10 +733,16 @@ static void CloseDatabase(void) {
         g_db = NULL;
     }
     g_szDbPath[0] = '\0';
+    /* Reopen in-memory database as scratchpad */
+    g_db = sqlite_open(":memory:", 0, NULL);
+    lstrcpyW(g_szDbPath, L":memory:");
     UpdateTitle();
     SetWindowTextW(g_hwndResult, L"");
-    SetStatusDb(L"No database");
+    SetStatusDb(L":memory:");
     SetStatusResult(L"");
+    /* Disable Close for in-memory database */
+    EnableMenuItem(g_hMenu, IDM_CLOSE, MF_GRAYED);
+    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_CLOSE, FALSE);
 }
 
 static int OpenDatabase(const wchar_t *path) {
@@ -685,10 +770,16 @@ static int OpenDatabase(const wchar_t *path) {
     
     /* Show hint for in-memory database in query pane */
     if (path[0] == ':') {
-        SetWindowTextW(g_hwndQuery, 
-            L"-- Using in-memory database.\r\n"
-            L"-- Use File > Open to open a database file.\r\n"
-            L"-- Use File > New to create a new file.\r\n");
+        wchar_t hint[256];
+        wchar_t ver[32];
+        const char *v = sqlite_libversion();
+        int i;
+        for (i = 0; v[i] && i < 31; i++) ver[i] = (wchar_t)v[i];
+        ver[i] = 0;
+        wsprintfW(hint,
+            L"-- SQLite/CEdit " SQLITECEDIT_VERSION L" on SQLite %s.\r\n"
+            L"-- Using in-memory database.\r\n", ver);
+        SetWindowTextW(g_hwndQuery, hint);
         g_showingHint = 1;
     }
     return 1;
@@ -1011,6 +1102,655 @@ static void DoFileOpen(void) {
     }
 }
 
+static void DoOpenQuery(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"";
+    HANDLE hFile;
+    DWORD dwSize, dwRead;
+    char *buf;
+    wchar_t *wbuf;
+    int i;
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
+    ofn.lpstrTitle = L"Open Query";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    
+    if (GetOpenFileNameW(&ofn)) {
+        hFile = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            dwSize = GetFileSize(hFile, NULL);
+            if (dwSize < 65536) {
+                buf = (char*)LocalAlloc(LMEM_FIXED, dwSize + 1);
+                wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwSize + 1) * sizeof(wchar_t));
+                if (buf && wbuf) {
+                    if (ReadFile(hFile, buf, dwSize, &dwRead, NULL)) {
+                        buf[dwRead] = '\0';
+                        for (i = 0; i <= (int)dwRead; i++) wbuf[i] = (wchar_t)(unsigned char)buf[i];
+                        SetWindowTextW(g_hwndQuery, wbuf);
+                        wcscpy(g_szQueryPath, szFile);
+                        UpdateTitle();
+                    }
+                }
+                if (buf) LocalFree(buf);
+                if (wbuf) LocalFree(wbuf);
+            }
+            CloseHandle(hFile);
+        }
+    }
+}
+
+static void DoSaveQuery(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH];
+    HANDLE hFile;
+    DWORD dwLen, dwWritten;
+    wchar_t *wbuf;
+    char *buf;
+    DWORD i;
+    
+    if (g_szQueryPath[0]) {
+        wcscpy(szFile, g_szQueryPath);
+    } else {
+        wcscpy(szFile, L"query.sql");
+        memset(&ofn, 0, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = g_hwndMain;
+        ofn.lpstrFile = szFile;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
+        ofn.lpstrDefExt = L"sql";
+        ofn.lpstrTitle = L"Save Query";
+        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+        
+        if (!GetSaveFileNameW(&ofn)) return;
+        wcscpy(g_szQueryPath, szFile);
+        UpdateTitle();
+    }
+    
+    dwLen = GetWindowTextLengthW(g_hwndQuery);
+    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
+    buf = (char*)LocalAlloc(LMEM_FIXED, dwLen + 1);
+    if (wbuf && buf) {
+        GetWindowTextW(g_hwndQuery, wbuf, dwLen + 1);
+        for (i = 0; i <= dwLen; i++) buf[i] = (char)wbuf[i];
+        hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            WriteFile(hFile, buf, dwLen, &dwWritten, NULL);
+            CloseHandle(hFile);
+        }
+    }
+    if (wbuf) LocalFree(wbuf);
+    if (buf) LocalFree(buf);
+}
+
+static void DoExportCSV(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"results.csv";
+    HANDLE hFile;
+    DWORD dwLen, dwWritten;
+    wchar_t *wbuf, *wp;
+    char *buf, *bp;
+    int needQuote;
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
+    ofn.lpstrDefExt = L"csv";
+    ofn.lpstrTitle = L"Export Results";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    
+    if (!GetSaveFileNameW(&ofn)) return;
+    
+    dwLen = GetWindowTextLengthW(g_hwndResult);
+    if (dwLen == 0) return;
+    
+    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
+    buf = (char*)LocalAlloc(LMEM_FIXED, (dwLen * 2) + 1);  /* Extra space for quotes */
+    if (wbuf && buf) {
+        GetWindowTextW(g_hwndResult, wbuf, dwLen + 1);
+        bp = buf;
+        wp = wbuf;
+        while (*wp) {
+            if (*wp == '\t') {
+                *bp++ = ',';
+                wp++;
+            } else if (*wp == '\r') {
+                wp++;  /* Skip CR, keep LF */
+            } else if (*wp == '\n') {
+                *bp++ = '\r';
+                *bp++ = '\n';
+                wp++;
+            } else {
+                /* Check if field needs quoting (contains comma or quote) */
+                wchar_t *fieldStart = wp;
+                needQuote = 0;
+                while (*wp && *wp != '\t' && *wp != '\r' && *wp != '\n') {
+                    if (*wp == ',' || *wp == '"') needQuote = 1;
+                    wp++;
+                }
+                if (needQuote) {
+                    *bp++ = '"';
+                    while (fieldStart < wp) {
+                        if (*fieldStart == '"') *bp++ = '"';  /* Escape quotes */
+                        *bp++ = (char)*fieldStart++;
+                    }
+                    *bp++ = '"';
+                } else {
+                    while (fieldStart < wp) *bp++ = (char)*fieldStart++;
+                }
+            }
+        }
+        *bp = '\0';
+        
+        hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            WriteFile(hFile, buf, (DWORD)(bp - buf), &dwWritten, NULL);
+            CloseHandle(hFile);
+        }
+    }
+    if (wbuf) LocalFree(wbuf);
+    if (buf) LocalFree(buf);
+}
+
+static void ExportTableToCSV(const wchar_t *dir, const char *tblName) {
+    wchar_t path[MAX_PATH];
+    wchar_t *wp;
+    const wchar_t *wd;
+    const char *t;
+    char sql[512];
+    char *p;
+    char **result;
+    int nRow, nCol, i, j;
+    HANDLE hFile;
+    DWORD written;
+    char line[4096];
+    char *lp;
+    
+    /* Build path: dir\tablename.csv */
+    wp = path;
+    for (wd = dir; *wd; ) *wp++ = *wd++;
+    *wp++ = '\\';
+    for (t = tblName; *t; ) *wp++ = (wchar_t)*t++;
+    *wp++ = '.'; *wp++ = 'c'; *wp++ = 's'; *wp++ = 'v'; *wp = 0;
+    
+    /* Build SELECT */
+    p = sql;
+    for (t = "SELECT * FROM \""; *t; ) *p++ = *t++;
+    for (t = tblName; *t; ) *p++ = *t++;
+    *p++ = '"'; *p = 0;
+    
+    if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
+    
+    hFile = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        sqlite_free_table(result);
+        return;
+    }
+    
+    /* Write header row */
+    lp = line;
+    for (j = 0; j < nCol; j++) {
+        char *val = result[j];
+        if (j > 0) *lp++ = ',';
+        if (val) while (*val) *lp++ = *val++;
+    }
+    *lp++ = '\r'; *lp++ = '\n';
+    WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
+    
+    /* Write data rows */
+    for (i = 1; i <= nRow; i++) {
+        lp = line;
+        for (j = 0; j < nCol; j++) {
+            char *val = result[i * nCol + j];
+            int needQuote = 0;
+            char *v;
+            if (j > 0) *lp++ = ',';
+            if (val) {
+                for (v = val; *v; v++) if (*v == ',' || *v == '"' || *v == '\n') needQuote = 1;
+                if (needQuote) {
+                    *lp++ = '"';
+                    for (v = val; *v; v++) {
+                        if (*v == '"') *lp++ = '"';
+                        *lp++ = *v;
+                    }
+                    *lp++ = '"';
+                } else {
+                    while (*val) *lp++ = *val++;
+                }
+            }
+        }
+        *lp++ = '\r'; *lp++ = '\n';
+        WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
+    }
+    
+    CloseHandle(hFile);
+    sqlite_free_table(result);
+}
+
+static void DoExportDb(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"export.db";
+    char szDestPath[MAX_PATH * 2];
+    sqlite *destDb;
+    char **result;
+    int nRow, nCol, i;
+    char *errmsg;
+    char sql[4096];
+    char *p;
+    int csvMode;
+    
+    if (!g_db) return;
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"SQLite Database (*.db)\0*.db\0CSV Folder (*.csv)\0*.csv\0";
+    ofn.lpstrTitle = L"Export Database";
+    ofn.Flags = OFN_PATHMUSTEXIST;
+    
+    if (!GetSaveFileNameW(&ofn)) return;
+    
+    /* Detect mode by extension - CE 2.0 doesn't return nFilterIndex reliably */
+    {
+        wchar_t *p = szFile;
+        int len;
+        while (*p) p++;
+        len = (int)(p - szFile);
+        
+        /* Check for .db extension = database mode, otherwise CSV mode */
+        if (len >= 3 && 
+            (szFile[len-3] == '.') &&
+            (szFile[len-2] == 'd' || szFile[len-2] == 'D') &&
+            (szFile[len-1] == 'b' || szFile[len-1] == 'B')) {
+            csvMode = 0;
+        } else {
+            csvMode = 1;
+            /* Strip .csv extension if present */
+            if (len >= 4 &&
+                (szFile[len-4] == '.') &&
+                (szFile[len-3] == 'c' || szFile[len-3] == 'C') &&
+                (szFile[len-2] == 's' || szFile[len-2] == 'S') &&
+                (szFile[len-1] == 'v' || szFile[len-1] == 'V')) {
+                szFile[len-4] = 0;
+            }
+        }
+    }
+    
+    if (csvMode) {
+        DWORD attr;
+        /* Remove existing file/dir if present */
+        attr = GetFileAttributesW(szFile);
+        if (attr != 0xFFFFFFFF) {
+            if (attr & FILE_ATTRIBUTE_DIRECTORY) {
+                /* Directory exists - need to remove contents first, skip for now */
+            } else {
+                DeleteFileW(szFile);
+            }
+        }
+        
+        CreateDirectoryW(szFile, NULL);
+        
+        /* Verify directory was created */
+        attr = GetFileAttributesW(szFile);
+        if (attr == 0xFFFFFFFF || !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+            MessageBoxW(g_hwndMain, szFile, L"Failed to create folder", MB_OK | MB_ICONERROR);
+            return;
+        }
+        
+        if (sqlite_get_table(g_db, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+                &result, &nRow, &nCol, NULL) == SQLITE_OK) {
+            if (nRow == 0) {
+                RemoveDirectoryW(szFile);
+                MessageBoxW(g_hwndMain, L"No tables to export", L"Export", MB_OK | MB_ICONINFORMATION);
+            } else {
+                for (i = 1; i <= nRow; i++) {
+                    ExportTableToCSV(szFile, result[i]);
+                }
+            }
+            sqlite_free_table(result);
+        }
+        return;
+    }
+    
+    /* Database export mode */
+    DeleteFileW(szFile);
+    WideCharToMultiByte(CP_ACP, 0, szFile, -1, szDestPath, sizeof(szDestPath), NULL, NULL);
+    destDb = sqlite_open(szDestPath, 0, &errmsg);
+    if (!destDb) {
+        if (errmsg) sqlite_freemem(errmsg);
+        MessageBoxW(g_hwndMain, L"Could not create database", L"Export Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    /* Get all tables from sqlite_master */
+    if (sqlite_get_table(g_db, "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", 
+            &result, &nRow, &nCol, NULL) == SQLITE_OK) {
+        for (i = 1; i <= nRow; i++) {
+            char *tblName = result[i * nCol];
+            char *tblSql = result[i * nCol + 1];
+            char *t;
+            
+            /* Create table in destination */
+            if (tblSql) {
+                sqlite_exec(destDb, tblSql, NULL, NULL, NULL);
+            }
+            
+            /* Copy data - build SELECT */
+            p = sql;
+            for (t = "SELECT * FROM \""; *t; ) *p++ = *t++;
+            for (t = tblName; *t; ) *p++ = *t++;
+            *p++ = '"'; *p = '\0';
+            
+            /* For each row, insert into dest */
+            {
+                char **dataResult;
+                int dataRow, dataCol, j, k;
+                if (sqlite_get_table(g_db, sql, &dataResult, &dataRow, &dataCol, NULL) == SQLITE_OK) {
+                    for (j = 1; j <= dataRow; j++) {
+                        char *ins = sql;
+                        for (t = "INSERT INTO \""; *t; ) *ins++ = *t++;
+                        for (t = tblName; *t; ) *ins++ = *t++;
+                        for (t = "\" VALUES("; *t; ) *ins++ = *t++;
+                        for (k = 0; k < dataCol; k++) {
+                            char *val = dataResult[j * dataCol + k];
+                            if (k > 0) *ins++ = ',';
+                            if (val == NULL) {
+                                *ins++ = 'N'; *ins++ = 'U'; *ins++ = 'L'; *ins++ = 'L';
+                            } else {
+                                char *s = val;
+                                *ins++ = '\'';
+                                while (*s) {
+                                    if (*s == '\'') *ins++ = '\'';
+                                    *ins++ = *s++;
+                                }
+                                *ins++ = '\'';
+                            }
+                        }
+                        *ins++ = ')';
+                        *ins = '\0';
+                        sqlite_exec(destDb, sql, NULL, NULL, NULL);
+                    }
+                    sqlite_free_table(dataResult);
+                }
+            }
+        }
+        sqlite_free_table(result);
+    }
+    
+    /* Copy indexes */
+    if (sqlite_get_table(g_db, "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL", 
+            &result, &nRow, &nCol, NULL) == SQLITE_OK) {
+        for (i = 1; i <= nRow; i++) {
+            if (result[i]) sqlite_exec(destDb, result[i], NULL, NULL, NULL);
+        }
+        sqlite_free_table(result);
+    }
+    
+    sqlite_close(destDb);
+}
+
+/*============================================================================
+** CSV Import
+**============================================================================*/
+
+#define CSV_MAX_COLS 64
+#define CSV_MAX_LINE 8192
+
+/* Type inference: 0=unknown, 1=integer, 2=real, 3=text */
+static int InferType(const char *val) {
+    const char *s = val;
+    int hasDot = 0;
+    if (!*s) return 0;  /* Empty = unknown */
+    if (*s == '-') s++;
+    if (!*s) return 3;  /* Just "-" = text */
+    while (*s) {
+        if (*s == '.') {
+            if (hasDot) return 3;  /* Multiple dots = text */
+            hasDot = 1;
+        } else if (*s < '0' || *s > '9') {
+            return 3;  /* Non-numeric = text */
+        }
+        s++;
+    }
+    return hasDot ? 2 : 1;  /* real or integer */
+}
+
+static int ParseCSVLine(char *line, char **fields, int maxFields) {
+    int n = 0;
+    char *p = line;
+    while (*p && n < maxFields) {
+        if (*p == '"') {
+            /* Quoted field */
+            p++;
+            fields[n++] = p;
+            while (*p && !(*p == '"' && (p[1] == ',' || p[1] == '\0' || p[1] == '\r' || p[1] == '\n'))) {
+                if (*p == '"' && p[1] == '"') p++;  /* Escaped quote */
+                p++;
+            }
+            if (*p == '"') *p++ = '\0';
+            if (*p == ',') p++;
+        } else {
+            /* Unquoted field */
+            fields[n++] = p;
+            while (*p && *p != ',' && *p != '\r' && *p != '\n') p++;
+            if (*p == ',') *p++ = '\0';
+            else if (*p) { *p = '\0'; break; }
+        }
+    }
+    return n;
+}
+
+static void DoImportCSV(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"";
+    wchar_t tblName[64];
+    wchar_t *wp;
+    const wchar_t *fn;
+    HANDLE hFile;
+    DWORD dwSize, dwRead;
+    char *buf, *line, *nextLine;
+    char *fields[CSV_MAX_COLS];
+    char *headers[CSV_MAX_COLS];
+    int types[CSV_MAX_COLS];  /* 0=unk, 1=int, 2=real, 3=text */
+    int nCols, i, rowNum;
+    char sql[4096];
+    char *p, *t;
+    
+    if (!g_db) {
+        MessageBoxW(g_hwndMain, L"No database open", L"Import", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
+    ofn.lpstrTitle = L"Import CSV";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    
+    if (!GetOpenFileNameW(&ofn)) return;
+    
+    /* Derive table name from filename */
+    fn = GetFilename(szFile);
+    wp = tblName;
+    while (*fn && *fn != '.' && wp < tblName + 60) *wp++ = *fn++;
+    *wp = 0;
+    
+    /* Read entire file */
+    hFile = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        MessageBoxW(g_hwndMain, L"Could not open file", L"Import Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    dwSize = GetFileSize(hFile, NULL);
+    if (dwSize > 1024 * 1024) {  /* 1MB limit */
+        CloseHandle(hFile);
+        MessageBoxW(g_hwndMain, L"File too large (max 1MB)", L"Import Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    buf = (char*)LocalAlloc(LMEM_FIXED, dwSize + 1);
+    if (!buf) {
+        CloseHandle(hFile);
+        return;
+    }
+    
+    ReadFile(hFile, buf, dwSize, &dwRead, NULL);
+    CloseHandle(hFile);
+    buf[dwRead] = '\0';
+    
+    /* Parse header line */
+    line = buf;
+    nextLine = line;
+    while (*nextLine && *nextLine != '\r' && *nextLine != '\n') nextLine++;
+    if (*nextLine) {
+        if (*nextLine == '\r' && nextLine[1] == '\n') { *nextLine = '\0'; nextLine += 2; }
+        else { *nextLine = '\0'; nextLine++; }
+    }
+    
+    nCols = ParseCSVLine(line, fields, CSV_MAX_COLS);
+    if (nCols == 0) {
+        LocalFree(buf);
+        MessageBoxW(g_hwndMain, L"No columns found", L"Import Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    /* Store headers and init types */
+    for (i = 0; i < nCols; i++) {
+        headers[i] = fields[i];
+        types[i] = 0;
+    }
+    
+    /* First pass: infer types from all data rows */
+    line = nextLine;
+    while (*line) {
+        nextLine = line;
+        while (*nextLine && *nextLine != '\r' && *nextLine != '\n') nextLine++;
+        if (*nextLine) {
+            if (*nextLine == '\r' && nextLine[1] == '\n') { *nextLine = '\0'; nextLine += 2; }
+            else { *nextLine = '\0'; nextLine++; }
+        }
+        
+        if (*line) {
+            int n = ParseCSVLine(line, fields, nCols);
+            for (i = 0; i < n; i++) {
+                int t = InferType(fields[i]);
+                if (t == 3) types[i] = 3;  /* Text trumps all */
+                else if (t == 2 && types[i] < 2) types[i] = 2;  /* Real trumps int */
+                else if (t == 1 && types[i] == 0) types[i] = 1;  /* Int if unknown */
+            }
+        }
+        line = nextLine;
+    }
+    
+    /* Default unknown types to TEXT */
+    for (i = 0; i < nCols; i++) {
+        if (types[i] == 0) types[i] = 3;
+    }
+    
+    /* Build CREATE TABLE */
+    p = sql;
+    for (t = "CREATE TABLE \""; *t; ) *p++ = *t++;
+    for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
+    for (t = "\" ("; *t; ) *p++ = *t++;
+    for (i = 0; i < nCols; i++) {
+        if (i > 0) { *p++ = ','; *p++ = ' '; }
+        *p++ = '"';
+        for (t = headers[i]; *t; ) *p++ = *t++;
+        *p++ = '"';
+        *p++ = ' ';
+        if (types[i] == 1) { for (t = "INTEGER"; *t; ) *p++ = *t++; }
+        else if (types[i] == 2) { for (t = "REAL"; *t; ) *p++ = *t++; }
+        else { for (t = "TEXT"; *t; ) *p++ = *t++; }
+    }
+    *p++ = ')'; *p = '\0';
+    
+    if (sqlite_exec(g_db, sql, NULL, NULL, NULL) != SQLITE_OK) {
+        LocalFree(buf);
+        MessageBoxW(g_hwndMain, L"Could not create table (may already exist)", L"Import Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    /* Re-read file for data insertion */
+    hFile = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    ReadFile(hFile, buf, dwSize, &dwRead, NULL);
+    CloseHandle(hFile);
+    buf[dwRead] = '\0';
+    
+    /* Skip header */
+    line = buf;
+    while (*line && *line != '\r' && *line != '\n') line++;
+    if (*line == '\r' && line[1] == '\n') line += 2;
+    else if (*line) line++;
+    
+    /* Insert rows */
+    rowNum = 0;
+    while (*line) {
+        nextLine = line;
+        while (*nextLine && *nextLine != '\r' && *nextLine != '\n') nextLine++;
+        if (*nextLine) {
+            if (*nextLine == '\r' && nextLine[1] == '\n') { *nextLine = '\0'; nextLine += 2; }
+            else { *nextLine = '\0'; nextLine++; }
+        }
+        
+        if (*line) {
+            int n = ParseCSVLine(line, fields, nCols);
+            
+            /* Build INSERT */
+            p = sql;
+            for (t = "INSERT INTO \""; *t; ) *p++ = *t++;
+            for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
+            for (t = "\" VALUES("; *t; ) *p++ = *t++;
+            
+            for (i = 0; i < nCols; i++) {
+                char *val = (i < n) ? fields[i] : "";
+                if (i > 0) *p++ = ',';
+                if (!*val) {
+                    *p++ = 'N'; *p++ = 'U'; *p++ = 'L'; *p++ = 'L';
+                } else if (types[i] == 1 || types[i] == 2) {
+                    /* Numeric - insert as-is */
+                    while (*val) *p++ = *val++;
+                } else {
+                    /* Text - quote and escape */
+                    *p++ = '\'';
+                    while (*val) {
+                        if (*val == '\'') *p++ = '\'';
+                        *p++ = *val++;
+                    }
+                    *p++ = '\'';
+                }
+            }
+            *p++ = ')'; *p = '\0';
+            
+            sqlite_exec(g_db, sql, NULL, NULL, NULL);
+            rowNum++;
+        }
+        line = nextLine;
+    }
+    
+    LocalFree(buf);
+    UpdateDbSize();
+    
+    {
+        wchar_t msg[128];
+        wsprintfW(msg, L"Imported %d rows into table '%s'", rowNum, tblName);
+        MessageBoxW(g_hwndMain, msg, L"Import Complete", MB_OK | MB_ICONINFORMATION);
+    }
+}
+
 /*============================================================================
 ** Window Procedure
 **============================================================================*/
@@ -1021,7 +1761,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             RECT rc;
             int cbHeight;
             HMENU hMenu, hFile, hQuery, hView;
-            TBBUTTON tbButtons[8];
+            TBBUTTON tbButtons[11];
             
             /* Command bar with menus */
             g_hwndCB = CommandBar_Create(g_hInst, hwnd, 1);
@@ -1031,6 +1771,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hFile, MF_STRING, IDM_NEW, L"&New Database...");
             AppendMenuW(hFile, MF_STRING, IDM_OPEN, L"&Open Database...");
             AppendMenuW(hFile, MF_STRING, IDM_CLOSE, L"&Close Database");
+            AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(hFile, MF_STRING, IDM_OPENQUERY, L"Open &Query...\tCtrl+O");
+            AppendMenuW(hFile, MF_STRING, IDM_SAVEQUERY, L"&Save Query...\tCtrl+S");
+            AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(hFile, MF_STRING, IDM_EXPORTCSV, L"&Export Results...");
+            AppendMenuW(hFile, MF_STRING, IDM_EXPORTDB, L"Export &Database...");
+            AppendMenuW(hFile, MF_STRING, IDM_IMPORTCSV, L"&Import CSV...");
             AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hFile, MF_STRING, IDM_EXIT, L"E&xit");
             AppendMenuW(hMenu, MF_POPUP, (UINT)hFile, L"&File");
@@ -1058,12 +1805,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             #define TB_RESULTS 2   /* Custom: Text results icon */
             #define TB_GRID    3   /* Custom: Grid/results icon (future) */
             #define TB_OPEN    4   /* Custom: Open database icon */
-            #define TB_NEW     5   /* Custom: New database icon */
-            #define TB_STD_BASE 6  /* Standard icons start here */
+            #define TB_CLOSE   5   /* Custom: Close database icon */
+            #define TB_NEW     6   /* Custom: New database icon */
+            #define TB_STD_BASE 7  /* Standard icons start here */
             #define TB_VIEW_BASE (TB_STD_BASE + 15)  /* View icons after standard */
             
             /* Add custom toolbar bitmap (use gray background to match button face) */
-            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 6, 0, 0);
+            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 7, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_STD_SMALL_COLOR, 15, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_VIEW_SMALL_COLOR, 12, 0, 0);
             
@@ -1087,27 +1835,41 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             /* Separator */
             tbButtons[3].fsStyle = TBSTYLE_SEP;
             
-            /* Group 2: File operations */
-            tbButtons[4].iBitmap = TB_OPEN;
-            tbButtons[4].idCommand = IDM_OPEN;
+            /* Font size button (uses standard FIND icon as magnifier) */
+            tbButtons[4].iBitmap = TB_STD_BASE + STD_FIND;
+            tbButtons[4].idCommand = IDM_FONTSIZE;
             tbButtons[4].fsState = TBSTATE_ENABLED;
             tbButtons[4].fsStyle = TBSTYLE_BUTTON;
             
-            tbButtons[5].iBitmap = TB_NEW;
-            tbButtons[5].idCommand = IDM_NEW;
-            tbButtons[5].fsState = TBSTATE_ENABLED;
-            tbButtons[5].fsStyle = TBSTYLE_BUTTON;
-            
             /* Separator */
-            tbButtons[6].fsStyle = TBSTYLE_SEP;
+            tbButtons[5].fsStyle = TBSTYLE_SEP;
             
-            /* Group 3: Execute (rightmost) */
-            tbButtons[7].iBitmap = TB_PLAY;
-            tbButtons[7].idCommand = IDM_EXECUTE;
+            /* Group 2: File operations */
+            tbButtons[6].iBitmap = TB_OPEN;
+            tbButtons[6].idCommand = IDM_OPEN;
+            tbButtons[6].fsState = TBSTATE_ENABLED;
+            tbButtons[6].fsStyle = TBSTYLE_BUTTON;
+            
+            tbButtons[7].iBitmap = TB_CLOSE;
+            tbButtons[7].idCommand = IDM_CLOSE;
             tbButtons[7].fsState = TBSTATE_ENABLED;
             tbButtons[7].fsStyle = TBSTYLE_BUTTON;
             
-            CommandBar_AddButtons(g_hwndCB, 8, tbButtons);
+            tbButtons[8].iBitmap = TB_NEW;
+            tbButtons[8].idCommand = IDM_NEW;
+            tbButtons[8].fsState = TBSTATE_ENABLED;
+            tbButtons[8].fsStyle = TBSTYLE_BUTTON;
+            
+            /* Separator */
+            tbButtons[9].fsStyle = TBSTYLE_SEP;
+            
+            /* Group 3: Execute (rightmost) */
+            tbButtons[10].iBitmap = TB_PLAY;
+            tbButtons[10].idCommand = IDM_EXECUTE;
+            tbButtons[10].fsState = TBSTATE_ENABLED;
+            tbButtons[10].fsStyle = TBSTYLE_BUTTON;
+            
+            CommandBar_AddButtons(g_hwndCB, 11, tbButtons);
             
             CommandBar_AddAdornments(g_hwndCB, 0, 0);
             cbHeight = CommandBar_Height(g_hwndCB);
@@ -1151,16 +1913,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_pfnResultProc = (WNDPROC)SetWindowLong(g_hwndResult, GWL_WNDPROC, (LONG)ResultEditProc);
             
             /* Set monospace font on both panes */
-            {
-                LOGFONTW lf;
-                memset(&lf, 0, sizeof(lf));
-                lf.lfHeight = 14;
-                lf.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
-                lstrcpyW(lf.lfFaceName, L"Courier New");
-                g_hFont = CreateFontIndirectW(&lf);
-                SendMessage(g_hwndQuery, WM_SETFONT, (WPARAM)g_hFont, TRUE);
-                SendMessage(g_hwndResult, WM_SETFONT, (WPARAM)g_hFont, TRUE);
-            }
+            UpdateQueryFont();
+            UpdateResultFont();
             
             /* Start in query view */
             g_viewMode = 0;
@@ -1191,6 +1945,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_NEW:     DoFileNew(); break;
                 case IDM_OPEN:    DoFileOpen(); break;
                 case IDM_CLOSE:   CloseDatabase(); break;
+                case IDM_OPENQUERY: DoOpenQuery(); break;
+                case IDM_SAVEQUERY: DoSaveQuery(); break;
+                case IDM_EXPORTCSV: DoExportCSV(); break;
+                case IDM_EXPORTDB: DoExportDb(); break;
+                case IDM_IMPORTCSV: DoImportCSV(); break;
                 case IDM_EXIT:    DestroyWindow(hwnd); break;
                 case IDM_EXECUTE: ExecuteQuery(); break;
                 case IDM_FIND:    DoFind(); break;
@@ -1212,6 +1971,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
                     break;
+                case IDM_FONTSIZE:
+                    CycleFontSize();
+                    break;
                 case IDOK:        DestroyWindow(hwnd); break;
                 case 1001:  /* Query edit control */
                     if (HIWORD(wParam) == EN_CHANGE && g_viewMode == 0)
@@ -1227,7 +1989,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_KEYDOWN:
             /* Global shortcuts (when command bar has focus) */
             if (GetKeyState(VK_CONTROL) < 0) {
-                if (wParam == 'O') { DoFileOpen(); return 0; }
+                if (wParam == 'O') { DoOpenQuery(); return 0; }
                 if (wParam == 'N') { DoFileNew(); return 0; }
             }
             if (wParam == VK_F5) { ExecuteQuery(); return 0; }
@@ -1241,7 +2003,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         
         case WM_DESTROY:
             CloseDatabase();
-            if (g_hFont) DeleteObject(g_hFont);
+            if (g_hFontQuery) DeleteObject(g_hFontQuery);
+            if (g_hFontResult) DeleteObject(g_hFontResult);
             CommandBar_Destroy(g_hwndCB);
             PostQuitMessage(0);
             return 0;
