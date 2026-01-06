@@ -7,6 +7,48 @@
 #include "sqlite.h"
 
 /*============================================================================
+** Common File Dialog (may not be in CE 2.0 SDK headers)
+**============================================================================*/
+
+#define OFN_FILEMUSTEXIST   0x00001000
+#define OFN_PATHMUSTEXIST   0x00000800
+#define OFN_HIDEREADONLY    0x00000004
+#define OFN_OVERWRITEPROMPT 0x00000002
+
+typedef struct tagOFN {
+    DWORD         lStructSize;
+    HWND          hwndOwner;
+    HINSTANCE     hInstance;
+    LPCWSTR       lpstrFilter;
+    LPWSTR        lpstrCustomFilter;
+    DWORD         nMaxCustFilter;
+    DWORD         nFilterIndex;
+    LPWSTR        lpstrFile;
+    DWORD         nMaxFile;
+    LPWSTR        lpstrFileTitle;
+    DWORD         nMaxFileTitle;
+    LPCWSTR       lpstrInitialDir;
+    LPCWSTR       lpstrTitle;
+    DWORD         Flags;
+    WORD          nFileOffset;
+    WORD          nFileExtension;
+    LPCWSTR       lpstrDefExt;
+    LPARAM        lCustData;
+    void*         lpfnHook;
+    LPCWSTR       lpTemplateName;
+} CE_OPENFILENAME;
+
+BOOL WINAPI GetOpenFileNameW(CE_OPENFILENAME*);
+BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
+
+/* View toolbar icons (may not be in CE 2.0 headers) */
+#ifndef IDB_VIEW_SMALL_COLOR
+#define IDB_VIEW_SMALL_COLOR 4
+#define VIEW_LIST    2
+#define VIEW_DETAILS 3
+#endif
+
+/*============================================================================
 ** Globals
 **============================================================================*/
 
@@ -28,6 +70,12 @@ static char g_szOutput[32000];
 static int g_nOutput = 0;
 
 /*============================================================================
+** Version
+**============================================================================*/
+
+#define SQLITECEDIT_VERSION L"0.1.0"
+
+/*============================================================================
 ** Menu IDs
 **============================================================================*/
 
@@ -36,13 +84,45 @@ static int g_nOutput = 0;
 #define IDM_CLOSE    103
 #define IDM_EXIT     104
 #define IDM_EXECUTE  201
+#define IDM_FIND     202
+#define IDM_FINDNEXT 203
 #define IDM_CLEAR    301
+#define IDM_VIEWQUERY  401
+#define IDM_VIEWRESULT 402
+#define IDM_ABOUT    501
 
 /*============================================================================
 ** Output Helpers
 **============================================================================*/
 
 static int g_clearOnExec = 1;  /* Clear results before each execution */
+static int g_viewMode = 0;     /* 0 = query, 1 = results */
+static int g_showingHint = 0;  /* 1 = showing startup hint in query pane */
+static wchar_t g_lastResultStatus[64] = L"";  /* Saved result status */
+static wchar_t g_findText[128] = L"";  /* Last search text */
+static int g_searchMode = 0;  /* 1 = Enter triggers Find Next */
+
+static void UpdateLineCount(void) {
+    wchar_t buf[32];
+    DWORD sel;
+    int cur, total;
+    SendMessage(g_hwndQuery, EM_GETSEL, (WPARAM)&sel, 0);
+    cur = (int)SendMessage(g_hwndQuery, EM_LINEFROMCHAR, sel, 0) + 1;
+    total = (int)SendMessage(g_hwndQuery, EM_GETLINECOUNT, 0, 0);
+    wsprintfW(buf, L"Ln %d of %d", cur, total);
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)buf);
+}
+
+static void SwitchView(int mode) {
+    g_viewMode = mode;
+    ShowWindow(g_hwndQuery, mode == 0 ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndResult, mode == 1 ? SW_SHOW : SW_HIDE);
+    SetFocus(mode == 0 ? g_hwndQuery : g_hwndResult);
+    if (mode == 0)
+        UpdateLineCount();
+    else
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)g_lastResultStatus);
+}
 
 static void ClearOutput(void) {
     g_szOutput[0] = '\0';
@@ -74,30 +154,229 @@ static void SetStatusDb(const wchar_t *sz) {
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 0, (LPARAM)sz);
 }
 
+static const wchar_t *GetFilename(const wchar_t *path);  /* Forward declaration */
+
+static void UpdateDbSize(void) {
+    wchar_t buf[64];
+    const wchar_t *name;
+    long size = 0;
+    
+    if (!g_db) return;
+    
+    name = g_szDbPath[0] == ':' ? L":memory:" : GetFilename(g_szDbPath);
+    
+    /* Get file size for file databases */
+    if (g_szDbPath[0] != ':') {
+        HANDLE hFile = CreateFileW(g_szDbPath, GENERIC_READ, FILE_SHARE_READ, 
+            NULL, OPEN_EXISTING, 0, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            size = GetFileSize(hFile, NULL);
+            CloseHandle(hFile);
+        }
+    }
+    
+    if (size >= 1024 * 1024)
+        wsprintfW(buf, L"%s (%ldM)", name, size / (1024 * 1024));
+    else if (size >= 1024)
+        wsprintfW(buf, L"%s (%ldk)", name, size / 1024);
+    else if (size > 0)
+        wsprintfW(buf, L"%s (%ldb)", name, size);
+    else
+        wsprintfW(buf, L"%s", name);
+    SetStatusDb(buf);
+}
+
 static void SetStatusResult(const wchar_t *sz) {
-    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)sz);
+    /* Save for when switching back to results view */
+    int i;
+    for (i = 0; i < 63 && sz[i]; i++) g_lastResultStatus[i] = sz[i];
+    g_lastResultStatus[i] = 0;
+    if (g_viewMode == 1)
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)sz);
 }
 
 static void ExecuteQuery(void);  /* Forward declaration */
+static void DoFind(void);        /* Forward declaration */
+static void DoFindNext(void);    /* Forward declaration */
 
 /* Subclass proc for query edit - catches Ctrl+Enter */
 static LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_KEYDOWN && wParam == VK_RETURN && GetKeyState(VK_CONTROL) < 0) {
-        ExecuteQuery();
-        return 0;
+    /* Clear hint on focus */
+    if (msg == WM_SETFOCUS && g_showingHint) {
+        SetWindowTextW(hwnd, L"");
+        g_showingHint = 0;
+        UpdateLineCount();
     }
-    /* Suppress the newline character from Ctrl+Enter */
-    if (msg == WM_CHAR && wParam == '\n')
-        return 0;
+    /* Clear search mode on click */
+    if (msg == WM_LBUTTONDOWN)
+        g_searchMode = 0;
+    if (msg == WM_KEYDOWN) {
+        int ctrl = GetKeyState(VK_CONTROL) < 0;
+        /* Arrow keys exit search mode */
+        if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT)
+            g_searchMode = 0;
+        /* Enter in search mode = Find Next */
+        if (wParam == VK_RETURN && !ctrl && g_searchMode) {
+            DoFindNext();
+            return 0;
+        }
+        /* Ctrl+Enter or F5 - Execute */
+        if ((wParam == VK_RETURN && ctrl) || wParam == VK_F5) {
+            ExecuteQuery();
+            return 0;
+        }
+        /* Ctrl+O - Open */
+        if (ctrl && wParam == 'O') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_OPEN, 0);
+            return 0;
+        }
+        /* Ctrl+N - New */
+        if (ctrl && wParam == 'N') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_NEW, 0);
+            return 0;
+        }
+        /* Ctrl+F - Find, F3 - Find Next */
+        if (ctrl && wParam == 'F') {
+            DoFind();
+            return 0;
+        }
+        if (wParam == VK_F3) {
+            DoFindNext();
+            return 0;
+        }
+        /* F6 - Toggle view, Ctrl+1 - Query, Ctrl+2 - Results */
+        if (wParam == VK_F6) {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
+            return 0;
+        }
+        if (ctrl && wParam == '1') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+            return 0;
+        }
+        if (ctrl && wParam == '2') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
+            return 0;
+        }
+        /* Ctrl+A - Select all (CE edit control may not support natively) */
+        if (ctrl && wParam == 'A') {
+            SendMessage(hwnd, EM_SETSEL, 0, -1);
+            return 0;
+        }
+        /* Up arrow on line 1 - go to start of buffer */
+        if (wParam == VK_UP) {
+            DWORD sel;
+            SendMessage(hwnd, EM_GETSEL, (WPARAM)&sel, 0);
+            if (SendMessage(hwnd, EM_LINEFROMCHAR, sel, 0) == 0) {
+                SendMessage(hwnd, EM_SETSEL, 0, 0);
+                return 0;
+            }
+        }
+        /* Home - go to start of buffer */
+        if (wParam == VK_HOME) {
+            SendMessage(hwnd, EM_SETSEL, 0, 0);
+            SendMessage(hwnd, EM_SCROLLCARET, 0, 0);
+            return 0;
+        }
+        /* End - go to end of buffer */
+        if (wParam == VK_END) {
+            int len = GetWindowTextLengthW(hwnd);
+            SendMessage(hwnd, EM_SETSEL, len, len);
+            SendMessage(hwnd, EM_SCROLLCARET, 0, 0);
+            return 0;
+        }
+        /* Ctrl+C/V/X - pass through for edit operations */
+        if (ctrl && (wParam == 'C' || wParam == 'V' || wParam == 'X'))
+            return CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
+    }
+    /* Update line count on keyup and scroll caret into view for navigation keys */
+    if (msg == WM_KEYUP) {
+        UpdateLineCount();
+        if (wParam == VK_PRIOR || wParam == VK_NEXT || wParam == VK_HOME || wParam == VK_END)
+            SendMessage(hwnd, EM_SCROLLCARET, 0, 0);
+    }
+    if (msg == WM_LBUTTONUP)
+        UpdateLineCount();
+    /* Clear search mode and suppress beeps on typing */
+    if (msg == WM_CHAR) {
+        if (GetKeyState(VK_CONTROL) < 0) {
+            /* Ctrl+V=22 - paste, then scroll caret into view */
+            if (wParam == 22) {
+                LRESULT r = CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
+                SendMessage(hwnd, EM_SCROLLCARET, 0, 0);
+                UpdateLineCount();
+                return r;
+            }
+            /* Ctrl+C=3, Ctrl+X=24 - pass through */
+            if (wParam == 3 || wParam == 24)
+                return CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
+            return 0;
+        }
+        /* Suppress Enter in search mode (handled in WM_KEYDOWN) */
+        if (g_searchMode && (wParam == '\r' || wParam == '\n'))
+            return 0;
+        g_searchMode = 0;  /* Any typing exits search mode */
+    }
     return CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
 }
 
 /* Subclass proc for result edit - blocks input but allows copy */
 static LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    /* Allow Ctrl+C and Ctrl+A */
-    if (msg == WM_KEYDOWN && GetKeyState(VK_CONTROL) < 0 && (wParam == 'C' || wParam == 'A'))
-        return CallWindowProc(g_pfnResultProc, hwnd, msg, wParam, lParam);
-    if (msg == WM_CHAR || msg == WM_KEYDOWN || msg == WM_KEYUP)
+    if (msg == WM_KEYDOWN) {
+        int ctrl = GetKeyState(VK_CONTROL) < 0;
+        /* Ctrl+A - Select all */
+        if (ctrl && wParam == 'A') {
+            SendMessage(hwnd, EM_SETSEL, 0, -1);
+            return 0;
+        }
+        /* Ctrl+C - Copy (pass through) */
+        if (ctrl && wParam == 'C')
+            return CallWindowProc(g_pfnResultProc, hwnd, msg, wParam, lParam);
+        /* F5 - Execute */
+        if (wParam == VK_F5) {
+            ExecuteQuery();
+            return 0;
+        }
+        /* Ctrl+O - Open */
+        if (ctrl && wParam == 'O') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_OPEN, 0);
+            return 0;
+        }
+        /* Ctrl+N - New */
+        if (ctrl && wParam == 'N') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_NEW, 0);
+            return 0;
+        }
+        /* Ctrl+F - Find, F3 - Find Next */
+        if (ctrl && wParam == 'F') {
+            DoFind();
+            return 0;
+        }
+        if (wParam == VK_F3) {
+            DoFindNext();
+            return 0;
+        }
+        /* F6/Escape - back to query, Ctrl+1 - Query, Ctrl+2 - Results */
+        if (wParam == VK_F6 || wParam == VK_ESCAPE || wParam == VK_BACK) {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+            return 0;
+        }
+        if (ctrl && wParam == '1') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+            return 0;
+        }
+        if (ctrl && wParam == '2') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
+            return 0;
+        }
+        return 0;  /* Block all other keys */
+    }
+    /* Allow Ctrl+C WM_CHAR through */
+    if (msg == WM_CHAR) {
+        if (GetKeyState(VK_CONTROL) < 0 && wParam == 3)
+            return CallWindowProc(g_pfnResultProc, hwnd, msg, wParam, lParam);
+        return 0;
+    }
+    if (msg == WM_KEYUP)
         return 0;
     return CallWindowProc(g_pfnResultProc, hwnd, msg, wParam, lParam);
 }
@@ -273,9 +552,14 @@ static void ExecuteQuery(void) {
     g_totalRows = 0;
     
     SetStatusResult(L"Executing...");
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Executing...");
     UpdateWindow(g_hwndStatus);  /* Force repaint before query */
     
+    {
+    DWORD startTick = GetTickCount();
+    DWORD elapsed;
     rc = sqlite_exec(g_db, sql, QueryCallback, NULL, &errmsg);
+    elapsed = GetTickCount() - startTick;
     
     if (rc != SQLITE_OK) {
         Output("Error: ");
@@ -285,8 +569,8 @@ static void ExecuteQuery(void) {
     } else if (g_nRows == 0) {
         /* Check if it was a non-SELECT statement */
         int changes = sqlite_changes(g_db);
+        wchar_t wbuf[64];
         if (changes > 0) {
-            wchar_t wbuf[64];
             char buf[32];
             char *p = buf + 30;
             buf[31] = '\0';
@@ -294,22 +578,44 @@ static void ExecuteQuery(void) {
             while (changes > 0) { *--p = '0' + (changes % 10); changes /= 10; }
             Output(p);
             OutputLine(" row(s) affected.");
-            wsprintfW(wbuf, L"%hs row(s) affected", p);
-            SetStatusResult(wbuf);
+            Output("Query executed in ");
+            { char tb[16]; char *tp = tb + 14; long e = (long)elapsed; tb[15] = '\0'; *tp = '\0';
+              if (e == 0) *--tp = '0'; else while (e > 0) { *--tp = (char)('0' + (e % 10)); e /= 10; }
+              Output(tp); }
+            OutputLine("ms.");
+            wsprintfW(wbuf, L"%hs row(s) affected (%lums)", p, elapsed);
         } else {
             OutputLine("OK");
-            SetStatusResult(L"OK");
+            Output("Query executed in ");
+            { char tb[16]; char *tp = tb + 14; long e = (long)elapsed; tb[15] = '\0'; *tp = '\0';
+              if (e == 0) *--tp = '0'; else while (e > 0) { *--tp = (char)('0' + (e % 10)); e /= 10; }
+              Output(tp); }
+            OutputLine("ms.");
+            wsprintfW(wbuf, L"OK (%lums)", elapsed);
         }
+        SetStatusResult(wbuf);
     } else {
         wchar_t wbuf[64];
         /* Flush final result set (adds to g_totalRows) */
         FlushResultSet();
-        wsprintfW(wbuf, L"%d row(s) returned", g_totalRows);
+        Output("Query executed in ");
+        { char tb[16]; char *tp = tb + 14; long e = (long)elapsed; tb[15] = '\0'; *tp = '\0';
+          if (e == 0) *--tp = '0'; else while (e > 0) { *--tp = (char)('0' + (e % 10)); e /= 10; }
+          Output(tp); }
+        OutputLine("ms.");
+        wsprintfW(wbuf, L"%d row(s) returned (%lums)", g_totalRows, elapsed);
         SetStatusResult(wbuf);
+    }
     }
     
     LocalFree(sql);
     FlushOutput();
+    UpdateDbSize();
+    
+    /* Switch to results view */
+    SwitchView(1);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
 }
 
 /* Helper to extract filename from path */
@@ -374,15 +680,16 @@ static int OpenDatabase(const wchar_t *path) {
     
     lstrcpyW(g_szDbPath, path);
     UpdateTitle();
-    SetStatusDb(GetFilename(path));
+    UpdateDbSize();
     SetStatusResult(L"");
     
-    /* Show hint for in-memory database */
+    /* Show hint for in-memory database in query pane */
     if (path[0] == ':') {
-        SetWindowTextW(g_hwndResult, 
-            L"Using in-memory database.\r\n"
-            L"Use File > Open to open a database file.\r\n"
-            L"Use File > New to create a new file.");
+        SetWindowTextW(g_hwndQuery, 
+            L"-- Using in-memory database.\r\n"
+            L"-- Use File > Open to open a database file.\r\n"
+            L"-- Use File > New to create a new file.\r\n");
+        g_showingHint = 1;
     }
     return 1;
 }
@@ -447,16 +754,260 @@ static int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
     return DialogBoxIndirectW(g_hInst, &dlg.tmpl, g_hwndMain, PathDlgProc) == IDOK;
 }
 
+/*============================================================================
+** Find / Search
+**============================================================================*/
+
+static void DoFindNext(void) {
+    HWND hwndEdit = g_viewMode == 0 ? g_hwndQuery : g_hwndResult;
+    int len, findLen, start, i, j;
+    wchar_t *buf;
+    DWORD sel;
+    
+    if (!g_findText[0]) return;
+    
+    findLen = lstrlenW(g_findText);
+    len = GetWindowTextLengthW(hwndEdit);
+    if (len == 0) return;
+    
+    buf = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+    if (!buf) return;
+    GetWindowTextW(hwndEdit, buf, len + 1);
+    
+    /* Get current position */
+    SendMessage(hwndEdit, EM_GETSEL, (WPARAM)&sel, 0);
+    start = sel + 1;
+    if (start > len) start = 0;
+    
+    /* Search forward from cursor */
+    for (i = start; i <= len - findLen; i++) {
+        for (j = 0; j < findLen; j++) {
+            wchar_t c1 = buf[i + j], c2 = g_findText[j];
+            if (c1 >= 'A' && c1 <= 'Z') c1 += 32;
+            if (c2 >= 'A' && c2 <= 'Z') c2 += 32;
+            if (c1 != c2) break;
+        }
+        if (j == findLen) {
+            SendMessage(hwndEdit, EM_SETSEL, i, i + findLen);
+            SendMessage(hwndEdit, EM_SCROLLCARET, 0, 0);
+            LocalFree(buf);
+            return;
+        }
+    }
+    /* Wrap around */
+    for (i = 0; i < start && i <= len - findLen; i++) {
+        for (j = 0; j < findLen; j++) {
+            wchar_t c1 = buf[i + j], c2 = g_findText[j];
+            if (c1 >= 'A' && c1 <= 'Z') c1 += 32;
+            if (c2 >= 'A' && c2 <= 'Z') c2 += 32;
+            if (c1 != c2) break;
+        }
+        if (j == findLen) {
+            SendMessage(hwndEdit, EM_SETSEL, i, i + findLen);
+            SendMessage(hwndEdit, EM_SCROLLCARET, 0, 0);
+            LocalFree(buf);
+            return;
+        }
+    }
+    LocalFree(buf);
+    MessageBoxW(g_hwndMain, L"Text not found.", L"Find", MB_OK);
+}
+
+static HWND g_hwndFindDlg = NULL;
+static HWND g_hwndFindEdit = NULL;
+
+static LRESULT CALLBACK FindEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+static WNDPROC g_pfnFindEditProc = NULL;
+
+static LRESULT CALLBACK FindWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE: {
+            g_hwndFindEdit = CreateWindowW(L"EDIT", g_findText,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP,
+                5, 5, 133, 20, hwnd, (HMENU)101, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Find",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+                145, 4, 45, 22, hwnd, (HMENU)IDOK, g_hInst, NULL);
+            g_pfnFindEditProc = (WNDPROC)SetWindowLong(g_hwndFindEdit, GWL_WNDPROC, (LONG)FindEditProc);
+            SetFocus(g_hwndFindEdit);
+            SendMessage(g_hwndFindEdit, EM_SETSEL, 0, -1);
+            return 0;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK) {
+                GetWindowTextW(g_hwndFindEdit, g_findText, 128);
+                DestroyWindow(hwnd);
+                g_hwndFindDlg = NULL;
+                SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+                if (g_findText[0]) {
+                    g_searchMode = 1;
+                    DoFindNext();
+                }
+                return 0;
+            }
+            break;
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            g_hwndFindDlg = NULL;
+            SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+            return 0;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+static LRESULT CALLBACK FindEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_RETURN) {
+            SendMessage(g_hwndFindDlg, WM_COMMAND, IDOK, 0);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            SendMessage(g_hwndFindDlg, WM_CLOSE, 0, 0);
+            return 0;
+        }
+    }
+    return CallWindowProc(g_pfnFindEditProc, hwnd, msg, wParam, lParam);
+}
+
+static void DoFind(void) {
+    WNDCLASSW wc = {0};
+    RECT rc;
+    
+    if (g_hwndFindDlg) {
+        SetFocus(g_hwndFindEdit);
+        return;
+    }
+    
+    wc.lpfnWndProc = FindWndProc;
+    wc.hInstance = g_hInst;
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszClassName = L"SQLiteCEFind";
+    RegisterClassW(&wc);
+    
+    GetWindowRect(g_hwndMain, &rc);
+    #ifndef WS_EX_TOOLWINDOW
+    #define WS_EX_TOOLWINDOW 0x00000080L
+    #endif
+    g_hwndFindDlg = CreateWindowExW(WS_EX_TOOLWINDOW, L"SQLiteCEFind", L"Find",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU,
+        rc.left + 20, rc.top + 50, 200, 52,
+        g_hwndMain, NULL, g_hInst, NULL);
+    ShowWindow(g_hwndFindDlg, SW_SHOW);
+}
+
+/*============================================================================
+** About Dialog
+**============================================================================*/
+
+#define IDB_LOGO 101
+
+static HBITMAP g_hLogo = NULL;
+
+static LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE: {
+            wchar_t text[256];
+            wchar_t ver[32], built[32];
+            const char *sv = sqlite_libversion();
+            const char *bd = __DATE__;
+            int i, j;
+            for (i = 0; sv[i] && i < 31; i++) ver[i] = sv[i];
+            ver[i] = 0;
+            for (i = 0, j = 0; bd[i] && j < 31; i++) {
+                if (bd[i] == ' ' && bd[i+1] == ' ') continue;  /* Skip double space */
+                built[j++] = bd[i];
+            }
+            built[j] = 0;
+            wsprintfW(text,
+                L"SQLite/CEdit " SQLITECEDIT_VERSION L" (using SQLite %s)\n"
+                L"(C) Intermountain Systems\n"
+                L"Build date: %s", ver, built);
+            CreateWindowW(L"STATIC", NULL, WS_CHILD | WS_VISIBLE | SS_BITMAP,
+                61, 10, 128, 64, hwnd, (HMENU)100, g_hInst, NULL);
+            SendDlgItemMessage(hwnd, 100, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hLogo);
+            CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_CENTER,
+                5, 80, 240, 50, hwnd, NULL, g_hInst, NULL);
+            return 0;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+                DestroyWindow(hwnd);
+                SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+                return 0;
+            }
+            break;
+        case WM_KEYDOWN:
+            if (wParam == VK_ESCAPE || wParam == VK_RETURN) {
+                DestroyWindow(hwnd);
+                SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+                return 0;
+            }
+            break;
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+            return 0;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+static void DoAbout(void) {
+    WNDCLASSW wc = {0};
+    RECT rc;
+    HWND hwndAbout;
+    
+    if (!g_hLogo)
+        g_hLogo = LoadBitmap(g_hInst, MAKEINTRESOURCE(IDB_LOGO));
+    
+    wc.lpfnWndProc = AboutWndProc;
+    wc.hInstance = g_hInst;
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszClassName = L"SQLiteCEAbout";
+    RegisterClassW(&wc);
+    
+    GetWindowRect(g_hwndMain, &rc);
+    hwndAbout = CreateWindowW(L"SQLiteCEAbout", L"About",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU,
+        rc.left + 30, rc.top + 30, 250, 160,
+        g_hwndMain, NULL, g_hInst, NULL);
+    ShowWindow(hwndAbout, SW_SHOW);
+}
+
 static void DoFileNew(void) {
-    if (PromptForPath(L"New Database", L"\\Temp\\new.db")) {
-        DeleteFileW(g_szPathBuf);
-        OpenDatabase(g_szPathBuf);
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"new.db";
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
+    ofn.lpstrDefExt = L"db";
+    ofn.lpstrTitle = L"New Database";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    
+    if (GetSaveFileNameW(&ofn)) {
+        DeleteFileW(szFile);
+        OpenDatabase(szFile);
     }
 }
 
 static void DoFileOpen(void) {
-    if (PromptForPath(L"Open Database", L"\\Temp\\")) {
-        OpenDatabase(g_szPathBuf);
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"";
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
+    ofn.lpstrTitle = L"Open Database";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    
+    if (GetOpenFileNameW(&ofn)) {
+        OpenDatabase(szFile);
     }
 }
 
@@ -468,8 +1019,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     switch (msg) {
         case WM_CREATE: {
             RECT rc;
-            int cbHeight, h;
+            int cbHeight;
             HMENU hMenu, hFile, hQuery, hView;
+            TBBUTTON tbButtons[8];
             
             /* Command bar with menus */
             g_hwndCB = CommandBar_Create(g_hInst, hwnd, 1);
@@ -489,46 +1041,114 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             hQuery = CreatePopupMenu();
             AppendMenuW(hQuery, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
+            AppendMenuW(hQuery, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(hQuery, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
+            AppendMenuW(hQuery, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
             AppendMenuW(hMenu, MF_POPUP, (UINT)hQuery, L"&Query");
+            
+            AppendMenuW(hMenu, MF_STRING, IDM_ABOUT, L"&About");
             
             g_hMenu = hMenu;
             CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hMenu, 0);
+            
+            /* Add toolbar bitmaps */
+            #define IDB_TOOLBAR 100
+            #define TB_PLAY    0   /* Custom: Play triangle for Execute */
+            #define TB_QUERY   1   /* Custom: Query editor icon */
+            #define TB_RESULTS 2   /* Custom: Text results icon */
+            #define TB_GRID    3   /* Custom: Grid/results icon (future) */
+            #define TB_OPEN    4   /* Custom: Open database icon */
+            #define TB_NEW     5   /* Custom: New database icon */
+            #define TB_STD_BASE 6  /* Standard icons start here */
+            #define TB_VIEW_BASE (TB_STD_BASE + 15)  /* View icons after standard */
+            
+            /* Add custom toolbar bitmap (use gray background to match button face) */
+            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 6, 0, 0);
+            CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_STD_SMALL_COLOR, 15, 0, 0);
+            CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_VIEW_SMALL_COLOR, 12, 0, 0);
+            
+            memset(tbButtons, 0, sizeof(tbButtons));
+            
+            /* Separator/gripper between menu and buttons */
+            tbButtons[0].fsStyle = TBSTYLE_SEP;
+            tbButtons[0].iBitmap = 8;  /* Wider separator acts as gripper */
+            
+            /* Group 1: View switching */
+            tbButtons[1].iBitmap = TB_QUERY;  /* Custom query editor icon */
+            tbButtons[1].idCommand = IDM_VIEWQUERY;
+            tbButtons[1].fsState = TBSTATE_ENABLED | TBSTATE_CHECKED;
+            tbButtons[1].fsStyle = TBSTYLE_CHECK | TBSTYLE_GROUP;
+            
+            tbButtons[2].iBitmap = TB_RESULTS;  /* Custom text results icon */
+            tbButtons[2].idCommand = IDM_VIEWRESULT;
+            tbButtons[2].fsState = TBSTATE_ENABLED;
+            tbButtons[2].fsStyle = TBSTYLE_CHECK | TBSTYLE_GROUP;
+            
+            /* Separator */
+            tbButtons[3].fsStyle = TBSTYLE_SEP;
+            
+            /* Group 2: File operations */
+            tbButtons[4].iBitmap = TB_OPEN;
+            tbButtons[4].idCommand = IDM_OPEN;
+            tbButtons[4].fsState = TBSTATE_ENABLED;
+            tbButtons[4].fsStyle = TBSTYLE_BUTTON;
+            
+            tbButtons[5].iBitmap = TB_NEW;
+            tbButtons[5].idCommand = IDM_NEW;
+            tbButtons[5].fsState = TBSTATE_ENABLED;
+            tbButtons[5].fsStyle = TBSTYLE_BUTTON;
+            
+            /* Separator */
+            tbButtons[6].fsStyle = TBSTYLE_SEP;
+            
+            /* Group 3: Execute (rightmost) */
+            tbButtons[7].iBitmap = TB_PLAY;
+            tbButtons[7].idCommand = IDM_EXECUTE;
+            tbButtons[7].fsState = TBSTATE_ENABLED;
+            tbButtons[7].fsStyle = TBSTYLE_BUTTON;
+            
+            CommandBar_AddButtons(g_hwndCB, 8, tbButtons);
+            
             CommandBar_AddAdornments(g_hwndCB, 0, 0);
             cbHeight = CommandBar_Height(g_hwndCB);
             
             GetClientRect(hwnd, &rc);
-            h = (rc.bottom - cbHeight) / 3;  /* Query gets 1/3, results 2/3 */
-            
-            /* Query input */
-            g_hwndQuery = CreateWindowW(
-                L"EDIT", L"",
-                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
-                ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
-                0, cbHeight, rc.right, h,
-                hwnd, (HMENU)1001, g_hInst, NULL);
-            
-            /* Subclass to catch Ctrl+Enter */
-            g_pfnQueryProc = (WNDPROC)SetWindowLong(g_hwndQuery, GWL_WNDPROC, (LONG)QueryEditProc);
-            
-            /* Results output - no ES_READONLY so background paints correctly */
-            g_hwndResult = CreateWindowW(
-                L"EDIT", L"",
-                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL |
-                ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
-                0, cbHeight + h, rc.right, rc.bottom - cbHeight - h,
-                hwnd, (HMENU)1002, g_hInst, NULL);
-            
-            /* Subclass to block input */
-            g_pfnResultProc = (WNDPROC)SetWindowLong(g_hwndResult, GWL_WNDPROC, (LONG)ResultEditProc);
             
             /* Status bar with two panes */
             g_hwndStatus = CreateWindowW(STATUSCLASSNAMEW, NULL,
                 WS_CHILD | WS_VISIBLE,
                 0, 0, 0, 0, hwnd, (HMENU)1003, g_hInst, NULL);
             {
-                int parts[2] = {120, -1};  /* 120px for db name, rest for results */
+                int parts[2] = {120, -1};
+                RECT rcStatus;
+                int sbHeight, editHeight;
                 SendMessage(g_hwndStatus, SB_SETPARTS, 2, (LPARAM)parts);
+                GetWindowRect(g_hwndStatus, &rcStatus);
+                sbHeight = rcStatus.bottom - rcStatus.top;
+                editHeight = rc.bottom - cbHeight - sbHeight;
+            
+            /* Query input - full height */
+            g_hwndQuery = CreateWindowW(
+                L"EDIT", L"",
+                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
+                ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
+                0, cbHeight, rc.right, editHeight,
+                hwnd, (HMENU)1001, g_hInst, NULL);
+            
+            /* Subclass to catch Ctrl+Enter */
+            g_pfnQueryProc = (WNDPROC)SetWindowLong(g_hwndQuery, GWL_WNDPROC, (LONG)QueryEditProc);
+            
+            /* Results output - full height, initially hidden */
+            g_hwndResult = CreateWindowW(
+                L"EDIT", L"",
+                WS_CHILD | WS_BORDER | WS_VSCROLL | WS_HSCROLL |
+                ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
+                0, cbHeight, rc.right, editHeight,
+                hwnd, (HMENU)1002, g_hInst, NULL);
             }
+            
+            /* Subclass to block input */
+            g_pfnResultProc = (WNDPROC)SetWindowLong(g_hwndResult, GWL_WNDPROC, (LONG)ResultEditProc);
             
             /* Set monospace font on both panes */
             {
@@ -542,12 +1162,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SendMessage(g_hwndResult, WM_SETFONT, (WPARAM)g_hFont, TRUE);
             }
             
+            /* Start in query view */
+            g_viewMode = 0;
+            
             return 0;
         }
         
         case WM_SIZE: {
             RECT rc, rcStatus;
-            int cbHeight, sbHeight, h;
+            int cbHeight, sbHeight, editHeight;
             
             SendMessage(g_hwndStatus, WM_SIZE, 0, 0);  /* Auto-position status bar */
             GetWindowRect(g_hwndStatus, &rcStatus);
@@ -555,10 +1178,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             cbHeight = CommandBar_Height(g_hwndCB);
             GetClientRect(hwnd, &rc);
-            h = (rc.bottom - cbHeight - sbHeight) / 3;
+            editHeight = rc.bottom - cbHeight - sbHeight;
             
-            MoveWindow(g_hwndQuery, 0, cbHeight, rc.right, h, TRUE);
-            MoveWindow(g_hwndResult, 0, cbHeight + h, rc.right, rc.bottom - cbHeight - sbHeight - h, TRUE);
+            /* Both panes same size, only one visible at a time */
+            MoveWindow(g_hwndQuery, 0, cbHeight, rc.right, editHeight, TRUE);
+            MoveWindow(g_hwndResult, 0, cbHeight, rc.right, editHeight, TRUE);
             return 0;
         }
         
@@ -569,17 +1193,51 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_CLOSE:   CloseDatabase(); break;
                 case IDM_EXIT:    DestroyWindow(hwnd); break;
                 case IDM_EXECUTE: ExecuteQuery(); break;
+                case IDM_FIND:    DoFind(); break;
+                case IDM_FINDNEXT: DoFindNext(); break;
+                case IDM_ABOUT:
+                    DoAbout();
+                    break;
                 case IDM_CLEAR:
                     g_clearOnExec = !g_clearOnExec;
                     CheckMenuItem(g_hMenu, IDM_CLEAR, g_clearOnExec ? MF_CHECKED : MF_UNCHECKED);
                     break;
+                case IDM_VIEWQUERY:
+                    SwitchView(0);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, TRUE);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, FALSE);
+                    break;
+                case IDM_VIEWRESULT:
+                    SwitchView(1);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+                    break;
                 case IDOK:        DestroyWindow(hwnd); break;
+                case 1001:  /* Query edit control */
+                    if (HIWORD(wParam) == EN_CHANGE && g_viewMode == 0)
+                        UpdateLineCount();
+                    break;
             }
             return 0;
         
         case WM_CTLCOLOREDIT:
             SetBkColor((HDC)wParam, RGB(255, 255, 255));
             return (LRESULT)GetStockObject(WHITE_BRUSH);
+        
+        case WM_KEYDOWN:
+            /* Global shortcuts (when command bar has focus) */
+            if (GetKeyState(VK_CONTROL) < 0) {
+                if (wParam == 'O') { DoFileOpen(); return 0; }
+                if (wParam == 'N') { DoFileNew(); return 0; }
+            }
+            if (wParam == VK_F5) { ExecuteQuery(); return 0; }
+            /* Enter or arrow keys focus the editor */
+            if (wParam == VK_RETURN || wParam == VK_UP || 
+                wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT) {
+                SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+                return 0;
+            }
+            break;
         
         case WM_DESTROY:
             CloseDatabase();
