@@ -109,6 +109,7 @@ static int g_nOutput = 0;
 static int g_clearOnExec = 1;  /* Clear results before each execution */
 static int g_viewMode = 0;     /* 0 = query, 1 = results */
 static int g_showingHint = 0;  /* 1 = showing startup hint in query pane */
+static int g_suppressLineCount = 0;  /* 1 = suppress UpdateLineCount temporarily */
 static wchar_t g_lastResultStatus[64] = L"";  /* Saved result status */
 static wchar_t g_findText[128] = L"";  /* Last search text */
 static int g_searchMode = 0;  /* 1 = Enter triggers Find Next */
@@ -118,6 +119,10 @@ static void UpdateLineCount(void) {
     wchar_t buf[32];
     DWORD sel;
     int cur, total;
+    if (g_suppressLineCount) {
+        g_suppressLineCount--;
+        return;
+    }
     SendMessage(g_hwndQuery, EM_GETSEL, (WPARAM)&sel, 0);
     cur = (int)SendMessage(g_hwndQuery, EM_LINEFROMCHAR, sel, 0) + 1;
     total = (int)SendMessage(g_hwndQuery, EM_GETLINECOUNT, 0, 0);
@@ -500,13 +505,26 @@ static void FlushResultSet(void) {
 
 static int QueryCallback(void *arg, int argc, char **argv, char **cols) {
     int i, len;
+    int colsChanged = 0;
     (void)arg;
     
     if (argc > MAX_RESULT_COLS) argc = MAX_RESULT_COLS;
     
-    /* New query detected - flush previous results first */
-    if (g_nRows > 0 && argc != g_nCols) {
-        FlushResultSet();
+    /* Check if columns changed (new statement) */
+    if (g_nRows > 0) {
+        if (argc != g_nCols) {
+            colsChanged = 1;
+        } else {
+            /* Same count - check if names differ */
+            for (i = 0; i < argc; i++) {
+                const char *newCol = cols[i] ? cols[i] : "";
+                const char *oldCol = g_results[0][i] ? g_results[0][i] : "";
+                const char *a = newCol, *b = oldCol;
+                while (*a && *b && *a == *b) { a++; b++; }
+                if (*a != *b) { colsChanged = 1; break; }
+            }
+        }
+        if (colsChanged) FlushResultSet();
     }
     
     /* Store column headers on first row */
@@ -591,29 +609,60 @@ static void OutputResults(void) {
 }
 
 static void ExecuteQuery(void) {
-    int len, rc;
+    int len, rc, hadError = 0;
     char *sql;
     char *errmsg = NULL;
     wchar_t *wsql;
+    DWORD selStart, selEnd;
     
     if (!g_db) {
         SetWindowTextW(g_hwndResult, L"No database open.");
         return;
     }
     
-    /* Get query text */
-    len = GetWindowTextLengthW(g_hwndQuery);
-    if (len == 0) return;
+    /* Check for selection */
+    SendMessage(g_hwndQuery, EM_GETSEL, (WPARAM)&selStart, (LPARAM)&selEnd);
     
-    wsql = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
-    sql = (char *)LocalAlloc(LMEM_FIXED, (len + 1) * 3);  /* UTF-8 worst case */
-    if (!wsql || !sql) {
-        if (wsql) LocalFree(wsql);
-        if (sql) LocalFree(sql);
-        return;
+    if (selStart != selEnd) {
+        /* Execute selected text only */
+        len = selEnd - selStart;
+        wsql = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+        sql = (char *)LocalAlloc(LMEM_FIXED, (len + 1) * 3);
+        if (!wsql || !sql) {
+            if (wsql) LocalFree(wsql);
+            if (sql) LocalFree(sql);
+            return;
+        }
+        SendMessage(g_hwndQuery, EM_SETSEL, selStart, selEnd);
+        SendMessage(g_hwndQuery, WM_COPY, 0, 0);
+        /* Get selected text via buffer */
+        {
+            int fullLen = GetWindowTextLengthW(g_hwndQuery);
+            wchar_t *full = (wchar_t *)LocalAlloc(LMEM_FIXED, (fullLen + 1) * sizeof(wchar_t));
+            if (full) {
+                int i;
+                GetWindowTextW(g_hwndQuery, full, fullLen + 1);
+                for (i = 0; i < len && (selStart + i) <= (DWORD)fullLen; i++)
+                    wsql[i] = full[selStart + i];
+                wsql[i] = 0;
+                LocalFree(full);
+            }
+        }
+    } else {
+        /* Execute entire buffer */
+        len = GetWindowTextLengthW(g_hwndQuery);
+        if (len == 0) return;
+        
+        wsql = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+        sql = (char *)LocalAlloc(LMEM_FIXED, (len + 1) * 3);
+        if (!wsql || !sql) {
+            if (wsql) LocalFree(wsql);
+            if (sql) LocalFree(sql);
+            return;
+        }
+        GetWindowTextW(g_hwndQuery, wsql, len + 1);
     }
     
-    GetWindowTextW(g_hwndQuery, wsql, len + 1);
     WideCharToMultiByte(CP_ACP, 0, wsql, -1, sql, (len + 1) * 3, NULL, NULL);
     LocalFree(wsql);
     
@@ -631,52 +680,117 @@ static void ExecuteQuery(void) {
     {
     DWORD startTick = GetTickCount();
     DWORD elapsed;
-    rc = sqlite_exec(g_db, sql, QueryCallback, NULL, &errmsg);
+    char *stmt = sql;
+    char *p = sql;
+    int inString = 0;
+    int inComment = 0;
+    int stmtOffset = 0;  /* Character offset of current statement */
+    int errorOffset = 0;
+    
+    /* Split on semicolons and execute each statement */
+    while (*p && !hadError) {
+        if (inComment) {
+            if (inComment == 1 && *p == '\n') inComment = 0;
+            else if (inComment == 2 && *p == '*' && p[1] == '/') { inComment = 0; p++; }
+        } else if (inString) {
+            if (*p == '\'' && p[1] == '\'') p++;  /* escaped quote */
+            else if (*p == '\'') inString = 0;
+        } else {
+            if (*p == '\'') inString = 1;
+            else if (*p == '-' && p[1] == '-') inComment = 1;
+            else if (*p == '/' && p[1] == '*') { inComment = 2; p++; }
+            else if (*p == ';') {
+                char saved = p[1];
+                p[1] = '\0';
+                /* Execute this statement */
+                rc = sqlite_exec(g_db, stmt, QueryCallback, NULL, &errmsg);
+                p[1] = saved;
+                if (rc != SQLITE_OK) {
+                    int ln = 1, i;
+                    char lb[16]; char *lp = lb + 14;
+                    for (i = 0; i < stmtOffset; i++) if (sql[i] == '\n') ln++;
+                    lb[15] = '\0'; *lp = '\0';
+                    while (ln > 0) { *--lp = '0' + (ln % 10); ln /= 10; }
+                    Output("Line "); Output(lp); Output(": ");
+                    OutputLine(errmsg ? errmsg : sqlite_error_string(rc));
+                    if (errmsg) sqlite_freemem(errmsg);
+                    errorOffset = stmtOffset;
+                    hadError = 1;
+                } else if (g_nRows > 0) {
+                    FlushResultSet();
+                } else {
+                    int changes = sqlite_changes(g_db);
+                    if (changes > 0) {
+                        char buf[32]; char *bp = buf + 30; int c = changes;
+                        buf[31] = '\0'; *bp = '\0';
+                        while (c > 0) { *--bp = '0' + (c % 10); c /= 10; }
+                        Output(bp); OutputLine(" row(s) affected.");
+                    }
+                }
+                stmt = p + 1;
+                stmtOffset = (int)(stmt - sql);
+                while (*stmt == ' ' || *stmt == '\t' || *stmt == '\r' || *stmt == '\n') { stmt++; stmtOffset++; }
+            }
+        }
+        p++;
+    }
+    
+    /* Execute any remaining statement (no trailing semicolon) */
+    if (!hadError && *stmt) {
+        rc = sqlite_exec(g_db, stmt, QueryCallback, NULL, &errmsg);
+        if (rc != SQLITE_OK) {
+            int ln = 1, i;
+            char lb[16]; char *lp = lb + 14;
+            for (i = 0; i < stmtOffset; i++) if (sql[i] == '\n') ln++;
+            lb[15] = '\0'; *lp = '\0';
+            while (ln > 0) { *--lp = '0' + (ln % 10); ln /= 10; }
+            errorOffset = stmtOffset;
+            Output("Line "); Output(lp); Output(": ");
+            OutputLine(errmsg ? errmsg : sqlite_error_string(rc));
+            if (errmsg) sqlite_freemem(errmsg);
+            hadError = 1;
+        } else if (g_nRows > 0) {
+            FlushResultSet();
+        } else {
+            int changes = sqlite_changes(g_db);
+            if (changes > 0) {
+                char buf[32]; char *bp = buf + 30; int c = changes;
+                buf[31] = '\0'; *bp = '\0';
+                while (c > 0) { *--bp = '0' + (c % 10); c /= 10; }
+                Output(bp); OutputLine(" row(s) affected.");
+            }
+        }
+    }
+    
     elapsed = GetTickCount() - startTick;
     
-    if (rc != SQLITE_OK) {
-        Output("Error: ");
-        OutputLine(errmsg ? errmsg : sqlite_error_string(rc));
-        if (errmsg) sqlite_freemem(errmsg);
-        SetStatusResult(L"Error");
-    } else if (g_nRows == 0) {
-        /* Check if it was a non-SELECT statement */
-        int changes = sqlite_changes(g_db);
-        wchar_t wbuf[64];
-        if (changes > 0) {
-            char buf[32];
-            char *p = buf + 30;
-            buf[31] = '\0';
-            *p = '\0';
-            while (changes > 0) { *--p = '0' + (changes % 10); changes /= 10; }
-            Output(p);
-            OutputLine(" row(s) affected.");
-            Output("Query executed in ");
-            { char tb[16]; char *tp = tb + 14; long e = (long)elapsed; tb[15] = '\0'; *tp = '\0';
-              if (e == 0) *--tp = '0'; else while (e > 0) { *--tp = (char)('0' + (e % 10)); e /= 10; }
-              Output(tp); }
-            OutputLine("ms.");
-            wsprintfW(wbuf, L"%hs row(s) affected (%lums)", p, elapsed);
-        } else {
-            OutputLine("OK");
-            Output("Query executed in ");
-            { char tb[16]; char *tp = tb + 14; long e = (long)elapsed; tb[15] = '\0'; *tp = '\0';
-              if (e == 0) *--tp = '0'; else while (e > 0) { *--tp = (char)('0' + (e % 10)); e /= 10; }
-              Output(tp); }
-            OutputLine("ms.");
-            wsprintfW(wbuf, L"OK (%lums)", elapsed);
+    if (hadError) {
+        /* Position cursor at the errored statement */
+        int adjOffset = errorOffset;
+        int lineNum = 1;
+        int i;
+        wchar_t wbuf[48];
+        for (i = 0; i < errorOffset; i++) {
+            if (sql[i] == '\n') lineNum++;
         }
-        SetStatusResult(wbuf);
+        if (selStart != selEnd) adjOffset += selStart;  /* Adjust for selection offset */
+        SendMessage(g_hwndQuery, EM_SETSEL, adjOffset, adjOffset);
+        SendMessage(g_hwndQuery, EM_SCROLLCARET, 0, 0);
+        wsprintfW(wbuf, L"Error at line %d", lineNum);
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)wbuf);
+        g_suppressLineCount = 3;  /* Skip next few UpdateLineCount calls from pending messages */
+        MessageBeep(MB_ICONEXCLAMATION);
     } else {
         wchar_t wbuf[64];
-        /* Flush final result set (adds to g_totalRows) */
-        FlushResultSet();
         Output("Query executed in ");
         { char tb[16]; char *tp = tb + 14; long e = (long)elapsed; tb[15] = '\0'; *tp = '\0';
           if (e == 0) *--tp = '0'; else while (e > 0) { *--tp = (char)('0' + (e % 10)); e /= 10; }
           Output(tp); }
         OutputLine("ms.");
-        wsprintfW(wbuf, L"%d row(s) returned (%lums)", g_totalRows, elapsed);
+        if (g_totalRows > 0)
+            wsprintfW(wbuf, L"%d row(s) returned (%lums)", g_totalRows, elapsed);
+        else
+            wsprintfW(wbuf, L"OK (%lums)", elapsed);
         SetStatusResult(wbuf);
     }
     }
@@ -685,10 +799,12 @@ static void ExecuteQuery(void) {
     FlushOutput();
     UpdateDbSize();
     
-    /* Switch to results view */
-    SwitchView(1);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+    /* Switch to results view (unless error - stay in query to show cursor) */
+    if (!hadError) {
+        SwitchView(1);
+        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
+        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+    }
 }
 
 /* Helper to extract filename from path */
@@ -1946,7 +2062,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_NEW:     DoFileNew(); break;
                 case IDM_OPEN:    DoFileOpen(); break;
                 case IDM_CLOSE:   CloseDatabase(); break;
-                case IDM_OPENQUERY: DoOpenQuery(); break;
+                case IDM_OPENQUERY:
+                    if (g_showingHint) DoFileOpen(); else DoOpenQuery();
+                    break;
                 case IDM_SAVEQUERY: DoSaveQuery(); break;
                 case IDM_EXPORTCSV: DoExportCSV(); break;
                 case IDM_EXPORTDB: DoExportDb(); break;
