@@ -607,6 +607,221 @@ static int test_join(void) {
 }
 
 /*============================================================================
+** Test Cases - Export/Import (0.2.0)
+**============================================================================*/
+
+static int test_sql_quote_escape(void) {
+    int ok;
+    char **result;
+    int nRow, nCol;
+    ExecOK("CREATE TABLE q(s TEXT)");
+    ExecOK("INSERT INTO q VALUES('it''s a test')");
+    ExecOK("INSERT INTO q VALUES('say \"hello\"')");
+    ok = (CountRows("SELECT * FROM q") == 2);
+    /* Verify content */
+    if (sqlite_get_table(g_db, "SELECT s FROM q WHERE s LIKE '%it''s%'", &result, &nRow, &nCol, NULL) == SQLITE_OK) {
+        ok = ok && (nRow == 1);
+        sqlite_free_table(result);
+    }
+    ExecOK("DROP TABLE q");
+    return ok;
+}
+
+static int test_sqlite_master_tables(void) {
+    int ok;
+    ExecOK("CREATE TABLE sm_t1(a INTEGER)");
+    ExecOK("CREATE TABLE sm_t2(b TEXT)");
+    ExecOK("CREATE TABLE sm_t3(c REAL)");
+    ok = (CountRows("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sm_t%'") == 3);
+    ExecOK("DROP TABLE sm_t1");
+    ExecOK("DROP TABLE sm_t2");
+    ExecOK("DROP TABLE sm_t3");
+    return ok;
+}
+
+static int test_sqlite_master_indexes(void) {
+    int ok;
+    char **result;
+    int nRow, nCol;
+    ExecOK("CREATE TABLE idx_t(a INTEGER, b TEXT)");
+    ExecOK("CREATE INDEX idx_a ON idx_t(a)");
+    ok = (CountRows("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_a'") == 1);
+    /* Verify SQL is stored */
+    if (sqlite_get_table(g_db, "SELECT sql FROM sqlite_master WHERE name='idx_a'", &result, &nRow, &nCol, NULL) == SQLITE_OK) {
+        ok = ok && (nRow == 1) && (result[1] != NULL);
+        sqlite_free_table(result);
+    }
+    ExecOK("DROP TABLE idx_t");
+    return ok;
+}
+
+static int test_export_db_schema(void) {
+    const char *srcPath = "\\Temp\\exp_src.db";
+    const char *dstPath = "\\Temp\\exp_dst.db";
+    sqlite *srcDb, *dstDb;
+    char **result;
+    int nRow, nCol, ok = 0;
+    
+    DeleteFileW(L"\\Temp\\exp_src.db");
+    DeleteFileW(L"\\Temp\\exp_dst.db");
+    
+    /* Create source with schema */
+    srcDb = sqlite_open(srcPath, 0, NULL);
+    if (!srcDb) return 0;
+    sqlite_exec(srcDb, "CREATE TABLE t1(id INTEGER PRIMARY KEY, name TEXT)", NULL, NULL, NULL);
+    sqlite_exec(srcDb, "CREATE TABLE t2(x REAL, y REAL)", NULL, NULL, NULL);
+    
+    /* "Export" by copying schema */
+    dstDb = sqlite_open(dstPath, 0, NULL);
+    if (!dstDb) { sqlite_close(srcDb); return 0; }
+    
+    if (sqlite_get_table(srcDb, "SELECT sql FROM sqlite_master WHERE type='table'", &result, &nRow, &nCol, NULL) == SQLITE_OK) {
+        int i;
+        for (i = 1; i <= nRow; i++) {
+            if (result[i]) sqlite_exec(dstDb, result[i], NULL, NULL, NULL);
+        }
+        sqlite_free_table(result);
+    }
+    sqlite_close(srcDb);
+    sqlite_close(dstDb);
+    
+    /* Verify destination has both tables */
+    dstDb = sqlite_open(dstPath, 0, NULL);
+    if (dstDb) {
+        ok = (CountRows("SELECT name FROM sqlite_master WHERE type='table'") >= 2);
+        /* Temporarily use dstDb for count */
+        {
+            sqlite *saved = g_db;
+            g_db = dstDb;
+            ok = (CountRows("SELECT name FROM sqlite_master WHERE type='table'") == 2);
+            g_db = saved;
+        }
+        sqlite_close(dstDb);
+    }
+    
+    DeleteFileW(L"\\Temp\\exp_src.db");
+    DeleteFileW(L"\\Temp\\exp_dst.db");
+    return ok;
+}
+
+static int test_export_db_data(void) {
+    const char *srcPath = "\\Temp\\expd_src.db";
+    const char *dstPath = "\\Temp\\expd_dst.db";
+    sqlite *srcDb, *dstDb;
+    char **result;
+    int nRow, nCol, ok = 0;
+    
+    DeleteFileW(L"\\Temp\\expd_src.db");
+    DeleteFileW(L"\\Temp\\expd_dst.db");
+    
+    /* Create source with data */
+    srcDb = sqlite_open(srcPath, 0, NULL);
+    if (!srcDb) return 0;
+    sqlite_exec(srcDb, "CREATE TABLE t(id INTEGER, val TEXT)", NULL, NULL, NULL);
+    sqlite_exec(srcDb, "INSERT INTO t VALUES(1, 'one')", NULL, NULL, NULL);
+    sqlite_exec(srcDb, "INSERT INTO t VALUES(2, 'two')", NULL, NULL, NULL);
+    sqlite_exec(srcDb, "INSERT INTO t VALUES(3, 'three')", NULL, NULL, NULL);
+    
+    /* Export schema */
+    dstDb = sqlite_open(dstPath, 0, NULL);
+    if (!dstDb) { sqlite_close(srcDb); return 0; }
+    sqlite_exec(dstDb, "CREATE TABLE t(id INTEGER, val TEXT)", NULL, NULL, NULL);
+    
+    /* Export data */
+    if (sqlite_get_table(srcDb, "SELECT * FROM t", &result, &nRow, &nCol, NULL) == SQLITE_OK) {
+        int i, j;
+        for (i = 1; i <= nRow; i++) {
+            char sql[256];
+            char *p = sql;
+            char *s;
+            for (s = "INSERT INTO t VALUES("; *s; ) *p++ = *s++;
+            for (s = result[i * nCol]; *s; ) *p++ = *s++;  /* id */
+            *p++ = ','; *p++ = '\'';
+            for (s = result[i * nCol + 1]; *s; ) *p++ = *s++;  /* val */
+            *p++ = '\''; *p++ = ')'; *p = '\0';
+            sqlite_exec(dstDb, sql, NULL, NULL, NULL);
+        }
+        sqlite_free_table(result);
+    }
+    sqlite_close(srcDb);
+    sqlite_close(dstDb);
+    
+    /* Verify destination has 3 rows */
+    dstDb = sqlite_open(dstPath, 0, NULL);
+    if (dstDb) {
+        sqlite *saved = g_db;
+        g_db = dstDb;
+        ok = (CountRows("SELECT * FROM t") == 3);
+        ok = ok && (GetInt("SELECT id FROM t WHERE val='two'") == 2);
+        g_db = saved;
+        sqlite_close(dstDb);
+    }
+    
+    DeleteFileW(L"\\Temp\\expd_src.db");
+    DeleteFileW(L"\\Temp\\expd_dst.db");
+    return ok;
+}
+
+static int test_invalid_sql(void) {
+    int rc;
+    char *errmsg = NULL;
+    rc = sqlite_exec(g_db, "SELEKT * FORM nowhere", NULL, NULL, &errmsg);
+    if (errmsg) sqlite_freemem(errmsg);
+    return (rc != SQLITE_OK);  /* Should fail */
+}
+
+static int test_missing_table(void) {
+    int rc;
+    char *errmsg = NULL;
+    rc = sqlite_exec(g_db, "SELECT * FROM nonexistent_table_xyz", NULL, NULL, &errmsg);
+    if (errmsg) sqlite_freemem(errmsg);
+    return (rc != SQLITE_OK);  /* Should fail */
+}
+
+static int test_constraint_violation(void) {
+    int rc;
+    char *errmsg = NULL;
+    ExecOK("CREATE TABLE cv(id INTEGER PRIMARY KEY)");
+    ExecOK("INSERT INTO cv VALUES(1)");
+    rc = sqlite_exec(g_db, "INSERT INTO cv VALUES(1)", NULL, NULL, &errmsg);  /* Duplicate */
+    if (errmsg) sqlite_freemem(errmsg);
+    ExecOK("DROP TABLE cv");
+    return (rc != SQLITE_OK);  /* Should fail */
+}
+
+static int test_memory_isolation(void) {
+    sqlite *db1, *db2;
+    int ok = 0;
+    
+    db1 = sqlite_open(":memory:", 0, NULL);
+    db2 = sqlite_open(":memory:", 0, NULL);
+    if (!db1 || !db2) {
+        if (db1) sqlite_close(db1);
+        if (db2) sqlite_close(db2);
+        return 0;
+    }
+    
+    sqlite_exec(db1, "CREATE TABLE t(x INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db1, "INSERT INTO t VALUES(42)", NULL, NULL, NULL);
+    
+    /* db2 should NOT see db1's table */
+    {
+        char **result;
+        int nRow, nCol;
+        if (sqlite_get_table(db2, "SELECT * FROM t", &result, &nRow, &nCol, NULL) != SQLITE_OK) {
+            ok = 1;  /* Expected: table doesn't exist in db2 */
+        } else {
+            sqlite_free_table(result);
+            ok = 0;  /* Unexpected: table exists in db2 */
+        }
+    }
+    
+    sqlite_close(db1);
+    sqlite_close(db2);
+    return ok;
+}
+
+/*============================================================================
 ** Test Registry
 **============================================================================*/
 
@@ -648,6 +863,21 @@ static TestCase g_tests[] = {
     { "SUM aggregate",              test_sum },
     { "MIN/MAX aggregate",          test_min_max },
     { "JOIN",                       test_join },
+    
+    /* Export/Import (0.2.0) */
+    { "SQL quote escaping",         test_sql_quote_escape },
+    { "sqlite_master tables",       test_sqlite_master_tables },
+    { "sqlite_master indexes",      test_sqlite_master_indexes },
+    { "Export DB schema",           test_export_db_schema },
+    { "Export DB data",             test_export_db_data },
+    
+    /* Error handling */
+    { "Invalid SQL error",          test_invalid_sql },
+    { "Missing table error",        test_missing_table },
+    { "Constraint violation",       test_constraint_violation },
+    
+    /* Memory databases */
+    { "Memory DB isolation",        test_memory_isolation },
     
     { NULL, NULL }
 };
