@@ -57,6 +57,7 @@ static HWND g_hwndMain;
 static HWND g_hwndCB;
 static HWND g_hwndStatus;
 static HMENU g_hMenu;
+static HACCEL g_hAccel;
 static HWND g_hwndQuery;   /* SQL input */
 static HWND g_hwndResult;  /* Results output */
 static sqlite *g_db = NULL;
@@ -2026,11 +2027,22 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     WNDCLASSW wc = {0};
     MSG msg;
     RECT rcWork;
+    ACCEL accel[10];
+    int nAccel = 0;
     
     (void)hPrev; (void)lpCmd; (void)nShow;
     
     g_hInst = hInst;
     InitCommonControls();
+    
+    /* Build accelerator table */
+    accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'O'; accel[nAccel].cmd = IDM_OPENQUERY; nAccel++;
+    accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'S'; accel[nAccel].cmd = IDM_SAVEQUERY; nAccel++;
+    accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'F'; accel[nAccel].cmd = IDM_FIND; nAccel++;
+    accel[nAccel].fVirt = FVIRTKEY; accel[nAccel].key = VK_F3; accel[nAccel].cmd = IDM_FINDNEXT; nAccel++;
+    accel[nAccel].fVirt = FVIRTKEY; accel[nAccel].key = VK_F5; accel[nAccel].cmd = IDM_EXECUTE; nAccel++;
+    accel[nAccel].fVirt = FVIRTKEY; accel[nAccel].key = VK_F6; accel[nAccel].cmd = IDM_VIEWRESULT; nAccel++;
+    g_hAccel = CreateAcceleratorTableW(accel, nAccel);
     
     SystemParametersInfo(SPI_GETWORKAREA, 0, &rcWork, 0);
     
@@ -2055,9 +2067,12 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     OpenDatabase(L":memory:");
     
     while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        if (!TranslateAccelerator(g_hwndMain, g_hAccel, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
     }
     
+    if (g_hAccel) DestroyAcceleratorTable(g_hAccel);
     return (int)msg.wParam;
 }
