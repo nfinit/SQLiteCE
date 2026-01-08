@@ -332,8 +332,8 @@ static LRESULT CALLBACK LineNumProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 
 /* Subclass proc for query edit - catches Ctrl+Enter */
 static LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    /* Alt+X - Exit */
-    if (msg == WM_SYSKEYDOWN && wParam == 'X') {
+    /* Alt+X - Exit (must handle here when edit has focus) */
+    if (msg == WM_SYSKEYDOWN && (wParam == 'X' || wParam == 'x')) {
         DestroyWindow(g_hwndMain);
         return 0;
     }
@@ -466,9 +466,6 @@ static LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             return 0;
         g_searchMode = 0;  /* Any typing exits search mode */
     }
-    /* Suppress beep for Alt+X (handled by accelerator) */
-    if (msg == WM_SYSCHAR && (wParam == 'x' || wParam == 'X'))
-        return 0;
     return CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
 }
 
@@ -2378,19 +2375,26 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             hMenu = CreateMenu();
             hFile = CreatePopupMenu();
-            AppendMenuW(hFile, MF_STRING, IDM_NEW, L"&New Database...");
-            AppendMenuW(hFile, MF_STRING, IDM_OPEN, L"&Open Database...");
-            AppendMenuW(hFile, MF_STRING, IDM_CLOSE, L"&Close Database");
-            AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
-            AppendMenuW(hFile, MF_STRING, IDM_OPENQUERY, L"Open &Query...\tCtrl+O");
-            AppendMenuW(hFile, MF_STRING, IDM_SAVEQUERY, L"&Save Query...\tCtrl+S");
-            AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
-            AppendMenuW(hFile, MF_STRING, IDM_EXPORTCSV, L"&Export Results...");
-            AppendMenuW(hFile, MF_STRING, IDM_EXPORTDB, L"Export &Database...");
-            AppendMenuW(hFile, MF_STRING, IDM_IMPORTCSV, L"&Import CSV...");
-            AppendMenuW(hFile, MF_STRING, IDM_IMPORTCEDB, L"Import CE &Database...");
-            AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
-            AppendMenuW(hFile, MF_STRING, IDM_EXIT, L"E&xit\tAlt+X");
+            {
+                HMENU hExport, hImport;
+                AppendMenuW(hFile, MF_STRING, IDM_NEW, L"&New Database...");
+                AppendMenuW(hFile, MF_STRING, IDM_OPEN, L"&Open Database...");
+                AppendMenuW(hFile, MF_STRING, IDM_CLOSE, L"&Close Database");
+                AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hFile, MF_STRING, IDM_OPENQUERY, L"Open &Query...\tCtrl+O");
+                AppendMenuW(hFile, MF_STRING, IDM_SAVEQUERY, L"&Save Query...\tCtrl+S");
+                AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
+                hExport = CreatePopupMenu();
+                AppendMenuW(hExport, MF_STRING, IDM_EXPORTCSV, L"&Results...");
+                AppendMenuW(hExport, MF_STRING, IDM_EXPORTDB, L"&Database...");
+                AppendMenuW(hFile, MF_POPUP, (UINT)hExport, L"&Export");
+                hImport = CreatePopupMenu();
+                AppendMenuW(hImport, MF_STRING, IDM_IMPORTCSV, L"&CSV...");
+                AppendMenuW(hImport, MF_STRING, IDM_IMPORTCEDB, L"CE &Database...");
+                AppendMenuW(hFile, MF_POPUP, (UINT)hImport, L"&Import");
+                AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hFile, MF_STRING, IDM_EXIT, L"E&xit\tAlt+X");
+            }
             AppendMenuW(hMenu, MF_POPUP, (UINT)hFile, L"&File");
             
             hView = CreatePopupMenu();
@@ -2624,13 +2628,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             break;
         
-        case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
             /* Alt+X - Exit */
             if (wParam == 'X' && GetKeyState(VK_MENU) < 0) {
                 DestroyWindow(hwnd);
                 return 0;
             }
+            break;
+        
+        case WM_KEYDOWN:
             /* Global shortcuts (when command bar has focus) */
             if (GetKeyState(VK_CONTROL) < 0) {
                 if (wParam == 'O') { DoOpenQuery(); return 0; }
