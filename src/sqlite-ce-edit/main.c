@@ -4,6 +4,8 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#define WINCEOEM 1
+#include <windbase.h>
 #include "sqlite.h"
 
 /*============================================================================
@@ -98,9 +100,11 @@ static int g_nOutput = 0;
 #define IDM_EXPORTCSV  107
 #define IDM_EXPORTDB   108
 #define IDM_IMPORTCSV  109
+#define IDM_IMPORTCEDB 110
 #define IDM_EXECUTE  201
 #define IDM_FIND     202
 #define IDM_FINDNEXT 203
+#define IDM_EXECATCURSOR 204
 #define IDM_CLEAR    301
 #define IDM_VIEWQUERY  401
 #define IDM_VIEWRESULT 402
@@ -115,6 +119,7 @@ static int g_clearOnExec = 1;  /* Clear results before each execution */
 static int g_viewMode = 0;     /* 0 = query, 1 = results */
 static int g_showingHint = 0;  /* 1 = showing startup hint in query pane */
 static int g_suppressLineCount = 0;  /* 1 = suppress UpdateLineCount temporarily */
+static int g_execAtCursor = 0; /* 1 = execute only statement at cursor */
 static wchar_t g_lastResultStatus[64] = L"";  /* Saved result status */
 static wchar_t g_findText[128] = L"";  /* Last search text */
 static int g_searchMode = 0;  /* 1 = Enter triggers Find Next */
@@ -728,6 +733,60 @@ static void ExecuteQuery(void) {
                 LocalFree(full);
             }
         }
+    } else if (g_execAtCursor) {
+        /* Execute statement at cursor */
+        int fullLen = GetWindowTextLengthW(g_hwndQuery);
+        wchar_t *full;
+        int cursorPos = (int)selStart;
+        int stmtStart = 0, stmtEnd = fullLen;
+        int i, inStr = 0, inCmt = 0;
+        
+        if (fullLen == 0) {
+            EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
+            return;
+        }
+        
+        full = (wchar_t *)LocalAlloc(LMEM_FIXED, (fullLen + 1) * sizeof(wchar_t));
+        if (!full) return;
+        GetWindowTextW(g_hwndQuery, full, fullLen + 1);
+        
+        /* Find statement boundaries */
+        for (i = 0; i < fullLen; i++) {
+            wchar_t c = full[i];
+            if (inStr) {
+                if (c == '\'') { if (full[i+1] == '\'') i++; else inStr = 0; }
+            } else if (inCmt == 1) {
+                if (c == '\n') inCmt = 0;
+            } else if (inCmt == 2) {
+                if (c == '*' && full[i+1] == '/') { i++; inCmt = 0; }
+            } else {
+                if (c == '\'') inStr = 1;
+                else if (c == '-' && full[i+1] == '-') inCmt = 1;
+                else if (c == '/' && full[i+1] == '*') { i++; inCmt = 2; }
+                else if (c == ';') {
+                    if (i < cursorPos) stmtStart = i + 1;
+                    else if (stmtEnd == fullLen) stmtEnd = i;
+                }
+            }
+        }
+        /* Skip leading whitespace */
+        while (stmtStart < stmtEnd && (full[stmtStart] == ' ' || full[stmtStart] == '\t' || 
+               full[stmtStart] == '\r' || full[stmtStart] == '\n')) stmtStart++;
+        
+        len = stmtEnd - stmtStart;
+        wsql = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+        sql = (char *)LocalAlloc(LMEM_FIXED, (len + 1) * 3);
+        if (!wsql || !sql) {
+            LocalFree(full);
+            if (wsql) LocalFree(wsql);
+            if (sql) LocalFree(sql);
+            return;
+        }
+        for (i = 0; i < len; i++) wsql[i] = full[stmtStart + i];
+        wsql[len] = 0;
+        selStart = stmtStart;  /* For error offset calculation */
+        LocalFree(full);
     } else {
         /* Execute entire buffer */
         len = GetWindowTextLengthW(g_hwndQuery);
@@ -1332,9 +1391,12 @@ static void DoOpenQuery(void) {
                     if (ReadFile(hFile, buf, dwSize, &dwRead, NULL)) {
                         buf[dwRead] = '\0';
                         for (i = 0; i <= (int)dwRead; i++) wbuf[i] = (wchar_t)(unsigned char)buf[i];
+                        g_showingHint = 0;  /* Clear hint flag before setting text */
                         SetWindowTextW(g_hwndQuery, wbuf);
+                        UpdateWindow(g_hwndQuery);
                         wcscpy(g_szQueryPath, szFile);
                         UpdateTitle();
+                        UpdateLineNumbers();
                     }
                 }
                 if (buf) LocalFree(buf);
@@ -1953,6 +2015,351 @@ static void DoImportCSV(void) {
 }
 
 /*============================================================================
+** CEDB Import
+**============================================================================*/
+
+static wchar_t **g_cedbList;
+static int g_cedbCount;
+static int g_cedbSel;
+static HWND g_hwndCedbList;
+
+static LRESULT CALLBACK CedbDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_INITDIALOG: {
+            RECT rc;
+            int i;
+            GetClientRect(hwnd, &rc);
+            g_hwndCedbList = CreateWindowW(L"LISTBOX", NULL,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY,
+                10, 10, rc.right - 20, rc.bottom - 56,
+                hwnd, (HMENU)101, g_hInst, NULL);
+            for (i = 0; i < g_cedbCount; i++) {
+                SendMessageW(g_hwndCedbList, LB_ADDSTRING, 0, (LPARAM)g_cedbList[i]);
+            }
+            SendMessage(g_hwndCedbList, LB_SETCURSEL, 0, 0);
+            CreateWindowW(L"BUTTON", L"Import",
+                WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                10, rc.bottom - 36, 60, 26, hwnd, (HMENU)IDOK, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Cancel",
+                WS_CHILD | WS_VISIBLE,
+                80, rc.bottom - 36, 60, 26, hwnd, (HMENU)IDCANCEL, g_hInst, NULL);
+            SetFocus(g_hwndCedbList);
+            return FALSE;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK || (LOWORD(wParam) == 101 && HIWORD(wParam) == LBN_DBLCLK)) {
+                g_cedbSel = (int)SendMessage(g_hwndCedbList, LB_GETCURSEL, 0, 0);
+                if (g_cedbSel < 0) g_cedbSel = 0;
+                EndDialog(hwnd, IDOK);
+            } else if (LOWORD(wParam) == IDCANCEL) {
+                EndDialog(hwnd, IDCANCEL);
+            }
+            return TRUE;
+        case WM_CLOSE:
+            EndDialog(hwnd, IDCANCEL);
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static wchar_t g_cedbTblName[64];
+static HWND g_hwndTblEdit;
+static HWND g_hwndTblDlg;
+static WNDPROC g_pfnTblEditProc;
+
+static LRESULT CALLBACK TblEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
+        GetWindowTextW(hwnd, g_cedbTblName, 64);
+        EndDialog(g_hwndTblDlg, IDOK);
+        return 0;
+    }
+    if (msg == WM_CHAR && wParam == '\r')
+        return 0;
+    return CallWindowProc(g_pfnTblEditProc, hwnd, msg, wParam, lParam);
+}
+
+static LRESULT CALLBACK CedbNameDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_INITDIALOG: {
+            RECT rc;
+            g_hwndTblDlg = hwnd;
+            GetClientRect(hwnd, &rc);
+            CreateWindowW(L"STATIC", L"Table name:",
+                WS_CHILD | WS_VISIBLE,
+                10, 12, 70, 20, hwnd, NULL, g_hInst, NULL);
+            g_hwndTblEdit = CreateWindowW(L"EDIT", g_cedbTblName,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+                80, 10, rc.right - 90, 24,
+                hwnd, (HMENU)101, g_hInst, NULL);
+            g_pfnTblEditProc = (WNDPROC)SetWindowLong(g_hwndTblEdit, GWL_WNDPROC, (LONG)TblEditProc);
+            CreateWindowW(L"BUTTON", L"Import",
+                WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                10, 44, 60, 26, hwnd, (HMENU)IDOK, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Cancel",
+                WS_CHILD | WS_VISIBLE,
+                80, 44, 60, 26, hwnd, (HMENU)IDCANCEL, g_hInst, NULL);
+            SendMessage(g_hwndTblEdit, EM_SETSEL, 0, -1);
+            SetFocus(g_hwndTblEdit);
+            return FALSE;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK) {
+                GetWindowTextW(g_hwndTblEdit, g_cedbTblName, 64);
+                EndDialog(hwnd, IDOK);
+            } else if (LOWORD(wParam) == IDCANCEL) {
+                EndDialog(hwnd, IDCANCEL);
+            }
+            return TRUE;
+        case WM_CLOSE:
+            EndDialog(hwnd, IDCANCEL);
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static void DoImportCEDB(void) {
+    HANDLE hEnum, hDb;
+    CEOID oid, recOid;
+    CEOIDINFO oidInfo;
+    wchar_t *dbNames[64];
+    CEOID dbOids[64];
+    int dbCount = 0;
+    int i, sel = 0;
+    WORD nProps;
+    CEPROPVAL *pProps = NULL;
+    DWORD cbBuf = 0;
+    int rowCount = 0;
+    char sql[4096];
+    char *p;
+    wchar_t tblName[64];
+    
+    if (!g_db) {
+        MessageBoxW(g_hwndMain, L"No database open.", L"Import", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    
+    /* Enumerate CE databases */
+    hEnum = (HANDLE)CeFindFirstDatabase(0);
+    if (hEnum == INVALID_HANDLE_VALUE) {
+        MessageBoxW(g_hwndMain, L"Could not enumerate databases.", L"Import", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    while ((oid = CeFindNextDatabase(hEnum)) != 0 && dbCount < 64) {
+        if (CeOidGetInfo(oid, &oidInfo) && oidInfo.wObjType == OBJTYPE_DATABASE) {
+            dbNames[dbCount] = (wchar_t *)LocalAlloc(LMEM_FIXED, 64 * sizeof(wchar_t));
+            if (dbNames[dbCount]) {
+                lstrcpyW(dbNames[dbCount], oidInfo.infDatabase.szDbaseName);
+                dbOids[dbCount] = oid;
+                dbCount++;
+            }
+        }
+    }
+    CloseHandle(hEnum);
+    
+    if (dbCount == 0) {
+        MessageBoxW(g_hwndMain, L"No CE databases found.", L"Import", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    
+    /* Show selection dialog */
+    {
+        struct {
+            DLGTEMPLATE tmpl;
+            WORD menu, wndclass, title;
+        } dlg;
+        
+        g_cedbList = dbNames;
+        g_cedbCount = dbCount;
+        g_cedbSel = 0;
+        
+        memset(&dlg, 0, sizeof(dlg));
+        dlg.tmpl.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
+        dlg.tmpl.cx = 140;
+        dlg.tmpl.cy = 100;
+        dlg.tmpl.x = 20;
+        dlg.tmpl.y = 20;
+        
+        if (DialogBoxIndirectW(g_hInst, &dlg.tmpl, g_hwndMain, CedbDlgProc) != IDOK) {
+            goto cleanup;
+        }
+        sel = g_cedbSel;
+    }
+    
+    /* Extract basename for table name */
+    {
+        wchar_t *src = dbNames[sel];
+        wchar_t *lastSlash = src;
+        wchar_t *dst = tblName;
+        while (*src) {
+            if (*src == '\\' || *src == '/') lastSlash = src + 1;
+            src++;
+        }
+        /* Copy, stripping spaces */
+        src = lastSlash;
+        while (*src) {
+            if (*src != ' ') *dst++ = *src;
+            src++;
+        }
+        *dst = 0;
+    }
+    /* Strip trailing "Database" or "DB" suffix */
+    {
+        int len = lstrlenW(tblName);
+        if (len > 8 && lstrcmpiW(tblName + len - 8, L"Database") == 0) {
+            tblName[len - 8] = 0;
+        } else if (len > 2 && lstrcmpiW(tblName + len - 2, L"DB") == 0) {
+            tblName[len - 2] = 0;
+        }
+    }
+    
+    /* Confirm import with editable table name */
+    {
+        struct {
+            DLGTEMPLATE tmpl;
+            WORD menu, wndclass, title;
+        } dlg;
+        
+        lstrcpyW(g_cedbTblName, tblName);
+        
+        memset(&dlg, 0, sizeof(dlg));
+        dlg.tmpl.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
+        dlg.tmpl.cx = 140;
+        dlg.tmpl.cy = 50;
+        dlg.tmpl.x = 20;
+        dlg.tmpl.y = 20;
+        
+        if (DialogBoxIndirectW(g_hInst, &dlg.tmpl, g_hwndMain, CedbNameDlgProc) != IDOK) {
+            goto cleanup;
+        }
+        lstrcpyW(tblName, g_cedbTblName);
+    }
+    
+    /* Open the CE database */
+    oid = dbOids[sel];
+    hDb = CeOpenDatabase(&oid, NULL, 0, CEDB_AUTOINCREMENT, NULL);
+    if (hDb == INVALID_HANDLE_VALUE) {
+        MessageBoxW(g_hwndMain, L"Could not open CE database.", L"Import", MB_OK | MB_ICONERROR);
+        goto cleanup;
+    }
+    
+    /* Create table with generic columns - we'll discover schema from first record */
+    p = sql;
+    { const char *t = "CREATE TABLE \""; while (*t) *p++ = *t++; }
+    for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
+    { const char *t = "\" (ceoid INTEGER PRIMARY KEY, data TEXT)"; while (*t) *p++ = *t++; }
+    *p = 0;
+    
+    {
+        char *errmsg = NULL;
+        int rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
+        if (rc != SQLITE_OK) {
+            wchar_t wmsg[256];
+            wsprintfW(wmsg, L"Could not create table: %S", errmsg ? errmsg : "unknown error");
+            MessageBoxW(g_hwndMain, wmsg, L"Import", MB_OK | MB_ICONERROR);
+            if (errmsg) sqlite_freemem(errmsg);
+            CloseHandle(hDb);
+            goto cleanup;
+        }
+    }
+    
+    /* Read records */
+    nProps = 0;
+    while ((recOid = CeReadRecordProps(hDb, CEDB_ALLOWREALLOC, &nProps, NULL, (LPBYTE*)&pProps, &cbBuf)) != 0) {
+        /* Build INSERT with record data as text */
+        p = sql;
+        { const char *t = "INSERT INTO \""; while (*t) *p++ = *t++; }
+        for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
+        { const char *t = "\" (ceoid, data) VALUES ("; while (*t) *p++ = *t++; }
+        
+        /* CEOID as integer */
+        { 
+            char num[16]; char *np = num + 14; DWORD n = recOid;
+            num[15] = 0; *np = 0;
+            if (n == 0) *--np = '0';
+            else while (n > 0) { *--np = (char)('0' + (n % 10)); n /= 10; }
+            while (*np) *p++ = *np++;
+        }
+        
+        { const char *t = ", '"; while (*t) *p++ = *t++; }
+        
+        /* Concatenate property values as text */
+        for (i = 0; i < nProps && (p - sql) < 3800; i++) {
+            WORD type = LOWORD(pProps[i].propid);
+            if (i > 0) *p++ = '|';
+            
+            if (type == CEVT_LPWSTR && pProps[i].val.lpwstr) {
+                wchar_t *ws = pProps[i].val.lpwstr;
+                while (*ws && (p - sql) < 3800) {
+                    if (*ws == '\'') *p++ = '\'';
+                    *p++ = (char)*ws++;
+                }
+            } else if (type == CEVT_I4) {
+                char num[16]; char *np = num + 14; long n = pProps[i].val.lVal;
+                int neg = 0;
+                num[15] = 0; *np = 0;
+                if (n < 0) { neg = 1; n = -n; }
+                if (n == 0) *--np = '0';
+                else while (n > 0) { *--np = '0' + (n % 10); n /= 10; }
+                if (neg) *--np = '-';
+                while (*np) *p++ = *np++;
+            } else if (type == CEVT_I2) {
+                char num[16]; char *np = num + 14; int n = pProps[i].val.iVal;
+                int neg = 0;
+                num[15] = 0; *np = 0;
+                if (n < 0) { neg = 1; n = -n; }
+                if (n == 0) *--np = '0';
+                else while (n > 0) { *--np = '0' + (n % 10); n /= 10; }
+                if (neg) *--np = '-';
+                while (*np) *p++ = *np++;
+            }
+            /* Other types: CEVT_FILETIME, CEVT_BLOB, etc. - skip for now */
+        }
+        
+        { const char *t = "')"; while (*t) *p++ = *t++; }
+        *p = 0;
+        
+        sqlite_exec(g_db, sql, NULL, NULL, NULL);
+        rowCount++;
+        
+        if (pProps) { LocalFree(pProps); pProps = NULL; }
+        cbBuf = 0;
+        nProps = 0;
+    }
+    
+    CloseHandle(hDb);
+    UpdateDbSize();
+    
+    /* Show result in results view */
+    ClearOutput();
+    {
+        char msg[256];
+        char *mp = msg;
+        const char *t = "Imported ";
+        while (*t) *mp++ = *t++;
+        { int n = rowCount; char nb[16]; char *np = nb + 14; nb[15] = 0; *np = 0;
+          if (n == 0) *--np = '0'; else while (n > 0) { *--np = '0' + (n % 10); n /= 10; }
+          while (*np) *mp++ = *np++; }
+        t = " records from '"; while (*t) *mp++ = *t++;
+        for (i = 0; dbNames[sel][i]; i++) *mp++ = (char)dbNames[sel][i];
+        t = "' to table '"; while (*t) *mp++ = *t++;
+        for (i = 0; tblName[i]; i++) *mp++ = (char)tblName[i];
+        t = "'."; while (*t) *mp++ = *t++;
+        *mp = 0;
+        OutputLine(msg);
+    }
+    FlushOutput();
+    SwitchView(1);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+    
+cleanup:
+    for (i = 0; i < dbCount; i++) {
+        if (dbNames[i]) LocalFree(dbNames[i]);
+    }
+}
+
+/*============================================================================
 ** Window Procedure
 **============================================================================*/
 
@@ -1981,6 +2388,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hFile, MF_STRING, IDM_EXPORTCSV, L"&Export Results...");
             AppendMenuW(hFile, MF_STRING, IDM_EXPORTDB, L"Export &Database...");
             AppendMenuW(hFile, MF_STRING, IDM_IMPORTCSV, L"&Import CSV...");
+            AppendMenuW(hFile, MF_STRING, IDM_IMPORTCEDB, L"Import CE &Database...");
             AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hFile, MF_STRING, IDM_EXIT, L"E&xit\tAlt+X");
             AppendMenuW(hMenu, MF_POPUP, (UINT)hFile, L"&File");
@@ -1991,6 +2399,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             hQuery = CreatePopupMenu();
             AppendMenuW(hQuery, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
+            AppendMenuW(hQuery, MF_STRING, IDM_EXECATCURSOR, L"Execute at &Cursor");
             AppendMenuW(hQuery, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hQuery, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
             AppendMenuW(hQuery, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
@@ -2170,10 +2579,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_EXPORTCSV: DoExportCSV(); break;
                 case IDM_EXPORTDB: DoExportDb(); break;
                 case IDM_IMPORTCSV: DoImportCSV(); break;
+                case IDM_IMPORTCEDB: DoImportCEDB(); break;
                 case IDM_EXIT:    DestroyWindow(hwnd); break;
                 case IDM_EXECUTE: ExecuteQuery(); break;
                 case IDM_FIND:    DoFind(); break;
                 case IDM_FINDNEXT: DoFindNext(); break;
+                case IDM_EXECATCURSOR:
+                    g_execAtCursor = !g_execAtCursor;
+                    CheckMenuItem(g_hMenu, IDM_EXECATCURSOR, g_execAtCursor ? MF_CHECKED : MF_UNCHECKED);
+                    break;
                 case IDM_ABOUT:
                     DoAbout();
                     break;
