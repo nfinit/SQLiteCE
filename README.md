@@ -1,4 +1,6 @@
-SQLite/CE: A true relational database engine for Handheld and Palm-size PCs
----------------------------------------------------------------------------
+SQLite/CE: A true transactional relational database engine for Windows CE
+-------------------------------------------------------------------------
 
-**SQLite/CE** is an implementation of SQLite 2.8.17 for Windows CE 2.0 and later, allowing handheld PCs to support proper relational databases and complex SQL queries. SQLite/CE ships as a standalone DLL which can be used with other applications, but also includes a separate graphical query editor (**SQLite/CEdit**) for directly working with databases on your device.
+**SQLite/CE** is an port of SQLite 2.8.17 to Windows CE 2.0 and later, allowing Handheld, Palm-size and Pocket PCs to support complex relational databases and SQL queries. SQLite/CE can support your data-driven applications as a standalone DLL or can be used to directly manage personal databases with the **SQLite/CEdit** advanced query editor tool.
+
+SQLite/CE is currently in pre-release state and may have bugs, particularly on post-CE 2.0 or non-SH3 targets where it has not yet been tested.
