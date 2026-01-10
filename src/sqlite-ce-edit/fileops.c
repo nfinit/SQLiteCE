@@ -57,6 +57,7 @@ void DoFileOpen(void) {
     ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
     ofn.lpstrTitle = L"Open Database";
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    if (g_szDefaultDbPath[0]) ofn.lpstrInitialDir = g_szDefaultDbPath;
     
     if (GetOpenFileNameW(&ofn)) {
         OpenDatabase(szFile);
@@ -74,7 +75,7 @@ void DoOpenQuery(void) {
     DWORD dwSize, dwRead;
     char *buf;
     wchar_t *wbuf;
-    int i;
+    int i, j, extraCR;
     
     memset(&ofn, 0, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
@@ -84,18 +85,35 @@ void DoOpenQuery(void) {
     ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
     ofn.lpstrTitle = L"Open Query";
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    ofn.lpstrInitialDir = g_szLastQueryDir;
     
     if (GetOpenFileNameW(&ofn)) {
+        /* Remember directory for next time */
+        lstrcpyW(g_szLastQueryDir, szFile);
+        for (i = lstrlenW(g_szLastQueryDir) - 1; i >= 0; i--) {
+            if (g_szLastQueryDir[i] == '\\') { g_szLastQueryDir[i] = 0; break; }
+        }
+        if (g_szLastQueryDir[0] == 0) lstrcpyW(g_szLastQueryDir, L"\\");
+        
         hFile = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
         if (hFile != INVALID_HANDLE_VALUE) {
             dwSize = GetFileSize(hFile, NULL);
             if (dwSize < 65536) {
                 buf = (char*)LocalAlloc(LMEM_FIXED, dwSize + 1);
-                wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwSize + 1) * sizeof(wchar_t));
-                if (buf && wbuf) {
-                    if (ReadFile(hFile, buf, dwSize, &dwRead, NULL)) {
-                        buf[dwRead] = '\0';
-                        for (i = 0; i <= (int)dwRead; i++) wbuf[i] = (wchar_t)(unsigned char)buf[i];
+                if (buf && ReadFile(hFile, buf, dwSize, &dwRead, NULL)) {
+                    buf[dwRead] = '\0';
+                    /* Count LFs not preceded by CR */
+                    extraCR = 0;
+                    for (i = 0; i < (int)dwRead; i++)
+                        if (buf[i] == '\n' && (i == 0 || buf[i-1] != '\r')) extraCR++;
+                    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwRead + extraCR + 1) * sizeof(wchar_t));
+                    if (wbuf) {
+                        for (i = 0, j = 0; i < (int)dwRead; i++) {
+                            if (buf[i] == '\n' && (i == 0 || buf[i-1] != '\r'))
+                                wbuf[j++] = '\r';
+                            wbuf[j++] = (wchar_t)(unsigned char)buf[i];
+                        }
+                        wbuf[j] = 0;
                         g_showingHint = 0;
                         SetWindowTextW(g_hwndQuery, wbuf);
                         UpdateWindow(g_hwndQuery);
@@ -103,10 +121,10 @@ void DoOpenQuery(void) {
                         g_queryDirty = 0;
                         UpdateTitle();
                         UpdateLineNumbers();
+                        LocalFree(wbuf);
                     }
                 }
                 if (buf) LocalFree(buf);
-                if (wbuf) LocalFree(wbuf);
             }
             CloseHandle(hFile);
         }

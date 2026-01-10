@@ -7,50 +7,105 @@
 void UpdateLineCount(void) {
     wchar_t buf[32];
     DWORD sel;
-    int cur, total;
+    int cur, total, textLen, i;
+    wchar_t *text;
     if (g_suppressLineCount) {
         g_suppressLineCount--;
         return;
     }
     SendMessage(g_hwndQuery, EM_GETSEL, (WPARAM)&sel, 0);
-    cur = (int)SendMessage(g_hwndQuery, EM_LINEFROMCHAR, sel, 0) + 1;
-    total = (int)SendMessage(g_hwndQuery, EM_GETLINECOUNT, 0, 0);
+    textLen = GetWindowTextLengthW(g_hwndQuery);
+    
+    /* Count logical lines by counting newlines */
+    cur = 1;
+    total = 1;
+    if (textLen > 0) {
+        text = (wchar_t*)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
+        if (text) {
+            GetWindowTextW(g_hwndQuery, text, textLen + 1);
+            for (i = 0; i < textLen; i++) {
+                if (text[i] == '\n') {
+                    total++;
+                    if (i < (int)sel) cur++;
+                }
+            }
+            LocalFree(text);
+        }
+    }
     wsprintfW(buf, L"Ln %d of %d", cur, total);
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)buf);
 }
 
 void UpdateLineNumbers(void) {
     wchar_t buf[4096];
-    int i, total, firstVisible, pos = 0;
+    wchar_t *text = NULL;
+    int i, visLines, firstVisible, pos = 0, textLen;
+    int charIdx, logicalLine;
     if (!g_showLineNumbers || !g_hwndLineNum || !g_hFontQuery) return;
-    total = (int)SendMessage(g_hwndQuery, EM_GETLINECOUNT, 0, 0);
     
-    /* Auto-size gutter width based on line count */
+    visLines = (int)SendMessage(g_hwndQuery, EM_GETLINECOUNT, 0, 0);
+    textLen = GetWindowTextLengthW(g_hwndQuery);
+    
+    /* Get text once for all operations */
+    if (textLen > 0) {
+        text = (wchar_t*)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
+        if (text) GetWindowTextW(g_hwndQuery, text, textLen + 1);
+    }
+    
+    /* Count logical lines for gutter width */
     {
-        HDC hdc = GetDC(g_hwndLineNum);
-        HFONT hOld = (HFONT)SelectObject(hdc, g_hFontQuery);
-        SIZE sz;
-        wchar_t numBuf[16];
-        int newWidth;
-        wsprintfW(numBuf, L"%d", total);
-        GetTextExtentPoint32W(hdc, numBuf, lstrlenW(numBuf), &sz);
-        newWidth = sz.cx + 10;
-        if (newWidth < 20) newWidth = 20;
-        SelectObject(hdc, hOld);
-        ReleaseDC(g_hwndLineNum, hdc);
-        if (newWidth != g_lineNumWidth) {
-            g_lineNumWidth = newWidth;
-            SendMessage(g_hwndMain, WM_SIZE, 0, 0);
-            UpdateWindow(g_hwndMain);
+        int logicalTotal = 1;
+        if (text) {
+            for (i = 0; i < textLen; i++)
+                if (text[i] == '\n') logicalTotal++;
+        }
+        /* Auto-size gutter width */
+        {
+            HDC hdc = GetDC(g_hwndLineNum);
+            HFONT hOld = (HFONT)SelectObject(hdc, g_hFontQuery);
+            SIZE sz;
+            wchar_t numBuf[16];
+            int newWidth;
+            wsprintfW(numBuf, L"%d", logicalTotal);
+            GetTextExtentPoint32W(hdc, numBuf, lstrlenW(numBuf), &sz);
+            newWidth = sz.cx + 10;
+            if (newWidth < 20) newWidth = 20;
+            SelectObject(hdc, hOld);
+            ReleaseDC(g_hwndLineNum, hdc);
+            if (newWidth != g_lineNumWidth) {
+                g_lineNumWidth = newWidth;
+                SendMessage(g_hwndMain, WM_SIZE, 0, 0);
+                UpdateWindow(g_hwndMain);
+            }
         }
     }
     
     firstVisible = (int)SendMessage(g_hwndQuery, EM_GETFIRSTVISIBLELINE, 0, 0);
-    for (i = firstVisible + 1; i <= total && pos < 4000; i++) {
-        pos += wsprintfW(buf + pos, L"%d\r\n", i);
+    
+    /* Count logical line number at first visible line */
+    charIdx = (int)SendMessage(g_hwndQuery, EM_LINEINDEX, firstVisible, 0);
+    logicalLine = 1;
+    if (text) {
+        for (i = 0; i < charIdx && i < textLen; i++)
+            if (text[i] == '\n') logicalLine++;
+    }
+    
+    /* For each visible line, check if it starts a new logical line */
+    for (i = firstVisible; i < visLines && pos < 4000; i++) {
+        charIdx = (int)SendMessage(g_hwndQuery, EM_LINEINDEX, i, 0);
+        if (i == 0 || (text && charIdx > 0 && text[charIdx - 1] == '\n')) {
+            /* Start of logical line */
+            pos += wsprintfW(buf + pos, L"%d\r\n", logicalLine);
+            logicalLine++;
+        } else {
+            /* Wrapped continuation - blank */
+            pos += wsprintfW(buf + pos, L"\r\n");
+        }
     }
     buf[pos] = 0;
     SetWindowTextW(g_hwndLineNum, buf);
+    
+    if (text) LocalFree(text);
 }
 
 void SyncLineNumScroll(void) {
@@ -143,8 +198,8 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             DoFindNext();
             return 0;
         }
-        /* Ctrl+Enter or F5 - Execute */
-        if ((wParam == VK_RETURN && ctrl) || wParam == VK_F5) {
+        /* Ctrl+Enter, Ctrl+E, or F5 - Execute */
+        if ((wParam == VK_RETURN && ctrl) || (wParam == 'E' && ctrl) || wParam == VK_F5) {
             ExecuteQuery();
             return 0;
         }
@@ -260,6 +315,10 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_KEYDOWN) {
         int ctrl = GetKeyState(VK_CONTROL) < 0;
+        /* Allow navigation keys through */
+        if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT ||
+            wParam == VK_PRIOR || wParam == VK_NEXT || wParam == VK_HOME || wParam == VK_END)
+            return CallWindowProc(g_pfnResultProc, hwnd, msg, wParam, lParam);
         /* Ctrl+A - Select all */
         if (ctrl && wParam == 'A') {
             SendMessage(hwnd, EM_SETSEL, 0, -1);
@@ -268,8 +327,8 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         /* Ctrl+C - Copy (pass through) */
         if (ctrl && wParam == 'C')
             return CallWindowProc(g_pfnResultProc, hwnd, msg, wParam, lParam);
-        /* F5 - Execute */
-        if (wParam == VK_F5) {
+        /* F5 or Ctrl+E - Execute */
+        if (wParam == VK_F5 || (ctrl && wParam == 'E')) {
             ExecuteQuery();
             return 0;
         }

@@ -62,7 +62,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hQuery, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
             AppendMenuW(hMenu, MF_POPUP, (UINT)hQuery, L"&Query");
             
-            AppendMenuW(hMenu, MF_STRING, IDM_ABOUT, L"&About");
+            {
+                HMENU hHelp = CreatePopupMenu();
+                AppendMenuW(hHelp, MF_STRING, IDM_ABOUT, L"&About...");
+                AppendMenuW(hMenu, MF_POPUP, (UINT)hHelp, L"&Help");
+            }
             
             g_hMenu = hMenu;
             CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hMenu, 0);

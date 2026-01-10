@@ -155,6 +155,7 @@ extern wchar_t g_lastResultStatus[64];
 extern wchar_t g_findText[128];
 extern int g_searchMode;
 extern wchar_t g_szQueryPath[MAX_PATH];
+extern wchar_t g_szLastQueryDir[MAX_PATH];
 extern int g_queryDirty;
 extern int g_showErrorMsgBox;
 extern wchar_t g_szDefaultDbPath[MAX_PATH];
