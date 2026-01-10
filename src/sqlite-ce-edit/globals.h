@@ -85,12 +85,17 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_FIND     202
 #define IDM_FINDNEXT 203
 #define IDM_EXECATCURSOR 204
+#define IDM_EXECATCURSOR_PLACEHOLDER 205
 #define IDM_CLEAR    301
 #define IDM_VIEWQUERY  401
 #define IDM_VIEWRESULT 402
 #define IDM_FONTSIZE   403
 #define IDM_OPTIONS    404
 #define IDM_ABOUT    501
+#define IDM_RECENT_BASE 600
+#define IDM_RECENT_MAX  604
+#define IDM_RECENT_QUERY_BASE 610
+#define IDM_RECENT_QUERY_MAX  614
 
 /*============================================================================
 ** Resource IDs
@@ -105,13 +110,15 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 **============================================================================*/
 
 #define TB_PLAY    0
-#define TB_QUERY   1
-#define TB_RESULTS 2
-#define TB_GRID    3
-#define TB_OPEN    4
-#define TB_CLOSE   5
-#define TB_NEW     6
-#define TB_STD_BASE 7
+#define TB_EXECAT  1
+#define TB_STOP    2
+#define TB_QUERY   3
+#define TB_RESULTS 4
+#define TB_GRID    5
+#define TB_OPEN    6
+#define TB_CLOSE   7
+#define TB_NEW     8
+#define TB_STD_BASE 9
 #define TB_VIEW_BASE (TB_STD_BASE + 15)
 
 /*============================================================================
@@ -123,6 +130,8 @@ extern HWND g_hwndMain;
 extern HWND g_hwndCB;
 extern HWND g_hwndStatus;
 extern HMENU g_hMenu;
+extern HMENU g_hRecentDbMenu;
+extern HMENU g_hRecentQueryMenu;
 extern HACCEL g_hAccel;
 extern HBRUSH g_hBrushWhite;
 extern HWND g_hwndQuery;
@@ -159,6 +168,12 @@ extern wchar_t g_szLastQueryDir[MAX_PATH];
 extern int g_queryDirty;
 extern int g_showErrorMsgBox;
 extern wchar_t g_szDefaultDbPath[MAX_PATH];
+
+#define MAX_RECENT_FILES 5
+extern wchar_t g_recentFiles[MAX_RECENT_FILES][MAX_PATH];
+extern int g_recentCount;
+extern wchar_t g_recentQueries[MAX_RECENT_FILES][MAX_PATH];
+extern int g_recentQueryCount;
 
 /*============================================================================
 ** Function Declarations - Output (output.c)
@@ -214,6 +229,11 @@ void DoExportCSV(void);
 void DoExportDb(void);
 void DoImportCSV(void);
 void DoImportCEDB(void);
+void AddRecentFile(const wchar_t *path);
+void UpdateRecentMenu(void);
+void AddRecentQuery(const wchar_t *path);
+void UpdateRecentQueryMenu(void);
+void OpenQueryFile(const wchar_t *path);
 
 /*============================================================================
 ** Function Declarations - Find (find.c)

@@ -179,6 +179,8 @@ void ExecuteQuery(void) {
         if (!wsql || !sql) {
             if (wsql) LocalFree(wsql);
             if (sql) LocalFree(sql);
+            EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
             return;
         }
         SendMessage(g_hwndQuery, EM_SETSEL, selStart, selEnd);
@@ -211,7 +213,11 @@ void ExecuteQuery(void) {
         }
         
         full = (wchar_t *)LocalAlloc(LMEM_FIXED, (fullLen + 1) * sizeof(wchar_t));
-        if (!full) return;
+        if (!full) {
+            EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
+            return;
+        }
         GetWindowTextW(g_hwndQuery, full, fullLen + 1);
         
         /* Find statement boundaries */
@@ -253,13 +259,18 @@ void ExecuteQuery(void) {
     } else {
         /* Execute entire buffer */
         len = GetWindowTextLengthW(g_hwndQuery);
-        if (len == 0) return;
+        if (len == 0 || g_showingHint) {
+            SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Nothing to execute");
+            return;
+        }
         
         wsql = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
         sql = (char *)LocalAlloc(LMEM_FIXED, (len + 1) * 3);
         if (!wsql || !sql) {
             if (wsql) LocalFree(wsql);
             if (sql) LocalFree(sql);
+            EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
             return;
         }
         GetWindowTextW(g_hwndQuery, wsql, len + 1);

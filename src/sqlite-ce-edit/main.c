@@ -19,7 +19,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             RECT rc;
             int cbHeight;
             HMENU hMenu, hFile, hQuery;
-            TBBUTTON tbButtons[11];
+            TBBUTTON tbButtons[13];
             
             g_hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
             
@@ -33,11 +33,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 hDatabase = CreatePopupMenu();
                 AppendMenuW(hDatabase, MF_STRING, IDM_NEW, L"&New...");
                 AppendMenuW(hDatabase, MF_STRING, IDM_OPEN, L"&Open...");
+                g_hRecentDbMenu = CreatePopupMenu();
+                AppendMenuW(g_hRecentDbMenu, MF_STRING | MF_GRAYED, 0, L"(none)");
+                AppendMenuW(hDatabase, MF_POPUP, (UINT)g_hRecentDbMenu, L"&Recent");
                 AppendMenuW(hDatabase, MF_STRING, IDM_CLOSE, L"&Close");
                 AppendMenuW(hFile, MF_POPUP, (UINT)hDatabase, L"&Database");
                 hQueryFile = CreatePopupMenu();
                 AppendMenuW(hQueryFile, MF_STRING, IDM_OPENQUERY, L"&Open...\tCtrl+O");
                 AppendMenuW(hQueryFile, MF_STRING, IDM_SAVEQUERY, L"&Save...\tCtrl+S");
+                g_hRecentQueryMenu = CreatePopupMenu();
+                AppendMenuW(g_hRecentQueryMenu, MF_STRING | MF_GRAYED, 0, L"(none)");
+                AppendMenuW(hQueryFile, MF_POPUP, (UINT)g_hRecentQueryMenu, L"&Recent");
                 AppendMenuW(hFile, MF_POPUP, (UINT)hQueryFile, L"&Query");
                 AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
                 hExport = CreatePopupMenu();
@@ -72,7 +78,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hMenu, 0);
             
             /* Add toolbar bitmaps */
-            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 7, 0, 0);
+            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 9, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_STD_SMALL_COLOR, 15, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_VIEW_SMALL_COLOR, 12, 0, 0);
             
@@ -93,36 +99,43 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             tbButtons[3].fsStyle = TBSTYLE_SEP;
             
-            tbButtons[4].iBitmap = TB_STD_BASE + STD_FIND;
-            tbButtons[4].idCommand = IDM_FONTSIZE;
-            tbButtons[4].fsState = TBSTATE_ENABLED;
-            tbButtons[4].fsStyle = TBSTYLE_BUTTON;
+            tbButtons[4].iBitmap = TB_EXECAT;
+            tbButtons[4].idCommand = IDM_EXECATCURSOR;
+            tbButtons[4].fsState = TBSTATE_ENABLED | (g_execAtCursor ? TBSTATE_CHECKED : 0);
+            tbButtons[4].fsStyle = TBSTYLE_CHECK;
             
             tbButtons[5].fsStyle = TBSTYLE_SEP;
             
-            tbButtons[6].iBitmap = TB_OPEN;
-            tbButtons[6].idCommand = IDM_OPEN;
+            tbButtons[6].iBitmap = TB_STD_BASE + STD_FIND;
+            tbButtons[6].idCommand = IDM_FONTSIZE;
             tbButtons[6].fsState = TBSTATE_ENABLED;
             tbButtons[6].fsStyle = TBSTYLE_BUTTON;
             
-            tbButtons[7].iBitmap = TB_CLOSE;
-            tbButtons[7].idCommand = IDM_CLOSE;
-            tbButtons[7].fsState = TBSTATE_ENABLED;
-            tbButtons[7].fsStyle = TBSTYLE_BUTTON;
+            tbButtons[7].fsStyle = TBSTYLE_SEP;
             
-            tbButtons[8].iBitmap = TB_NEW;
-            tbButtons[8].idCommand = IDM_NEW;
+            tbButtons[8].iBitmap = TB_OPEN;
+            tbButtons[8].idCommand = IDM_OPEN;
             tbButtons[8].fsState = TBSTATE_ENABLED;
             tbButtons[8].fsStyle = TBSTYLE_BUTTON;
             
-            tbButtons[9].fsStyle = TBSTYLE_SEP;
+            tbButtons[9].iBitmap = TB_CLOSE;
+            tbButtons[9].idCommand = IDM_CLOSE;
+            tbButtons[9].fsState = TBSTATE_ENABLED;
+            tbButtons[9].fsStyle = TBSTYLE_BUTTON;
             
-            tbButtons[10].iBitmap = TB_PLAY;
-            tbButtons[10].idCommand = IDM_EXECUTE;
+            tbButtons[10].iBitmap = TB_NEW;
+            tbButtons[10].idCommand = IDM_NEW;
             tbButtons[10].fsState = TBSTATE_ENABLED;
             tbButtons[10].fsStyle = TBSTYLE_BUTTON;
             
-            CommandBar_AddButtons(g_hwndCB, 11, tbButtons);
+            tbButtons[11].fsStyle = TBSTYLE_SEP;
+            
+            tbButtons[12].iBitmap = TB_PLAY;
+            tbButtons[12].idCommand = IDM_EXECUTE;
+            tbButtons[12].fsState = TBSTATE_ENABLED;
+            tbButtons[12].fsStyle = TBSTYLE_BUTTON;
+            
+            CommandBar_AddButtons(g_hwndCB, 13, tbButtons);
             
             CommandBar_AddAdornments(g_hwndCB, 0, 0);
             cbHeight = CommandBar_Height(g_hwndCB);
@@ -217,6 +230,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_IMPORTCEDB: DoImportCEDB(); break;
                 case IDM_EXIT:    SendMessage(hwnd, WM_CLOSE, 0, 0); break;
                 case IDM_EXECUTE: ExecuteQuery(); break;
+                case IDM_EXECATCURSOR:
+                    g_execAtCursor = !g_execAtCursor;
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
+                    break;
                 case IDM_FIND:    DoFind(); break;
                 case IDM_FINDNEXT: DoFindNext(); break;
                 case IDM_ABOUT:
@@ -243,6 +260,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     if (HIWORD(wParam) == EN_CHANGE && g_viewMode == 0) {
                         UpdateLineCount();
                         if (!g_showingHint) g_queryDirty = 1;
+                    }
+                    break;
+                default:
+                    /* Handle recent files */
+                    if (LOWORD(wParam) >= IDM_RECENT_BASE && LOWORD(wParam) <= IDM_RECENT_MAX) {
+                        int idx = LOWORD(wParam) - IDM_RECENT_BASE;
+                        if (idx < g_recentCount && g_recentFiles[idx][0])
+                            OpenDatabase(g_recentFiles[idx]);
+                    }
+                    /* Handle recent queries */
+                    if (LOWORD(wParam) >= IDM_RECENT_QUERY_BASE && LOWORD(wParam) <= IDM_RECENT_QUERY_MAX) {
+                        int idx = LOWORD(wParam) - IDM_RECENT_QUERY_BASE;
+                        if (idx < g_recentQueryCount && g_recentQueries[idx][0])
+                            OpenQueryFile(g_recentQueries[idx]);
                     }
                     break;
             }

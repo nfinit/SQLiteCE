@@ -136,6 +136,7 @@ int OpenDatabase(const wchar_t *path) {
     }
     
     lstrcpyW(g_szDbPath, path);
+    AddRecentFile(path);
     UpdateTitle();
     UpdateDbSize();
     SetStatusResult(L"");

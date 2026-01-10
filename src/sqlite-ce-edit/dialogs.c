@@ -255,6 +255,9 @@ void DoOptions(void) {
         g_showErrorMsgBox = g_optErrorMsgBox;
         lstrcpyW(g_szDefaultDbPath, g_optDbPath);
         
+        /* Sync toolbar button state */
+        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
+        
         /* Handle line numbers toggle */
         if (g_optLineNums != g_showLineNumbers) {
             g_showLineNumbers = g_optLineNums;

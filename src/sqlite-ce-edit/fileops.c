@@ -65,17 +65,147 @@ void DoFileOpen(void) {
 }
 
 /*============================================================================
+** Recent Files
+**============================================================================*/
+
+void AddRecentFile(const wchar_t *path) {
+    int i, j;
+    /* Don't add :memory: */
+    if (lstrcmpW(path, L":memory:") == 0) return;
+    /* Check if already in list, move to top if so */
+    for (i = 0; i < g_recentCount; i++) {
+        if (lstrcmpiW(g_recentFiles[i], path) == 0) {
+            /* Move to top */
+            for (j = i; j > 0; j--)
+                lstrcpyW(g_recentFiles[j], g_recentFiles[j-1]);
+            lstrcpyW(g_recentFiles[0], path);
+            UpdateRecentMenu();
+            return;
+        }
+    }
+    /* Shift down and add at top */
+    for (i = MAX_RECENT_FILES - 1; i > 0; i--)
+        lstrcpyW(g_recentFiles[i], g_recentFiles[i-1]);
+    lstrcpyW(g_recentFiles[0], path);
+    if (g_recentCount < MAX_RECENT_FILES) g_recentCount++;
+    UpdateRecentMenu();
+}
+
+void UpdateRecentMenu(void) {
+    int i, j;
+    
+    if (!g_hRecentDbMenu) return;
+    
+    /* Clear and rebuild */
+    while (RemoveMenu(g_hRecentDbMenu, 0, MF_BYPOSITION));
+    
+    if (g_recentCount == 0) {
+        AppendMenuW(g_hRecentDbMenu, MF_STRING | MF_GRAYED, 0, L"(none)");
+    } else {
+        for (i = 0; i < g_recentCount; i++) {
+            wchar_t item[MAX_PATH + 8];
+            const wchar_t *name = g_recentFiles[i];
+            int len = lstrlenW(name);
+            for (j = len - 1; j >= 0; j--)
+                if (name[j] == '\\') { name = &g_recentFiles[i][j+1]; break; }
+            wsprintfW(item, L"&%d %s", i + 1, name);
+            AppendMenuW(g_hRecentDbMenu, MF_STRING, IDM_RECENT_BASE + i, item);
+        }
+    }
+}
+
+void AddRecentQuery(const wchar_t *path) {
+    int i, j;
+    /* Check if already in list, move to top if so */
+    for (i = 0; i < g_recentQueryCount; i++) {
+        if (lstrcmpiW(g_recentQueries[i], path) == 0) {
+            for (j = i; j > 0; j--)
+                lstrcpyW(g_recentQueries[j], g_recentQueries[j-1]);
+            lstrcpyW(g_recentQueries[0], path);
+            UpdateRecentQueryMenu();
+            return;
+        }
+    }
+    /* Shift down and add at top */
+    for (i = MAX_RECENT_FILES - 1; i > 0; i--)
+        lstrcpyW(g_recentQueries[i], g_recentQueries[i-1]);
+    lstrcpyW(g_recentQueries[0], path);
+    if (g_recentQueryCount < MAX_RECENT_FILES) g_recentQueryCount++;
+    UpdateRecentQueryMenu();
+}
+
+void UpdateRecentQueryMenu(void) {
+    int i, j;
+    
+    if (!g_hRecentQueryMenu) return;
+    
+    while (RemoveMenu(g_hRecentQueryMenu, 0, MF_BYPOSITION));
+    
+    if (g_recentQueryCount == 0) {
+        AppendMenuW(g_hRecentQueryMenu, MF_STRING | MF_GRAYED, 0, L"(none)");
+    } else {
+        for (i = 0; i < g_recentQueryCount; i++) {
+            wchar_t item[MAX_PATH + 8];
+            const wchar_t *name = g_recentQueries[i];
+            int len = lstrlenW(name);
+            for (j = len - 1; j >= 0; j--)
+                if (name[j] == '\\') { name = &g_recentQueries[i][j+1]; break; }
+            wsprintfW(item, L"&%d %s", i + 1, name);
+            AppendMenuW(g_hRecentQueryMenu, MF_STRING, IDM_RECENT_QUERY_BASE + i, item);
+        }
+    }
+}
+
+/*============================================================================
 ** Query File Operations
 **============================================================================*/
 
-void DoOpenQuery(void) {
-    CE_OPENFILENAME ofn;
-    wchar_t szFile[MAX_PATH] = L"";
+void OpenQueryFile(const wchar_t *path) {
     HANDLE hFile;
     DWORD dwSize, dwRead;
     char *buf;
     wchar_t *wbuf;
     int i, j, extraCR;
+    
+    hFile = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        dwSize = GetFileSize(hFile, NULL);
+        if (dwSize < 65536) {
+            buf = (char*)LocalAlloc(LMEM_FIXED, dwSize + 1);
+            if (buf && ReadFile(hFile, buf, dwSize, &dwRead, NULL)) {
+                buf[dwRead] = '\0';
+                extraCR = 0;
+                for (i = 0; i < (int)dwRead; i++)
+                    if (buf[i] == '\n' && (i == 0 || buf[i-1] != '\r')) extraCR++;
+                wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwRead + extraCR + 1) * sizeof(wchar_t));
+                if (wbuf) {
+                    for (i = 0, j = 0; i < (int)dwRead; i++) {
+                        if (buf[i] == '\n' && (i == 0 || buf[i-1] != '\r'))
+                            wbuf[j++] = '\r';
+                        wbuf[j++] = (wchar_t)(unsigned char)buf[i];
+                    }
+                    wbuf[j] = 0;
+                    g_showingHint = 0;
+                    SetWindowTextW(g_hwndQuery, wbuf);
+                    UpdateWindow(g_hwndQuery);
+                    lstrcpyW(g_szQueryPath, path);
+                    AddRecentQuery(path);
+                    g_queryDirty = 0;
+                    UpdateTitle();
+                    UpdateLineNumbers();
+                    LocalFree(wbuf);
+                }
+            }
+            if (buf) LocalFree(buf);
+        }
+        CloseHandle(hFile);
+    }
+}
+
+void DoOpenQuery(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"";
+    int i;
     
     memset(&ofn, 0, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
@@ -94,40 +224,7 @@ void DoOpenQuery(void) {
             if (g_szLastQueryDir[i] == '\\') { g_szLastQueryDir[i] = 0; break; }
         }
         if (g_szLastQueryDir[0] == 0) lstrcpyW(g_szLastQueryDir, L"\\");
-        
-        hFile = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-        if (hFile != INVALID_HANDLE_VALUE) {
-            dwSize = GetFileSize(hFile, NULL);
-            if (dwSize < 65536) {
-                buf = (char*)LocalAlloc(LMEM_FIXED, dwSize + 1);
-                if (buf && ReadFile(hFile, buf, dwSize, &dwRead, NULL)) {
-                    buf[dwRead] = '\0';
-                    /* Count LFs not preceded by CR */
-                    extraCR = 0;
-                    for (i = 0; i < (int)dwRead; i++)
-                        if (buf[i] == '\n' && (i == 0 || buf[i-1] != '\r')) extraCR++;
-                    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwRead + extraCR + 1) * sizeof(wchar_t));
-                    if (wbuf) {
-                        for (i = 0, j = 0; i < (int)dwRead; i++) {
-                            if (buf[i] == '\n' && (i == 0 || buf[i-1] != '\r'))
-                                wbuf[j++] = '\r';
-                            wbuf[j++] = (wchar_t)(unsigned char)buf[i];
-                        }
-                        wbuf[j] = 0;
-                        g_showingHint = 0;
-                        SetWindowTextW(g_hwndQuery, wbuf);
-                        UpdateWindow(g_hwndQuery);
-                        lstrcpyW(g_szQueryPath, szFile);
-                        g_queryDirty = 0;
-                        UpdateTitle();
-                        UpdateLineNumbers();
-                        LocalFree(wbuf);
-                    }
-                }
-                if (buf) LocalFree(buf);
-            }
-            CloseHandle(hFile);
-        }
+        OpenQueryFile(szFile);
     }
 }
 
