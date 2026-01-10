@@ -155,6 +155,7 @@ void ExecuteQuery(void) {
     char *sql;
     char *errmsg = NULL;
     wchar_t *wsql;
+    wchar_t lastError[256];
     DWORD selStart, selEnd;
     
     if (!g_db) {
@@ -308,11 +309,14 @@ void ExecuteQuery(void) {
                 if (rc != SQLITE_OK) {
                     int ln = 1, i;
                     char lb[16]; char *lp = lb + 14;
+                    const char *es = errmsg ? errmsg : sqlite_error_string(rc);
                     for (i = 0; i < stmtOffset; i++) if (sql[i] == '\n') ln++;
                     lb[15] = '\0'; *lp = '\0';
                     while (ln > 0) { *--lp = '0' + (ln % 10); ln /= 10; }
                     Output("Line "); Output(lp); Output(": ");
-                    OutputLine(errmsg ? errmsg : sqlite_error_string(rc));
+                    OutputLine(es);
+                    for (i = 0; es[i] && i < 255; i++) lastError[i] = (wchar_t)(unsigned char)es[i];
+                    lastError[i] = 0;
                     if (errmsg) sqlite_freemem(errmsg);
                     errorOffset = stmtOffset;
                     hadError = 1;
@@ -341,12 +345,15 @@ void ExecuteQuery(void) {
         if (rc != SQLITE_OK) {
             int ln = 1, i;
             char lb[16]; char *lp = lb + 14;
+            const char *es = errmsg ? errmsg : sqlite_error_string(rc);
             for (i = 0; i < stmtOffset; i++) if (sql[i] == '\n') ln++;
             lb[15] = '\0'; *lp = '\0';
             while (ln > 0) { *--lp = '0' + (ln % 10); ln /= 10; }
             errorOffset = stmtOffset;
             Output("Line "); Output(lp); Output(": ");
-            OutputLine(errmsg ? errmsg : sqlite_error_string(rc));
+            OutputLine(es);
+            for (i = 0; es[i] && i < 255; i++) lastError[i] = (wchar_t)(unsigned char)es[i];
+            lastError[i] = 0;
             if (errmsg) sqlite_freemem(errmsg);
             hadError = 1;
         } else if (g_nRows > 0) {
@@ -380,6 +387,8 @@ void ExecuteQuery(void) {
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)wbuf);
         g_suppressLineCount = 3;
         MessageBeep(MB_ICONEXCLAMATION);
+        if (g_showErrorMsgBox)
+            MessageBoxW(g_hwndMain, lastError, L"SQL Error", MB_OK | MB_ICONERROR);
     } else {
         wchar_t wbuf[64];
         Output("Query executed in ");

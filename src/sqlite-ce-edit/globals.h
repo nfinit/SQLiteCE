@@ -12,6 +12,14 @@
 #include "sqlite.h"
 
 /*============================================================================
+** CE Extended Window Styles (may not be in CE 2.0 SDK headers)
+**============================================================================*/
+
+#ifndef WS_EX_CAPTIONOKBTN
+#define WS_EX_CAPTIONOKBTN 0x80000000L
+#endif
+
+/*============================================================================
 ** Common File Dialog (may not be in CE 2.0 SDK headers)
 **============================================================================*/
 
@@ -81,6 +89,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_VIEWQUERY  401
 #define IDM_VIEWRESULT 402
 #define IDM_FONTSIZE   403
+#define IDM_OPTIONS    404
 #define IDM_ABOUT    501
 
 /*============================================================================
@@ -147,6 +156,8 @@ extern wchar_t g_findText[128];
 extern int g_searchMode;
 extern wchar_t g_szQueryPath[MAX_PATH];
 extern int g_queryDirty;
+extern int g_showErrorMsgBox;
+extern wchar_t g_szDefaultDbPath[MAX_PATH];
 
 /*============================================================================
 ** Function Declarations - Output (output.c)
@@ -215,6 +226,7 @@ void DoFindNext(void);
 **============================================================================*/
 
 void DoAbout(void);
+void DoOptions(void);
 int PromptForPath(const wchar_t *title, const wchar_t *defPath);
 
 #endif /* GLOBALS_H */

@@ -138,3 +138,128 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
     
     return DialogBoxIndirectW(g_hInst, &dlg.tmpl, g_hwndMain, PathDlgProc) == IDOK;
 }
+
+/*============================================================================
+** Options Dialog
+**============================================================================*/
+
+#define IDC_OPT_CLEAREXEC    1001
+#define IDC_OPT_EXECATCURSOR 1002
+#define IDC_OPT_LINENUMS     1003
+#define IDC_OPT_ERRORMSGBOX  1004
+#define IDC_OPT_DBPATH       1005
+
+static int g_optClearExec, g_optExecAtCursor, g_optLineNums, g_optErrorMsgBox;
+static wchar_t g_optDbPath[MAX_PATH];
+static HWND g_hwndOptions = NULL;
+static int g_optResult = 0;
+
+static void ApplyOptions(HWND hwnd) {
+    g_optClearExec = SendMessage(GetDlgItem(hwnd, IDC_OPT_CLEAREXEC), BM_GETCHECK, 0, 0);
+    g_optExecAtCursor = SendMessage(GetDlgItem(hwnd, IDC_OPT_EXECATCURSOR), BM_GETCHECK, 0, 0);
+    g_optLineNums = SendMessage(GetDlgItem(hwnd, IDC_OPT_LINENUMS), BM_GETCHECK, 0, 0);
+    g_optErrorMsgBox = SendMessage(GetDlgItem(hwnd, IDC_OPT_ERRORMSGBOX), BM_GETCHECK, 0, 0);
+    GetWindowTextW(GetDlgItem(hwnd, IDC_OPT_DBPATH), g_optDbPath, MAX_PATH);
+    g_optResult = 1;
+}
+
+static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE: {
+            /* Left column - checkboxes */
+            CreateWindowW(L"BUTTON", L"Clear results on execute",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                10, 10, 165, 20, hwnd, (HMENU)IDC_OPT_CLEAREXEC, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Execute at cursor",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                10, 32, 165, 20, hwnd, (HMENU)IDC_OPT_EXECATCURSOR, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Show line numbers",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                10, 54, 165, 20, hwnd, (HMENU)IDC_OPT_LINENUMS, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Message box on error",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                10, 76, 165, 20, hwnd, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
+            
+            /* Right column - paths */
+            CreateWindowW(L"STATIC", L"Default database path:",
+                WS_CHILD | WS_VISIBLE,
+                185, 10, 150, 16, hwnd, NULL, g_hInst, NULL);
+            CreateWindowW(L"EDIT", g_optDbPath,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+                185, 28, 180, 22, hwnd, (HMENU)IDC_OPT_DBPATH, g_hInst, NULL);
+            
+            SendMessage(GetDlgItem(hwnd, IDC_OPT_CLEAREXEC), BM_SETCHECK, g_optClearExec, 0);
+            SendMessage(GetDlgItem(hwnd, IDC_OPT_EXECATCURSOR), BM_SETCHECK, g_optExecAtCursor, 0);
+            SendMessage(GetDlgItem(hwnd, IDC_OPT_LINENUMS), BM_SETCHECK, g_optLineNums, 0);
+            SendMessage(GetDlgItem(hwnd, IDC_OPT_ERRORMSGBOX), BM_SETCHECK, g_optErrorMsgBox, 0);
+            return 0;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK) {
+                ApplyOptions(hwnd);
+                DestroyWindow(hwnd);
+                return 0;
+            }
+            break;
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            return 0;
+        case WM_DESTROY:
+            g_hwndOptions = NULL;
+            SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+            return 0;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+void DoOptions(void) {
+    WNDCLASSW wc = {0};
+    RECT rc;
+    MSG msg;
+    
+    if (g_hwndOptions) {
+        SetFocus(g_hwndOptions);
+        return;
+    }
+    
+    g_optClearExec = g_clearOnExec;
+    g_optExecAtCursor = g_execAtCursor;
+    g_optLineNums = g_showLineNumbers;
+    g_optErrorMsgBox = g_showErrorMsgBox;
+    lstrcpyW(g_optDbPath, g_szDefaultDbPath);
+    g_optResult = 0;
+    
+    wc.lpfnWndProc = OptionsWndProc;
+    wc.hInstance = g_hInst;
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszClassName = L"SQLiteCEOptions";
+    RegisterClassW(&wc);
+    
+    GetWindowRect(g_hwndMain, &rc);
+    g_hwndOptions = CreateWindowExW(WS_EX_CAPTIONOKBTN,
+        L"SQLiteCEOptions", L"Options",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU,
+        rc.left + 20, rc.top + 30, 380, 125,
+        g_hwndMain, NULL, g_hInst, NULL);
+    ShowWindow(g_hwndOptions, SW_SHOW);
+    
+    /* Modal message loop */
+    while (g_hwndOptions && GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    
+    if (g_optResult) {
+        g_clearOnExec = g_optClearExec;
+        g_execAtCursor = g_optExecAtCursor;
+        g_showErrorMsgBox = g_optErrorMsgBox;
+        lstrcpyW(g_szDefaultDbPath, g_optDbPath);
+        
+        /* Handle line numbers toggle */
+        if (g_optLineNums != g_showLineNumbers) {
+            g_showLineNumbers = g_optLineNums;
+            ShowWindow(g_hwndLineNum, (g_viewMode == 0 && g_showLineNumbers) ? SW_SHOW : SW_HIDE);
+            SendMessage(g_hwndMain, WM_SIZE, 0, 0);
+        }
+    }
+}

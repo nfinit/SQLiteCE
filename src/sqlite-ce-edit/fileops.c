@@ -10,7 +10,20 @@
 
 void DoFileNew(void) {
     CE_OPENFILENAME ofn;
-    wchar_t szFile[MAX_PATH] = L"new.db";
+    wchar_t szFile[MAX_PATH];
+    int createdDir = 0;
+    
+    /* Try to create default directory if it doesn't exist */
+    if (g_szDefaultDbPath[0]) {
+        DWORD attr = GetFileAttributesW(g_szDefaultDbPath);
+        if (attr == 0xFFFFFFFF) {
+            if (CreateDirectoryW(g_szDefaultDbPath, NULL))
+                createdDir = 1;
+        }
+        lstrcpyW(szFile, L"new.db");
+    } else {
+        lstrcpyW(szFile, L"new.db");
+    }
     
     memset(&ofn, 0, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
@@ -20,11 +33,15 @@ void DoFileNew(void) {
     ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
     ofn.lpstrDefExt = L"db";
     ofn.lpstrTitle = L"New Database";
+    ofn.lpstrInitialDir = g_szDefaultDbPath[0] ? g_szDefaultDbPath : NULL;
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
     
     if (GetSaveFileNameW(&ofn)) {
         DeleteFileW(szFile);
         OpenDatabase(szFile);
+    } else if (createdDir) {
+        /* Remove directory if we created it and user cancelled */
+        RemoveDirectoryW(g_szDefaultDbPath);
     }
 }
 

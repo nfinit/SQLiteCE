@@ -46,3 +46,5 @@ wchar_t g_findText[128] = L"";
 int g_searchMode = 0;
 wchar_t g_szQueryPath[MAX_PATH] = L"";
 int g_queryDirty = 0;
+int g_showErrorMsgBox = 0;
+wchar_t g_szDefaultDbPath[MAX_PATH] = L"\\My Documents\\Data";

@@ -18,7 +18,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_CREATE: {
             RECT rc;
             int cbHeight;
-            HMENU hMenu, hFile, hQuery, hView;
+            HMENU hMenu, hFile, hQuery;
             TBBUTTON tbButtons[11];
             
             g_hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
@@ -29,13 +29,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             hMenu = CreateMenu();
             hFile = CreatePopupMenu();
             {
-                HMENU hExport, hImport;
-                AppendMenuW(hFile, MF_STRING, IDM_NEW, L"&New Database...");
-                AppendMenuW(hFile, MF_STRING, IDM_OPEN, L"&Open Database...");
-                AppendMenuW(hFile, MF_STRING, IDM_CLOSE, L"&Close Database");
-                AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
-                AppendMenuW(hFile, MF_STRING, IDM_OPENQUERY, L"Open &Query...\tCtrl+O");
-                AppendMenuW(hFile, MF_STRING, IDM_SAVEQUERY, L"&Save Query...\tCtrl+S");
+                HMENU hDatabase, hQueryFile, hExport, hImport;
+                hDatabase = CreatePopupMenu();
+                AppendMenuW(hDatabase, MF_STRING, IDM_NEW, L"&New...");
+                AppendMenuW(hDatabase, MF_STRING, IDM_OPEN, L"&Open...");
+                AppendMenuW(hDatabase, MF_STRING, IDM_CLOSE, L"&Close");
+                AppendMenuW(hFile, MF_POPUP, (UINT)hDatabase, L"&Database");
+                hQueryFile = CreatePopupMenu();
+                AppendMenuW(hQueryFile, MF_STRING, IDM_OPENQUERY, L"&Open...\tCtrl+O");
+                AppendMenuW(hQueryFile, MF_STRING, IDM_SAVEQUERY, L"&Save...\tCtrl+S");
+                AppendMenuW(hFile, MF_POPUP, (UINT)hQueryFile, L"&Query");
                 AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
                 hExport = CreatePopupMenu();
                 AppendMenuW(hExport, MF_STRING, IDM_EXPORTCSV, L"&Results...");
@@ -46,17 +49,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 AppendMenuW(hImport, MF_STRING, IDM_IMPORTCEDB, L"CE &Database...");
                 AppendMenuW(hFile, MF_POPUP, (UINT)hImport, L"&Import");
                 AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hFile, MF_STRING, IDM_OPTIONS, L"&Options...");
+                AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hFile, MF_STRING, IDM_EXIT, L"E&xit\tAlt+X");
             }
             AppendMenuW(hMenu, MF_POPUP, (UINT)hFile, L"&File");
             
-            hView = CreatePopupMenu();
-            AppendMenuW(hView, MF_STRING | MF_CHECKED, IDM_CLEAR, L"&Clear on Execute");
-            AppendMenuW(hMenu, MF_POPUP, (UINT)hView, L"&View");
-            
             hQuery = CreatePopupMenu();
             AppendMenuW(hQuery, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
-            AppendMenuW(hQuery, MF_STRING, IDM_EXECATCURSOR, L"Execute at &Cursor");
             AppendMenuW(hQuery, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hQuery, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
             AppendMenuW(hQuery, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
@@ -215,16 +215,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_EXECUTE: ExecuteQuery(); break;
                 case IDM_FIND:    DoFind(); break;
                 case IDM_FINDNEXT: DoFindNext(); break;
-                case IDM_EXECATCURSOR:
-                    g_execAtCursor = !g_execAtCursor;
-                    CheckMenuItem(g_hMenu, IDM_EXECATCURSOR, g_execAtCursor ? MF_CHECKED : MF_UNCHECKED);
-                    break;
                 case IDM_ABOUT:
                     DoAbout();
                     break;
-                case IDM_CLEAR:
-                    g_clearOnExec = !g_clearOnExec;
-                    CheckMenuItem(g_hMenu, IDM_CLEAR, g_clearOnExec ? MF_CHECKED : MF_UNCHECKED);
+                case IDM_OPTIONS:
+                    DoOptions();
                     break;
                 case IDM_VIEWQUERY:
                     SwitchView(0);
