@@ -83,6 +83,7 @@ void DoOpenQuery(void) {
                         SetWindowTextW(g_hwndQuery, wbuf);
                         UpdateWindow(g_hwndQuery);
                         lstrcpyW(g_szQueryPath, szFile);
+                        g_queryDirty = 0;
                         UpdateTitle();
                         UpdateLineNumbers();
                     }
@@ -133,6 +134,7 @@ void DoSaveQuery(void) {
         if (hFile != INVALID_HANDLE_VALUE) {
             WriteFile(hFile, buf, dwLen, &dwWritten, NULL);
             CloseHandle(hFile);
+            g_queryDirty = 0;
         }
     }
     if (wbuf) LocalFree(wbuf);

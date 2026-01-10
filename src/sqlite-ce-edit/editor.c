@@ -121,7 +121,7 @@ LRESULT CALLBACK LineNumProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     /* Alt+X - Exit (must handle here when edit has focus) */
     if (msg == WM_SYSKEYDOWN && (wParam == 'X' || wParam == 'x')) {
-        DestroyWindow(g_hwndMain);
+        SendMessage(g_hwndMain, WM_CLOSE, 0, 0);
         return 0;
     }
     /* Clear hint on focus */

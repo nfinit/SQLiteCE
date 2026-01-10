@@ -45,3 +45,4 @@ wchar_t g_lastResultStatus[64] = L"";
 wchar_t g_findText[128] = L"";
 int g_searchMode = 0;
 wchar_t g_szQueryPath[MAX_PATH] = L"";
+int g_queryDirty = 0;

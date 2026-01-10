@@ -419,4 +419,5 @@ FodyWeavers.xsd
 
 # Project-specific exclusions
 docs/AGENTS/
+.kiro/*
 ._*

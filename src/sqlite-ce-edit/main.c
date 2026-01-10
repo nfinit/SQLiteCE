@@ -211,7 +211,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_EXPORTDB: DoExportDb(); break;
                 case IDM_IMPORTCSV: DoImportCSV(); break;
                 case IDM_IMPORTCEDB: DoImportCEDB(); break;
-                case IDM_EXIT:    DestroyWindow(hwnd); break;
+                case IDM_EXIT:    SendMessage(hwnd, WM_CLOSE, 0, 0); break;
                 case IDM_EXECUTE: ExecuteQuery(); break;
                 case IDM_FIND:    DoFind(); break;
                 case IDM_FINDNEXT: DoFindNext(); break;
@@ -239,10 +239,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_FONTSIZE:
                     CycleFontSize();
                     break;
-                case IDOK:        DestroyWindow(hwnd); break;
+                case IDOK:        SendMessage(hwnd, WM_CLOSE, 0, 0); break;
                 case 1001:
-                    if (HIWORD(wParam) == EN_CHANGE && g_viewMode == 0)
+                    if (HIWORD(wParam) == EN_CHANGE && g_viewMode == 0) {
                         UpdateLineCount();
+                        if (!g_showingHint) g_queryDirty = 1;
+                    }
                     break;
             }
             return 0;
@@ -257,7 +259,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         
         case WM_SYSKEYDOWN:
             if (wParam == 'X' && GetKeyState(VK_MENU) < 0) {
-                DestroyWindow(hwnd);
+                SendMessage(hwnd, WM_CLOSE, 0, 0);
                 return 0;
             }
             break;
@@ -274,6 +276,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 return 0;
             }
             break;
+        
+        case WM_CLOSE:
+            if (g_queryDirty) {
+                int r = MessageBoxW(hwnd, L"Save changes to query?", L"SQLite/CE", 
+                                    MB_YESNOCANCEL | MB_ICONQUESTION);
+                if (r == IDCANCEL) return 0;
+                if (r == IDYES) DoSaveQuery();
+            }
+            DestroyWindow(hwnd);
+            return 0;
         
         case WM_DESTROY:
             CloseDatabase();

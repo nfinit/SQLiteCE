@@ -146,6 +146,7 @@ extern wchar_t g_lastResultStatus[64];
 extern wchar_t g_findText[128];
 extern int g_searchMode;
 extern wchar_t g_szQueryPath[MAX_PATH];
+extern int g_queryDirty;
 
 /*============================================================================
 ** Function Declarations - Output (output.c)
