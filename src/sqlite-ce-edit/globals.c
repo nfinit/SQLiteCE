@@ -19,6 +19,7 @@ HACCEL g_hAccel;
 HBRUSH g_hBrushWhite = NULL;
 HWND g_hwndQuery;
 HWND g_hwndResult;
+HWND g_hwndSchema;
 HWND g_hwndLineNum;
 sqlite *g_db = NULL;
 wchar_t g_szDbPath[MAX_PATH] = {0};

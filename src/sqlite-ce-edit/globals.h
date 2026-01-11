@@ -19,6 +19,23 @@
 #define WS_EX_CAPTIONOKBTN 0x80000000L
 #endif
 
+#ifndef WM_CONTEXTMENU
+#define WM_CONTEXTMENU 0x007B
+#endif
+
+#ifndef TVN_FIRST
+#define TVN_FIRST (0U - 400U)
+#endif
+
+#ifndef TVN_KEYDOWN
+#define TVN_KEYDOWN (TVN_FIRST - 12)
+typedef struct tagTVKEYDOWN {
+    NMHDR hdr;
+    WORD wVKey;
+    UINT flags;
+} TV_KEYDOWN;
+#endif
+
 /*============================================================================
 ** Common File Dialog (may not be in CE 2.0 SDK headers)
 **============================================================================*/
@@ -90,13 +107,21 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_CLEAR    301
 #define IDM_VIEWQUERY  401
 #define IDM_VIEWRESULT 402
-#define IDM_FONTSIZE   403
-#define IDM_OPTIONS    404
+#define IDM_VIEWSCHEMA 403
+#define IDM_FONTSIZE   404
+#define IDM_OPTIONS    405
 #define IDM_ABOUT    501
 #define IDM_RECENT_BASE 600
 #define IDM_RECENT_MAX  604
 #define IDM_RECENT_QUERY_BASE 610
 #define IDM_RECENT_QUERY_MAX  614
+
+/* Schema context menu */
+#define IDM_SCHEMA_SELECT 700
+#define IDM_SCHEMA_DROP   701
+
+/* Timer IDs */
+#define IDT_TAPHOLD 1
 
 /*============================================================================
 ** Resource IDs
@@ -105,6 +130,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDI_MAIN    1
 #define IDB_TOOLBAR 100
 #define IDB_LOGO    101
+#define IDB_SCHEMA  102
 
 /*============================================================================
 ** Toolbar bitmap indices
@@ -116,10 +142,11 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define TB_QUERY   3
 #define TB_RESULTS 4
 #define TB_GRID    5
-#define TB_OPEN    6
-#define TB_CLOSE   7
-#define TB_NEW     8
-#define TB_STD_BASE 9
+#define TB_SCHEMA  6
+#define TB_OPEN    7
+#define TB_CLOSE   8
+#define TB_NEW     9
+#define TB_STD_BASE 10
 #define TB_VIEW_BASE (TB_STD_BASE + 15)
 
 /*============================================================================
@@ -137,6 +164,7 @@ extern HACCEL g_hAccel;
 extern HBRUSH g_hBrushWhite;
 extern HWND g_hwndQuery;
 extern HWND g_hwndResult;
+extern HWND g_hwndSchema;
 extern HWND g_hwndLineNum;
 extern sqlite *g_db;
 extern wchar_t g_szDbPath[MAX_PATH];
@@ -202,6 +230,16 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 /*============================================================================
+** Function Declarations - Schema (schema.c)
+**============================================================================*/
+
+void CreateSchemaView(HWND hwndParent, int x, int y, int cx, int cy);
+void RefreshSchema(void);
+void OnSchemaExpanding(NMTREEVIEWW *pnm);
+void OnSchemaDoubleClick(void);
+void OnSchemaDelete(void);
+
+/*============================================================================
 ** Function Declarations - Database (database.c)
 **============================================================================*/
 
@@ -218,6 +256,7 @@ const wchar_t *GetFilename(const wchar_t *path);
 **============================================================================*/
 
 void ExecuteQuery(void);
+void ExecuteSQL(const char *sql);
 
 /*============================================================================
 ** Function Declarations - File Operations (fileops.c)

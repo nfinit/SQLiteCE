@@ -19,7 +19,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             RECT rc;
             int cbHeight;
             HMENU hMenu, hFile, hQuery;
-            TBBUTTON tbButtons[14];
+            TBBUTTON tbButtons[15];
             
             g_hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
             
@@ -78,7 +78,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hMenu, 0);
             
             /* Add toolbar bitmaps */
-            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 9, 0, 0);
+            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 10, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_STD_SMALL_COLOR, 15, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_VIEW_SMALL_COLOR, 12, 0, 0);
             
@@ -97,50 +97,55 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             tbButtons[2].fsState = TBSTATE_ENABLED;
             tbButtons[2].fsStyle = TBSTYLE_CHECK | TBSTYLE_GROUP;
             
-            tbButtons[3].fsStyle = TBSTYLE_SEP;
+            tbButtons[3].iBitmap = TB_SCHEMA;
+            tbButtons[3].idCommand = IDM_VIEWSCHEMA;
+            tbButtons[3].fsState = TBSTATE_ENABLED;
+            tbButtons[3].fsStyle = TBSTYLE_CHECK | TBSTYLE_GROUP;
             
-            tbButtons[4].iBitmap = TB_EXECAT;
-            tbButtons[4].idCommand = IDM_EXECATCURSOR;
-            tbButtons[4].fsState = TBSTATE_ENABLED | (g_execAtCursor ? TBSTATE_CHECKED : 0);
-            tbButtons[4].fsStyle = TBSTYLE_CHECK;
+            tbButtons[4].fsStyle = TBSTYLE_SEP;
             
-            tbButtons[5].fsStyle = TBSTYLE_SEP;
+            tbButtons[5].iBitmap = TB_EXECAT;
+            tbButtons[5].idCommand = IDM_EXECATCURSOR;
+            tbButtons[5].fsState = TBSTATE_ENABLED | (g_execAtCursor ? TBSTATE_CHECKED : 0);
+            tbButtons[5].fsStyle = TBSTYLE_CHECK;
             
-            tbButtons[6].iBitmap = TB_STD_BASE + STD_FIND;
-            tbButtons[6].idCommand = IDM_FONTSIZE;
-            tbButtons[6].fsState = TBSTATE_ENABLED;
-            tbButtons[6].fsStyle = TBSTYLE_BUTTON;
+            tbButtons[6].fsStyle = TBSTYLE_SEP;
             
-            tbButtons[7].fsStyle = TBSTYLE_SEP;
+            tbButtons[7].iBitmap = TB_STD_BASE + STD_FIND;
+            tbButtons[7].idCommand = IDM_FONTSIZE;
+            tbButtons[7].fsState = TBSTATE_ENABLED;
+            tbButtons[7].fsStyle = TBSTYLE_BUTTON;
             
-            tbButtons[8].iBitmap = TB_OPEN;
-            tbButtons[8].idCommand = IDM_OPEN;
-            tbButtons[8].fsState = TBSTATE_ENABLED;
-            tbButtons[8].fsStyle = TBSTYLE_BUTTON;
+            tbButtons[8].fsStyle = TBSTYLE_SEP;
             
-            tbButtons[9].iBitmap = TB_CLOSE;
-            tbButtons[9].idCommand = IDM_CLOSE;
+            tbButtons[9].iBitmap = TB_OPEN;
+            tbButtons[9].idCommand = IDM_OPEN;
             tbButtons[9].fsState = TBSTATE_ENABLED;
             tbButtons[9].fsStyle = TBSTYLE_BUTTON;
             
-            tbButtons[10].iBitmap = TB_NEW;
-            tbButtons[10].idCommand = IDM_NEW;
+            tbButtons[10].iBitmap = TB_CLOSE;
+            tbButtons[10].idCommand = IDM_CLOSE;
             tbButtons[10].fsState = TBSTATE_ENABLED;
             tbButtons[10].fsStyle = TBSTYLE_BUTTON;
             
-            tbButtons[11].fsStyle = TBSTYLE_SEP;
+            tbButtons[11].iBitmap = TB_NEW;
+            tbButtons[11].idCommand = IDM_NEW;
+            tbButtons[11].fsState = TBSTATE_ENABLED;
+            tbButtons[11].fsStyle = TBSTYLE_BUTTON;
             
-            tbButtons[12].iBitmap = TB_PLAY;
-            tbButtons[12].idCommand = IDM_EXECUTE;
-            tbButtons[12].fsState = TBSTATE_ENABLED;
-            tbButtons[12].fsStyle = TBSTYLE_BUTTON;
+            tbButtons[12].fsStyle = TBSTYLE_SEP;
             
-            tbButtons[13].iBitmap = TB_STOP;
-            tbButtons[13].idCommand = IDM_STOP;
-            tbButtons[13].fsState = 0;
+            tbButtons[13].iBitmap = TB_PLAY;
+            tbButtons[13].idCommand = IDM_EXECUTE;
+            tbButtons[13].fsState = TBSTATE_ENABLED;
             tbButtons[13].fsStyle = TBSTYLE_BUTTON;
             
-            CommandBar_AddButtons(g_hwndCB, 14, tbButtons);
+            tbButtons[14].iBitmap = TB_STOP;
+            tbButtons[14].idCommand = IDM_STOP;
+            tbButtons[14].fsState = 0;
+            tbButtons[14].fsStyle = TBSTYLE_BUTTON;
+            
+            CommandBar_AddButtons(g_hwndCB, 15, tbButtons);
             
             CommandBar_AddAdornments(g_hwndCB, 0, 0);
             cbHeight = CommandBar_Height(g_hwndCB);
@@ -187,6 +192,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
                 0, cbHeight, rc.right, editHeight,
                 hwnd, (HMENU)1002, g_hInst, NULL);
+            
+            /* Schema view */
+            CreateSchemaView(hwnd, 0, cbHeight, rc.right, editHeight);
             }
             
             g_pfnResultProc = (WNDPROC)SetWindowLong(g_hwndResult, GWL_WNDPROC, (LONG)ResultEditProc);
@@ -219,6 +227,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             MoveWindow(g_hwndQuery, queryLeft, cbHeight, rc.right - queryLeft, editHeight, TRUE);
             MoveWindow(g_hwndResult, 0, cbHeight, rc.right, editHeight, TRUE);
+            if (g_hwndSchema)
+                MoveWindow(g_hwndSchema, 0, cbHeight, rc.right, editHeight, TRUE);
             return 0;
         }
         
@@ -252,11 +262,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     SwitchView(0);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, TRUE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, FALSE);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
                     break;
                 case IDM_VIEWRESULT:
                     SwitchView(1);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+                    break;
+                case IDM_VIEWSCHEMA:
+                    SwitchView(2);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, FALSE);
+                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, TRUE);
                     break;
                 case IDM_FONTSIZE:
                     CycleFontSize();
@@ -313,6 +331,23 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 return 0;
             }
             break;
+        
+        case WM_NOTIFY: {
+            NMHDR *pnm = (NMHDR*)lParam;
+            if (pnm->hwndFrom == g_hwndSchema) {
+                if (pnm->code == TVN_ITEMEXPANDINGW) {
+                    OnSchemaExpanding((NMTREEVIEWW*)lParam);
+                } else if (pnm->code == NM_DBLCLK) {
+                    OnSchemaDoubleClick();
+                } else if (pnm->code == TVN_KEYDOWN) {
+                    TV_KEYDOWN *pKey = (TV_KEYDOWN*)lParam;
+                    if (pKey->wVKey == VK_DELETE) {
+                        OnSchemaDelete();
+                    }
+                }
+            }
+            break;
+        }
         
         case WM_CLOSE:
             if (g_queryDirty) {

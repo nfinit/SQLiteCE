@@ -3,7 +3,9 @@
 #define IDI_MAIN 1
 #define IDB_TOOLBAR 100
 #define IDB_LOGO 101
+#define IDB_SCHEMA 102
 
 IDI_MAIN ICON "SQLiteCEdit.ico"
 IDB_TOOLBAR BITMAP "toolbar.bmp"
 IDB_LOGO BITMAP "logo.bmp"
+IDB_SCHEMA BITMAP "schema.bmp"

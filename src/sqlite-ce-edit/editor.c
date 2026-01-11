@@ -118,14 +118,21 @@ void SwitchView(int mode) {
     ShowWindow(g_hwndQuery, mode == 0 ? SW_SHOW : SW_HIDE);
     if (g_hwndLineNum) ShowWindow(g_hwndLineNum, (mode == 0 && g_showLineNumbers) ? SW_SHOW : SW_HIDE);
     ShowWindow(g_hwndResult, mode == 1 ? SW_SHOW : SW_HIDE);
-    /* Disable exec-at-cursor button in results view */
+    if (g_hwndSchema) ShowWindow(g_hwndSchema, mode == 2 ? SW_SHOW : SW_HIDE);
+    /* Disable exec-at-cursor button in non-query views */
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, mode == 0);
-    SetFocus(mode == 0 ? g_hwndQuery : g_hwndResult);
     if (mode == 0) {
+        SetFocus(g_hwndQuery);
         UpdateLineCount();
         UpdateLineNumbers();
-    } else
+    } else if (mode == 1) {
+        SetFocus(g_hwndResult);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)g_lastResultStatus);
+    } else if (mode == 2) {
+        SetFocus(g_hwndSchema);
+        RefreshSchema();
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Schema");
+    }
 }
 
 void UpdateQueryFont(void) {

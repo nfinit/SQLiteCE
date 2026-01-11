@@ -170,6 +170,57 @@ static int QueryCallback(void *arg, int argc, char **argv, char **cols) {
     return 0;
 }
 
+/*============================================================================
+** Execute a SQL string directly (for schema browser, etc.)
+**============================================================================*/
+
+void ExecuteSQL(const char *sql) {
+    int rc;
+    char *errmsg = NULL;
+    DWORD startTick, elapsed;
+    wchar_t wbuf[64];
+    
+    if (!g_db || !sql) return;
+    
+    /* Setup */
+    g_abortQuery = 0;
+    if (g_clearOnExec) ClearOutput();
+    FreeResults();
+    g_nRows = 0;
+    g_nCols = 0;
+    g_totalRows = 0;
+    
+    sqlite_progress_handler(g_db, 1000, ProgressCallback, NULL);
+    startTick = GetTickCount();
+    
+    rc = sqlite_exec(g_db, sql, QueryCallback, NULL, &errmsg);
+    
+    elapsed = GetTickCount() - startTick;
+    
+    if (rc == SQLITE_OK && g_nRows > 0) {
+        FlushResultSet();
+    }
+    if (errmsg) {
+        OutputLine(errmsg);
+        sqlite_freemem(errmsg);
+    }
+    
+    if (g_totalRows > 0)
+        wsprintfW(wbuf, L"%d row(s) returned (%lums)", g_totalRows, elapsed);
+    else
+        wsprintfW(wbuf, L"OK (%lums)", elapsed);
+    SetStatusResult(wbuf);
+    
+    FlushOutput();
+    sqlite_progress_handler(g_db, 0, NULL, NULL);
+    
+    /* Switch to results */
+    SwitchView(1);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+}
+
 void ExecuteQuery(void) {
     int len, rc, hadError = 0;
     char *sql;
@@ -322,6 +373,7 @@ void ExecuteQuery(void) {
     char *p = sql;
     int inString = 0;
     int inComment = 0;
+    int inTrigger = 0;
     int stmtOffset = 0;
     int errorOffset = 0;
     
@@ -337,7 +389,40 @@ void ExecuteQuery(void) {
             if (*p == '\'') inString = 1;
             else if (*p == '-' && p[1] == '-') inComment = 1;
             else if (*p == '/' && p[1] == '*') { inComment = 2; p++; }
-            else if (*p == ';') {
+            else if (!inTrigger && (p[0]=='C'||p[0]=='c') && (p[1]=='R'||p[1]=='r') &&
+                     (p[2]=='E'||p[2]=='e') && (p[3]=='A'||p[3]=='a') &&
+                     (p[4]=='T'||p[4]=='t') && (p[5]=='E'||p[5]=='e') &&
+                     (p[6]==' '||p[6]=='\t'||p[6]=='\r'||p[6]=='\n')) {
+                /* Look ahead for TRIGGER keyword */
+                char *t = p + 7;
+                while (*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n') t++;
+                if ((t[0]=='T'||t[0]=='t') && (t[1]=='R'||t[1]=='r') &&
+                    (t[2]=='I'||t[2]=='i') && (t[3]=='G'||t[3]=='g') &&
+                    (t[4]=='G'||t[4]=='g') && (t[5]=='E'||t[5]=='e') &&
+                    (t[6]=='R'||t[6]=='r') &&
+                    (t[7]==' '||t[7]=='\t'||t[7]=='\r'||t[7]=='\n')) {
+                    inTrigger = 1;
+                }
+            }
+            else if (inTrigger && *p == ';') {
+                /* Check for END after semicolon */
+                char *t = p + 1;
+                while (*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n') t++;
+                if ((t[0]=='E'||t[0]=='e') && (t[1]=='N'||t[1]=='n') &&
+                    (t[2]=='D'||t[2]=='d') &&
+                    (t[3]==';'||t[3]==' '||t[3]=='\t'||t[3]=='\r'||t[3]=='\n'||t[3]==0)) {
+                    /* Found ;END - skip to the final semicolon */
+                    p = t + 2;
+                    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+                    /* p now points to final ; or next char - let it fall through */
+                    inTrigger = 0;
+                } else {
+                    /* Semicolon inside trigger body - skip it */
+                    p++;
+                    continue;
+                }
+            }
+            if (*p == ';' && !inTrigger) {
                 char saved = p[1];
                 p[1] = '\0';
                 rc = sqlite_exec(g_db, stmt, QueryCallback, NULL, &errmsg);
@@ -467,5 +552,7 @@ void ExecuteQuery(void) {
         SwitchView(1);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+        RefreshSchema();  /* Update schema in case CREATE/DROP was executed */
     }
 }
