@@ -129,9 +129,11 @@ void SwitchView(int mode) {
         SetFocus(g_hwndResult);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)g_lastResultStatus);
     } else if (mode == 2) {
+        wchar_t statusBuf[64];
         SetFocus(g_hwndSchema);
         RefreshSchema();
-        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Schema");
+        GetSchemaStatus(statusBuf, 64);
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)statusBuf);
     }
 }
 
@@ -236,9 +238,13 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             DoFindNext();
             return 0;
         }
-        /* F6 - Toggle view, Ctrl+1 - Query, Ctrl+2 - Results */
+        /* F6 - Toggle view, Ctrl+1 - Query, Ctrl+2 - Results, Ctrl+3 - Schema */
         if (wParam == VK_F6) {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
+            return 0;
+        }
+        if (wParam == VK_F7) {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
             return 0;
         }
         if (ctrl && wParam == '1') {
@@ -247,6 +253,10 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         }
         if (ctrl && wParam == '2') {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
+            return 0;
+        }
+        if (ctrl && wParam == '3') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
             return 0;
         }
         /* Ctrl+A - Select all (CE edit control may not support natively) */
@@ -365,9 +375,13 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             DoFindNext();
             return 0;
         }
-        /* F6/Escape - back to query, Ctrl+1 - Query, Ctrl+2 - Results */
+        /* F6/Escape - back to query, Ctrl+1 - Query, Ctrl+2 - Results, Ctrl+3 - Schema */
         if (wParam == VK_F6 || wParam == VK_ESCAPE || wParam == VK_BACK) {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+            return 0;
+        }
+        if (wParam == VK_F7) {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
             return 0;
         }
         if (ctrl && wParam == '1') {
@@ -376,6 +390,10 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
         if (ctrl && wParam == '2') {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
+            return 0;
+        }
+        if (ctrl && wParam == '3') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
             return 0;
         }
         return 0;  /* Block all other keys */

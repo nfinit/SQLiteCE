@@ -238,6 +238,7 @@ void RefreshSchema(void);
 void OnSchemaExpanding(NMTREEVIEWW *pnm);
 void OnSchemaDoubleClick(void);
 void OnSchemaDelete(void);
+void GetSchemaStatus(wchar_t *buf, int bufLen);
 
 /*============================================================================
 ** Function Declarations - Database (database.c)

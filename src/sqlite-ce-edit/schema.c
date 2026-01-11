@@ -15,6 +15,26 @@
 
 static HIMAGELIST g_hSchemaImages = NULL;
 
+/* Schema counts for status bar */
+static int g_nTables = 0;
+static int g_nViews = 0;
+static int g_nTriggers = 0;
+
+/*============================================================================
+** Get schema status string
+**============================================================================*/
+
+void GetSchemaStatus(wchar_t *buf, int bufLen) {
+    if (!g_db) {
+        lstrcpyW(buf, L"No database");
+        return;
+    }
+    wsprintfW(buf, L"%d table%s, %d view%s, %d trigger%s",
+        g_nTables, g_nTables == 1 ? L"" : L"s",
+        g_nViews, g_nViews == 1 ? L"" : L"s",
+        g_nTriggers, g_nTriggers == 1 ? L"" : L"s");
+}
+
 /*============================================================================
 ** Create the schema TreeView control
 **============================================================================*/
@@ -64,8 +84,11 @@ void RefreshSchema(void) {
     
     if (!g_hwndSchema) return;
     
-    /* Clear existing items */
+    /* Clear existing items and counts */
     TreeView_DeleteAllItems(g_hwndSchema);
+    g_nTables = 0;
+    g_nViews = 0;
+    g_nTriggers = 0;
     
     if (!g_db) return;
     
@@ -89,6 +112,7 @@ void RefreshSchema(void) {
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
         &results, &nRows, &nCols, &errmsg);
     if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
+    g_nTables = nRows;
     
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {
@@ -104,6 +128,7 @@ void RefreshSchema(void) {
         "SELECT name FROM sqlite_master WHERE type='view' ORDER BY name",
         &results, &nRows, &nCols, &errmsg);
     if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
+    g_nViews = nRows;
     
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {
@@ -119,6 +144,7 @@ void RefreshSchema(void) {
         "SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name",
         &results, &nRows, &nCols, &errmsg);
     if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
+    g_nTriggers = nRows;
     
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {

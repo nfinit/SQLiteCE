@@ -343,6 +343,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     TV_KEYDOWN *pKey = (TV_KEYDOWN*)lParam;
                     if (pKey->wVKey == VK_DELETE) {
                         OnSchemaDelete();
+                    } else if (GetKeyState(VK_CONTROL) < 0) {
+                        if (pKey->wVKey == '1') SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
+                        else if (pKey->wVKey == '2') SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0);
+                        else if (pKey->wVKey == '3') SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0);
+                    } else if (pKey->wVKey == VK_F5) {
+                        ExecuteQuery();
+                    } else if (pKey->wVKey == VK_F6) {
+                        SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0);
+                    } else if (pKey->wVKey == VK_F7) {
+                        SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0);
                     }
                 }
             }
@@ -379,7 +389,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     WNDCLASSW wc = {0};
     MSG msg;
     RECT rcWork;
-    ACCEL accel[10];
+    ACCEL accel[15];
     int nAccel = 0;
     
     (void)hPrev; (void)lpCmd; (void)nShow;
@@ -391,9 +401,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'O'; accel[nAccel].cmd = IDM_OPENQUERY; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'S'; accel[nAccel].cmd = IDM_SAVEQUERY; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'F'; accel[nAccel].cmd = IDM_FIND; nAccel++;
+    accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = '1'; accel[nAccel].cmd = IDM_VIEWQUERY; nAccel++;
+    accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = '2'; accel[nAccel].cmd = IDM_VIEWRESULT; nAccel++;
+    accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = '3'; accel[nAccel].cmd = IDM_VIEWSCHEMA; nAccel++;
     accel[nAccel].fVirt = FVIRTKEY; accel[nAccel].key = VK_F3; accel[nAccel].cmd = IDM_FINDNEXT; nAccel++;
     accel[nAccel].fVirt = FVIRTKEY; accel[nAccel].key = VK_F5; accel[nAccel].cmd = IDM_EXECUTE; nAccel++;
     accel[nAccel].fVirt = FVIRTKEY; accel[nAccel].key = VK_F6; accel[nAccel].cmd = IDM_VIEWRESULT; nAccel++;
+    accel[nAccel].fVirt = FVIRTKEY; accel[nAccel].key = VK_F7; accel[nAccel].cmd = IDM_VIEWSCHEMA; nAccel++;
     accel[nAccel].fVirt = FALT | FVIRTKEY; accel[nAccel].key = 'X'; accel[nAccel].cmd = IDM_EXIT; nAccel++;
     g_hAccel = CreateAcceleratorTableW(accel, nAccel);
     
