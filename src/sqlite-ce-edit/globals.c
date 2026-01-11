@@ -43,6 +43,7 @@ int g_viewMode = 0;
 int g_showingHint = 0;
 int g_suppressLineCount = 0;
 int g_execAtCursor = 0;
+int g_abortQuery = 0;
 wchar_t g_lastResultStatus[64] = L"";
 wchar_t g_findText[128] = L"";
 int g_searchMode = 0;

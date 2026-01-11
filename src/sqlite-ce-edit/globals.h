@@ -65,7 +65,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.4.0"
+#define SQLITECEDIT_VERSION L"0.5.0"
 
 /*============================================================================
 ** Menu IDs
@@ -86,6 +86,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_FINDNEXT 203
 #define IDM_EXECATCURSOR 204
 #define IDM_EXECATCURSOR_PLACEHOLDER 205
+#define IDM_STOP     206
 #define IDM_CLEAR    301
 #define IDM_VIEWQUERY  401
 #define IDM_VIEWRESULT 402
@@ -160,6 +161,7 @@ extern int g_viewMode;
 extern int g_showingHint;
 extern int g_suppressLineCount;
 extern int g_execAtCursor;
+extern int g_abortQuery;
 extern wchar_t g_lastResultStatus[64];
 extern wchar_t g_findText[128];
 extern int g_searchMode;

@@ -19,7 +19,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             RECT rc;
             int cbHeight;
             HMENU hMenu, hFile, hQuery;
-            TBBUTTON tbButtons[13];
+            TBBUTTON tbButtons[14];
             
             g_hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
             
@@ -135,7 +135,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             tbButtons[12].fsState = TBSTATE_ENABLED;
             tbButtons[12].fsStyle = TBSTYLE_BUTTON;
             
-            CommandBar_AddButtons(g_hwndCB, 13, tbButtons);
+            tbButtons[13].iBitmap = TB_STOP;
+            tbButtons[13].idCommand = IDM_STOP;
+            tbButtons[13].fsState = 0;
+            tbButtons[13].fsStyle = TBSTYLE_BUTTON;
+            
+            CommandBar_AddButtons(g_hwndCB, 14, tbButtons);
             
             CommandBar_AddAdornments(g_hwndCB, 0, 0);
             cbHeight = CommandBar_Height(g_hwndCB);
@@ -230,6 +235,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_IMPORTCEDB: DoImportCEDB(); break;
                 case IDM_EXIT:    SendMessage(hwnd, WM_CLOSE, 0, 0); break;
                 case IDM_EXECUTE: ExecuteQuery(); break;
+                case IDM_STOP: g_abortQuery = 1; break;
                 case IDM_EXECATCURSOR:
                     g_execAtCursor = !g_execAtCursor;
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
@@ -298,6 +304,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (GetKeyState(VK_CONTROL) < 0) {
                 if (wParam == 'O') { DoOpenQuery(); return 0; }
                 if (wParam == 'N') { DoFileNew(); return 0; }
+                if (wParam == 'C') { g_abortQuery = 1; return 0; }
             }
             if (wParam == VK_F5) { ExecuteQuery(); return 0; }
             if (wParam == VK_RETURN || wParam == VK_UP || 

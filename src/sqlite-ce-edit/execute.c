@@ -5,6 +5,26 @@
 #include "globals.h"
 
 /*============================================================================
+** Progress callback for query abort
+**============================================================================*/
+
+static int ProgressCallback(void *arg) {
+    MSG msg;
+    (void)arg;
+    /* Process pending messages to keep UI responsive */
+    while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+        /* Check for Ctrl+C to abort */
+        if (msg.message == WM_KEYDOWN && msg.wParam == 'C' &&
+            GetKeyState(VK_CONTROL) < 0) {
+            g_abortQuery = 1;
+        }
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    return g_abortQuery;
+}
+
+/*============================================================================
 ** Query Execution State
 **============================================================================*/
 
@@ -163,9 +183,11 @@ void ExecuteQuery(void) {
         return;
     }
     
-    /* Disable Execute while running */
+    /* Disable Execute while running, enable Stop */
     EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_GRAYED);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, FALSE);
+    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, TRUE);
+    g_abortQuery = 0;
     UpdateWindow(g_hwndCB);
     
     /* Check for selection */
@@ -286,6 +308,9 @@ void ExecuteQuery(void) {
     g_nCols = 0;
     g_totalRows = 0;
     
+    /* Install progress handler for abort support */
+    sqlite_progress_handler(g_db, 1000, ProgressCallback, NULL);
+    
     SetStatusResult(L"Executing...");
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Executing...");
     UpdateWindow(g_hwndStatus);
@@ -317,7 +342,11 @@ void ExecuteQuery(void) {
                 p[1] = '\0';
                 rc = sqlite_exec(g_db, stmt, QueryCallback, NULL, &errmsg);
                 p[1] = saved;
-                if (rc != SQLITE_OK) {
+                if (rc == SQLITE_INTERRUPT) {
+                    OutputLine("Query aborted by user.");
+                    if (errmsg) sqlite_freemem(errmsg);
+                    hadError = 1;
+                } else if (rc != SQLITE_OK) {
                     int ln = 1, i;
                     char lb[16]; char *lp = lb + 14;
                     const char *es = errmsg ? errmsg : sqlite_error_string(rc);
@@ -353,7 +382,11 @@ void ExecuteQuery(void) {
     /* Execute any remaining statement (no trailing semicolon) */
     if (!hadError && *stmt) {
         rc = sqlite_exec(g_db, stmt, QueryCallback, NULL, &errmsg);
-        if (rc != SQLITE_OK) {
+        if (rc == SQLITE_INTERRUPT) {
+            OutputLine("Query aborted by user.");
+            if (errmsg) sqlite_freemem(errmsg);
+            hadError = 1;
+        } else if (rc != SQLITE_OK) {
             int ln = 1, i;
             char lb[16]; char *lp = lb + 14;
             const char *es = errmsg ? errmsg : sqlite_error_string(rc);
@@ -382,7 +415,11 @@ void ExecuteQuery(void) {
     
     elapsed = GetTickCount() - startTick;
     
-    if (hadError) {
+    if (g_abortQuery) {
+        /* Query was aborted by user */
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Aborted");
+        SetStatusResult(L"Aborted");
+    } else if (hadError) {
         /* Position cursor at the errored statement */
         int adjOffset = errorOffset;
         int lineNum = 1;
@@ -419,9 +456,11 @@ void ExecuteQuery(void) {
     FlushOutput();
     UpdateDbSize();
     
-    /* Re-enable Execute */
+    /* Remove progress handler and re-enable Execute, disable Stop */
+    sqlite_progress_handler(g_db, 0, NULL, NULL);
     EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
+    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, FALSE);
     
     /* Switch to results view (unless error - stay in query to show cursor) */
     if (!hadError) {
