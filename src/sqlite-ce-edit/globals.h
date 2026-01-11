@@ -158,6 +158,7 @@ extern HWND g_hwndMain;
 extern HWND g_hwndCB;
 extern HWND g_hwndStatus;
 extern HMENU g_hMenu;
+extern HMENU g_hViewMenu;
 extern HMENU g_hRecentDbMenu;
 extern HMENU g_hRecentQueryMenu;
 extern HACCEL g_hAccel;

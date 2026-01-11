@@ -13,6 +13,7 @@ HWND g_hwndMain;
 HWND g_hwndCB;
 HWND g_hwndStatus;
 HMENU g_hMenu;
+HMENU g_hViewMenu;
 HMENU g_hRecentDbMenu;
 HMENU g_hRecentQueryMenu;
 HACCEL g_hAccel;

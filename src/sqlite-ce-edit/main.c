@@ -18,7 +18,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_CREATE: {
             RECT rc;
             int cbHeight;
-            HMENU hMenu, hFile, hQuery;
+            HMENU hMenu, hFile, hQuery, hView;
             TBBUTTON tbButtons[15];
             
             g_hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
@@ -67,6 +67,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hQuery, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
             AppendMenuW(hQuery, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
             AppendMenuW(hMenu, MF_POPUP, (UINT)hQuery, L"&Query");
+            
+            hView = CreatePopupMenu();
+            AppendMenuW(hView, MF_STRING, IDM_VIEWQUERY, L"&Query\tCtrl+1, Esc");
+            AppendMenuW(hView, MF_STRING, IDM_VIEWRESULT, L"&Results\tCtrl+2, F6");
+            AppendMenuW(hView, MF_STRING, IDM_VIEWSCHEMA, L"&Schema\tCtrl+3, F7");
+            g_hViewMenu = hView;
+            AppendMenuW(hMenu, MF_POPUP, (UINT)hView, L"&View");
             
             {
                 HMENU hHelp = CreatePopupMenu();
@@ -203,6 +210,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             UpdateResultFont();
             
             g_viewMode = 0;
+            CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA, IDM_VIEWQUERY, MF_BYCOMMAND);
             UpdateLineNumbers();
             SendMessage(hwnd, WM_SIZE, 0, 0);
             
@@ -263,18 +271,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, TRUE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, FALSE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+                    CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA, IDM_VIEWQUERY, MF_BYCOMMAND);
                     break;
                 case IDM_VIEWRESULT:
                     SwitchView(1);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+                    CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA, IDM_VIEWRESULT, MF_BYCOMMAND);
                     break;
                 case IDM_VIEWSCHEMA:
                     SwitchView(2);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, FALSE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, TRUE);
+                    CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA, IDM_VIEWSCHEMA, MF_BYCOMMAND);
                     break;
                 case IDM_FONTSIZE:
                     CycleFontSize();
@@ -343,6 +354,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     TV_KEYDOWN *pKey = (TV_KEYDOWN*)lParam;
                     if (pKey->wVKey == VK_DELETE) {
                         OnSchemaDelete();
+                    } else if (pKey->wVKey == VK_ESCAPE) {
+                        SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
                     } else if (GetKeyState(VK_CONTROL) < 0) {
                         if (pKey->wVKey == '1') SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
                         else if (pKey->wVKey == '2') SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0);
