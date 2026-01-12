@@ -729,7 +729,7 @@ static int test_export_db_data(void) {
     
     /* Export data */
     if (sqlite_get_table(srcDb, "SELECT * FROM t", &result, &nRow, &nCol, NULL) == SQLITE_OK) {
-        int i, j;
+        int i;
         for (i = 1; i <= nRow; i++) {
             char sql[256];
             char *p = sql;

@@ -495,6 +495,32 @@ void OnSchemaDelete(void) {
     RefreshSchema();
 }
 
+/*============================================================================
+** Get selected object type (-1 if none or not a droppable object)
+**============================================================================*/
+
+int GetSelectedObjectType(void) {
+    HTREEITEM hItem;
+    TV_ITEMW item;
+    wchar_t text[128];
+    
+    if (!g_hwndSchema) return -1;
+    
+    hItem = TreeView_GetSelection(g_hwndSchema);
+    if (!hItem) return -1;
+    
+    item.mask = TVIF_IMAGE;
+    item.hItem = hItem;
+    item.pszText = text;
+    item.cchTextMax = 128;
+    TreeView_GetItem(g_hwndSchema, &item);
+    
+    /* Return type for tables, views, triggers only */
+    if (item.iImage == IMG_TABLE || item.iImage == IMG_VIEW || item.iImage == IMG_TRIGGER)
+        return item.iImage;
+    
+    return -1;
+}
 
 /*============================================================================
 ** Export DDL for selected object

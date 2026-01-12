@@ -143,9 +143,14 @@ static void UpdateContextMenu(int mode) {
         AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
         InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Results");
     } else {
-        AppendMenuW(hCtx, MF_STRING, IDM_REFRESH, L"&Refresh");
+        HMENU hSelObj = CreatePopupMenu();
+        AppendMenuW(hSelObj, MF_STRING, IDM_SCHEMA_SELECT, L"&Select");
+        AppendMenuW(hSelObj, MF_STRING, IDM_EXPORTDDL, L"Export &DDL...");
+        AppendMenuW(hSelObj, MF_SEPARATOR, 0, NULL);
+        AppendMenuW(hSelObj, MF_STRING, IDM_SCHEMA_DROP, L"&Drop");
+        AppendMenuW(hCtx, MF_POPUP, (UINT)hSelObj, L"Selected &Object");
         AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
-        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTDDL, L"Export &DDL...");
+        AppendMenuW(hCtx, MF_STRING, IDM_REFRESH, L"&Refresh");
         AppendMenuW(hCtx, MF_STRING, IDM_EXPORTALLDDL, L"Export &All DDL...");
         AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
         AppendMenuW(hCtx, g_showSizes ? MF_STRING | MF_CHECKED : MF_STRING, IDM_SHOWSIZES, L"Show &Details");

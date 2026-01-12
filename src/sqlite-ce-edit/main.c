@@ -299,6 +299,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     ForceMenuRebuild();
                     RefreshSchema();
                     break;
+                case IDM_SCHEMA_SELECT:
+                    OnSchemaDoubleClick();
+                    break;
+                case IDM_SCHEMA_DROP:
+                    OnSchemaDelete();
+                    break;
                 case IDM_EXPORTDDL:
                     ExportSelectedDDL();
                     break;
@@ -401,6 +407,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         return TRUE;
                     }
                 }
+            }
+            break;
+        }
+        
+        case WM_INITMENUPOPUP: {
+            HMENU hMenu = (HMENU)wParam;
+            /* Check if this is the Selected Object submenu */
+            if (g_viewMode == 2) {
+                int objType = GetSelectedObjectType();
+                int canSelect = (objType == 1 || objType == 4);  /* TABLE or VIEW */
+                int canDrop = (objType >= 0);  /* TABLE, VIEW, or TRIGGER */
+                EnableMenuItem(hMenu, IDM_SCHEMA_SELECT, canSelect ? MF_ENABLED : MF_GRAYED);
+                EnableMenuItem(hMenu, IDM_EXPORTDDL, canDrop ? MF_ENABLED : MF_GRAYED);
+                EnableMenuItem(hMenu, IDM_SCHEMA_DROP, canDrop ? MF_ENABLED : MF_GRAYED);
             }
             break;
         }

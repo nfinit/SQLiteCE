@@ -248,6 +248,7 @@ void RefreshSchema(void);
 void OnSchemaExpanding(NMTREEVIEWW *pnm);
 void OnSchemaDoubleClick(void);
 void OnSchemaDelete(void);
+int GetSelectedObjectType(void);  /* Returns IMG_TABLE, IMG_VIEW, IMG_TRIGGER, or -1 */
 void GetSchemaStatus(wchar_t *buf, int bufLen);
 DWORD GetDatabaseSize(void);
 void ExportSelectedDDL(void);
