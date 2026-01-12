@@ -822,6 +822,349 @@ static int test_memory_isolation(void) {
 }
 
 /*============================================================================
+** Test Cases - Triggers (0.5.0)
+**============================================================================*/
+
+static int test_trigger_create(void) {
+    int ok;
+    ExecOK("CREATE TABLE tr_t(id INTEGER PRIMARY KEY, val TEXT)");
+    ExecOK("CREATE TABLE tr_log(msg TEXT)");
+    ok = ExecOK("CREATE TRIGGER tr_ins AFTER INSERT ON tr_t FOR EACH ROW BEGIN INSERT INTO tr_log VALUES('inserted'); END");
+    ExecOK("DROP TRIGGER tr_ins");
+    ExecOK("DROP TABLE tr_log");
+    ExecOK("DROP TABLE tr_t");
+    return ok;
+}
+
+static int test_trigger_fires_insert(void) {
+    int ok;
+    ExecOK("CREATE TABLE tr_t(id INTEGER PRIMARY KEY, val TEXT)");
+    ExecOK("CREATE TABLE tr_log(msg TEXT)");
+    ExecOK("CREATE TRIGGER tr_ins AFTER INSERT ON tr_t FOR EACH ROW BEGIN INSERT INTO tr_log VALUES('inserted'); END");
+    ExecOK("INSERT INTO tr_t VALUES(1, 'test')");
+    ok = (CountRows("SELECT * FROM tr_log") == 1);
+    ExecOK("DROP TRIGGER tr_ins");
+    ExecOK("DROP TABLE tr_log");
+    ExecOK("DROP TABLE tr_t");
+    return ok;
+}
+
+static int test_trigger_fires_update(void) {
+    int ok;
+    ExecOK("CREATE TABLE tr_t(id INTEGER PRIMARY KEY, val TEXT)");
+    ExecOK("CREATE TABLE tr_log(msg TEXT)");
+    ExecOK("CREATE TRIGGER tr_upd AFTER UPDATE ON tr_t FOR EACH ROW BEGIN INSERT INTO tr_log VALUES('updated'); END");
+    ExecOK("INSERT INTO tr_t VALUES(1, 'test')");
+    ExecOK("UPDATE tr_t SET val='changed' WHERE id=1");
+    ok = (CountRows("SELECT * FROM tr_log") == 1);
+    ExecOK("DROP TRIGGER tr_upd");
+    ExecOK("DROP TABLE tr_log");
+    ExecOK("DROP TABLE tr_t");
+    return ok;
+}
+
+static int test_trigger_fires_delete(void) {
+    int ok;
+    ExecOK("CREATE TABLE tr_t(id INTEGER PRIMARY KEY, val TEXT)");
+    ExecOK("CREATE TABLE tr_log(msg TEXT)");
+    ExecOK("CREATE TRIGGER tr_del AFTER DELETE ON tr_t FOR EACH ROW BEGIN INSERT INTO tr_log VALUES('deleted'); END");
+    ExecOK("INSERT INTO tr_t VALUES(1, 'test')");
+    ExecOK("DELETE FROM tr_t WHERE id=1");
+    ok = (CountRows("SELECT * FROM tr_log") == 1);
+    ExecOK("DROP TRIGGER tr_del");
+    ExecOK("DROP TABLE tr_log");
+    ExecOK("DROP TABLE tr_t");
+    return ok;
+}
+
+static int test_trigger_new_reference(void) {
+    int ok;
+    ExecOK("CREATE TABLE tr_t(id INTEGER PRIMARY KEY, val INTEGER)");
+    ExecOK("CREATE TABLE tr_log(logged_val INTEGER)");
+    ExecOK("CREATE TRIGGER tr_ins AFTER INSERT ON tr_t FOR EACH ROW BEGIN INSERT INTO tr_log VALUES(NEW.val); END");
+    ExecOK("INSERT INTO tr_t VALUES(1, 42)");
+    ok = (GetInt("SELECT logged_val FROM tr_log") == 42);
+    ExecOK("DROP TRIGGER tr_ins");
+    ExecOK("DROP TABLE tr_log");
+    ExecOK("DROP TABLE tr_t");
+    return ok;
+}
+
+static int test_trigger_drop(void) {
+    int ok;
+    ExecOK("CREATE TABLE tr_t(id INTEGER)");
+    ExecOK("CREATE TABLE tr_log(msg TEXT)");
+    ExecOK("CREATE TRIGGER tr_ins AFTER INSERT ON tr_t FOR EACH ROW BEGIN INSERT INTO tr_log VALUES('x'); END");
+    ok = ExecOK("DROP TRIGGER tr_ins");
+    ExecOK("DROP TABLE tr_log");
+    ExecOK("DROP TABLE tr_t");
+    return ok;
+}
+
+/*============================================================================
+** Test Cases - Views (0.5.0)
+**============================================================================*/
+
+static int test_view_create(void) {
+    int ok;
+    ExecOK("CREATE TABLE v_t(id INTEGER, name TEXT)");
+    ok = ExecOK("CREATE VIEW v_names AS SELECT name FROM v_t");
+    ExecOK("DROP VIEW v_names");
+    ExecOK("DROP TABLE v_t");
+    return ok;
+}
+
+static int test_view_select(void) {
+    int ok;
+    ExecOK("CREATE TABLE v_t(id INTEGER, name TEXT)");
+    ExecOK("INSERT INTO v_t VALUES(1, 'Alice')");
+    ExecOK("INSERT INTO v_t VALUES(2, 'Bob')");
+    ExecOK("CREATE VIEW v_names AS SELECT name FROM v_t");
+    ok = (CountRows("SELECT * FROM v_names") == 2);
+    ExecOK("DROP VIEW v_names");
+    ExecOK("DROP TABLE v_t");
+    return ok;
+}
+
+static int test_view_with_join(void) {
+    int ok;
+    ExecOK("CREATE TABLE v_users(id INTEGER, name TEXT)");
+    ExecOK("CREATE TABLE v_orders(id INTEGER, user_id INTEGER, amount INTEGER)");
+    ExecOK("INSERT INTO v_users VALUES(1, 'Alice')");
+    ExecOK("INSERT INTO v_orders VALUES(1, 1, 100)");
+    ExecOK("CREATE VIEW v_user_orders AS SELECT u.name, o.amount FROM v_users u, v_orders o WHERE u.id = o.user_id");
+    ok = (CountRows("SELECT * FROM v_user_orders") == 1);
+    ExecOK("DROP VIEW v_user_orders");
+    ExecOK("DROP TABLE v_orders");
+    ExecOK("DROP TABLE v_users");
+    return ok;
+}
+
+static int test_view_drop(void) {
+    int ok;
+    ExecOK("CREATE TABLE v_t(x INTEGER)");
+    ExecOK("CREATE VIEW v_x AS SELECT x FROM v_t");
+    ok = ExecOK("DROP VIEW v_x");
+    ExecOK("DROP TABLE v_t");
+    return ok;
+}
+
+static int test_view_in_sqlite_master(void) {
+    int ok;
+    ExecOK("CREATE TABLE v_t(x INTEGER)");
+    ExecOK("CREATE VIEW v_test AS SELECT x FROM v_t");
+    ok = (CountRows("SELECT * FROM sqlite_master WHERE type='view' AND name='v_test'") == 1);
+    ExecOK("DROP VIEW v_test");
+    ExecOK("DROP TABLE v_t");
+    return ok;
+}
+
+/*============================================================================
+** Test Cases - Indexes (0.5.0)
+**============================================================================*/
+
+static int test_index_create(void) {
+    int ok;
+    ExecOK("CREATE TABLE idx_t(a INTEGER, b TEXT)");
+    ok = ExecOK("CREATE INDEX idx_a ON idx_t(a)");
+    ExecOK("DROP TABLE idx_t");
+    return ok;
+}
+
+static int test_index_unique(void) {
+    int ok, rc;
+    char *errmsg = NULL;
+    ExecOK("CREATE TABLE idx_t(a INTEGER, b TEXT)");
+    ExecOK("CREATE UNIQUE INDEX idx_a ON idx_t(a)");
+    ExecOK("INSERT INTO idx_t VALUES(1, 'one')");
+    rc = sqlite_exec(g_db, "INSERT INTO idx_t VALUES(1, 'duplicate')", NULL, NULL, &errmsg);
+    ok = (rc != SQLITE_OK);  /* Should fail due to unique constraint */
+    if (errmsg) sqlite_freemem(errmsg);
+    ExecOK("DROP TABLE idx_t");
+    return ok;
+}
+
+static int test_index_drop(void) {
+    int ok;
+    ExecOK("CREATE TABLE idx_t(a INTEGER)");
+    ExecOK("CREATE INDEX idx_a ON idx_t(a)");
+    ok = ExecOK("DROP INDEX idx_a");
+    ExecOK("DROP TABLE idx_t");
+    return ok;
+}
+
+static int test_index_in_sqlite_master(void) {
+    int ok;
+    ExecOK("CREATE TABLE idx_t(a INTEGER)");
+    ExecOK("CREATE INDEX idx_test ON idx_t(a)");
+    ok = (CountRows("SELECT * FROM sqlite_master WHERE type='index' AND name='idx_test'") == 1);
+    ExecOK("DROP TABLE idx_t");
+    return ok;
+}
+
+/*============================================================================
+** Test Cases - Complex Queries (0.5.0)
+**============================================================================*/
+
+static int test_subquery_where(void) {
+    int ok;
+    ExecOK("CREATE TABLE sq_t(id INTEGER, val INTEGER)");
+    ExecOK("INSERT INTO sq_t VALUES(1, 10)");
+    ExecOK("INSERT INTO sq_t VALUES(2, 20)");
+    ExecOK("INSERT INTO sq_t VALUES(3, 30)");
+    ok = (CountRows("SELECT * FROM sq_t WHERE val > (SELECT AVG(val) FROM sq_t)") == 1);
+    ExecOK("DROP TABLE sq_t");
+    return ok;
+}
+
+static int test_subquery_from(void) {
+    int ok;
+    ExecOK("CREATE TABLE sq_t(id INTEGER, val INTEGER)");
+    ExecOK("INSERT INTO sq_t VALUES(1, 10)");
+    ExecOK("INSERT INTO sq_t VALUES(2, 20)");
+    ok = (GetInt("SELECT MAX(val) FROM (SELECT val FROM sq_t)") == 20);
+    ExecOK("DROP TABLE sq_t");
+    return ok;
+}
+
+static int test_union(void) {
+    int ok;
+    ExecOK("CREATE TABLE u1(x INTEGER)");
+    ExecOK("CREATE TABLE u2(x INTEGER)");
+    ExecOK("INSERT INTO u1 VALUES(1)");
+    ExecOK("INSERT INTO u1 VALUES(2)");
+    ExecOK("INSERT INTO u2 VALUES(2)");
+    ExecOK("INSERT INTO u2 VALUES(3)");
+    ok = (CountRows("SELECT x FROM u1 UNION SELECT x FROM u2") == 3);  /* 1,2,3 - no dups */
+    ExecOK("DROP TABLE u1");
+    ExecOK("DROP TABLE u2");
+    return ok;
+}
+
+static int test_union_all(void) {
+    int ok;
+    ExecOK("CREATE TABLE u1(x INTEGER)");
+    ExecOK("CREATE TABLE u2(x INTEGER)");
+    ExecOK("INSERT INTO u1 VALUES(1)");
+    ExecOK("INSERT INTO u1 VALUES(2)");
+    ExecOK("INSERT INTO u2 VALUES(2)");
+    ExecOK("INSERT INTO u2 VALUES(3)");
+    ok = (CountRows("SELECT x FROM u1 UNION ALL SELECT x FROM u2") == 4);  /* includes dup */
+    ExecOK("DROP TABLE u1");
+    ExecOK("DROP TABLE u2");
+    return ok;
+}
+
+static int test_group_by_having(void) {
+    int ok;
+    ExecOK("CREATE TABLE gb_t(cat TEXT, val INTEGER)");
+    ExecOK("INSERT INTO gb_t VALUES('A', 10)");
+    ExecOK("INSERT INTO gb_t VALUES('A', 20)");
+    ExecOK("INSERT INTO gb_t VALUES('B', 5)");
+    ok = (CountRows("SELECT cat, SUM(val) FROM gb_t GROUP BY cat HAVING SUM(val) > 10") == 1);
+    ExecOK("DROP TABLE gb_t");
+    return ok;
+}
+
+static int test_order_by_multiple(void) {
+    int ok;
+    ExecOK("CREATE TABLE ob_t(a INTEGER, b INTEGER)");
+    ExecOK("INSERT INTO ob_t VALUES(1, 2)");
+    ExecOK("INSERT INTO ob_t VALUES(1, 1)");
+    ExecOK("INSERT INTO ob_t VALUES(2, 1)");
+    ok = (GetInt("SELECT b FROM ob_t ORDER BY a, b LIMIT 1") == 1);
+    ExecOK("DROP TABLE ob_t");
+    return ok;
+}
+
+static int test_limit_offset(void) {
+    int ok;
+    ExecOK("CREATE TABLE lo_t(x INTEGER)");
+    ExecOK("INSERT INTO lo_t VALUES(1)");
+    ExecOK("INSERT INTO lo_t VALUES(2)");
+    ExecOK("INSERT INTO lo_t VALUES(3)");
+    ExecOK("INSERT INTO lo_t VALUES(4)");
+    ok = (GetInt("SELECT x FROM lo_t ORDER BY x LIMIT 1 OFFSET 2") == 3);
+    ExecOK("DROP TABLE lo_t");
+    return ok;
+}
+
+/*============================================================================
+** Test Cases - Edge Cases (0.5.0)
+**============================================================================*/
+
+static int test_empty_table_select(void) {
+    int ok;
+    ExecOK("CREATE TABLE empty_t(x INTEGER)");
+    ok = (CountRows("SELECT * FROM empty_t") == 0);
+    ExecOK("DROP TABLE empty_t");
+    return ok;
+}
+
+static int test_null_comparisons(void) {
+    int ok;
+    ExecOK("CREATE TABLE nc_t(x INTEGER)");
+    ExecOK("INSERT INTO nc_t VALUES(1)");
+    ExecOK("INSERT INTO nc_t VALUES(NULL)");
+    ExecOK("INSERT INTO nc_t VALUES(2)");
+    ok = (CountRows("SELECT * FROM nc_t WHERE x IS NULL") == 1);
+    ok = ok && (CountRows("SELECT * FROM nc_t WHERE x IS NOT NULL") == 2);
+    ExecOK("DROP TABLE nc_t");
+    return ok;
+}
+
+static int test_string_embedded_quotes(void) {
+    int ok;
+    ExecOK("CREATE TABLE eq_t(s TEXT)");
+    ExecOK("INSERT INTO eq_t VALUES('it''s a \"test\"')");
+    ok = (CountRows("SELECT * FROM eq_t WHERE s LIKE '%test%'") == 1);
+    ExecOK("DROP TABLE eq_t");
+    return ok;
+}
+
+static int test_large_integer(void) {
+    int ok, val;
+    ExecOK("CREATE TABLE li_t(x INTEGER)");
+    ExecOK("INSERT INTO li_t VALUES(2147483647)");  /* Max 32-bit signed */
+    val = GetInt("SELECT x FROM li_t");
+    ok = (val == 2147483647);
+    ExecOK("DROP TABLE li_t");
+    return ok;
+}
+
+/*============================================================================
+** Test Cases - Date/Time Functions (0.5.0)
+**============================================================================*/
+
+static int test_datetime_now(void) {
+    int ok;
+    /* datetime('now') should return a non-empty string */
+    ExecOK("CREATE TABLE dt_t(ts TEXT)");
+    ExecOK("INSERT INTO dt_t VALUES(datetime('now'))");
+    ok = (CountRows("SELECT * FROM dt_t WHERE ts IS NOT NULL AND ts != ''") == 1);
+    ExecOK("DROP TABLE dt_t");
+    return ok;
+}
+
+static int test_date_now(void) {
+    int ok;
+    ExecOK("CREATE TABLE dt_t(d TEXT)");
+    ExecOK("INSERT INTO dt_t VALUES(date('now'))");
+    ok = (CountRows("SELECT * FROM dt_t WHERE d IS NOT NULL AND length(d) = 10") == 1);  /* YYYY-MM-DD */
+    ExecOK("DROP TABLE dt_t");
+    return ok;
+}
+
+static int test_time_now(void) {
+    int ok;
+    ExecOK("CREATE TABLE dt_t(t TEXT)");
+    ExecOK("INSERT INTO dt_t VALUES(time('now'))");
+    ok = (CountRows("SELECT * FROM dt_t WHERE t IS NOT NULL AND length(t) = 8") == 1);  /* HH:MM:SS */
+    ExecOK("DROP TABLE dt_t");
+    return ok;
+}
+
+/*============================================================================
 ** Test Registry
 **============================================================================*/
 
@@ -878,6 +1221,47 @@ static TestCase g_tests[] = {
     
     /* Memory databases */
     { "Memory DB isolation",        test_memory_isolation },
+    
+    /* Triggers (0.5.0) */
+    { "CREATE TRIGGER",             test_trigger_create },
+    { "Trigger fires on INSERT",    test_trigger_fires_insert },
+    { "Trigger fires on UPDATE",    test_trigger_fires_update },
+    { "Trigger fires on DELETE",    test_trigger_fires_delete },
+    { "Trigger NEW.column ref",     test_trigger_new_reference },
+    { "DROP TRIGGER",               test_trigger_drop },
+    
+    /* Views (0.5.0) */
+    { "CREATE VIEW",                test_view_create },
+    { "SELECT from VIEW",           test_view_select },
+    { "VIEW with JOIN",             test_view_with_join },
+    { "DROP VIEW",                  test_view_drop },
+    { "VIEW in sqlite_master",      test_view_in_sqlite_master },
+    
+    /* Indexes (0.5.0) */
+    { "CREATE INDEX",               test_index_create },
+    { "UNIQUE INDEX constraint",    test_index_unique },
+    { "DROP INDEX",                 test_index_drop },
+    { "INDEX in sqlite_master",     test_index_in_sqlite_master },
+    
+    /* Complex queries (0.5.0) */
+    { "Subquery in WHERE",          test_subquery_where },
+    { "Subquery in FROM",           test_subquery_from },
+    { "UNION",                      test_union },
+    { "UNION ALL",                  test_union_all },
+    { "GROUP BY with HAVING",       test_group_by_having },
+    { "ORDER BY multiple cols",     test_order_by_multiple },
+    { "LIMIT and OFFSET",           test_limit_offset },
+    
+    /* Edge cases (0.5.0) */
+    { "Empty table SELECT",         test_empty_table_select },
+    { "NULL comparisons",           test_null_comparisons },
+    { "String with quotes",         test_string_embedded_quotes },
+    { "Large integer (32-bit max)", test_large_integer },
+    
+    /* Date/Time functions (0.5.0) */
+    { "datetime('now')",            test_datetime_now },
+    { "date('now')",                test_date_now },
+    { "time('now')",                test_time_now },
     
     { NULL, NULL }
 };
