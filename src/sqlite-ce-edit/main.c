@@ -416,6 +416,26 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 OnGridGetDispInfo((NMLVDISPINFOW*)lParam);
                 return 0;
             }
+            if (pnm->hwndFrom == g_hwndGrid && pnm->code == LVN_COLUMNCLICK) {
+                NMLISTVIEW *pnmlv = (NMLISTVIEW*)lParam;
+                OnGridColumnClick(pnmlv->iSubItem);
+                return 0;
+            }
+            /* Header double-click to auto-size column */
+            if (pnm->code == HDN_ITEMDBLCLICKW || pnm->code == HDN_ITEMDBLCLICKA) {
+                NMHEADERW *phdr = (NMHEADERW*)lParam;
+                if (GetParent(pnm->hwndFrom) == g_hwndGrid) {
+                    int col = phdr->iItem;
+                    int contentWidth, headerWidth;
+                    ListView_SetColumnWidth(g_hwndGrid, col, LVSCW_AUTOSIZE);
+                    contentWidth = ListView_GetColumnWidth(g_hwndGrid, col);
+                    ListView_SetColumnWidth(g_hwndGrid, col, LVSCW_AUTOSIZE_USEHEADER);
+                    headerWidth = ListView_GetColumnWidth(g_hwndGrid, col);
+                    if (contentWidth > headerWidth)
+                        ListView_SetColumnWidth(g_hwndGrid, col, contentWidth);
+                    return 0;
+                }
+            }
             if (pnm->hwndFrom == g_hwndSchema) {
                 if (pnm->code == TVN_ITEMEXPANDINGW) {
                     OnSchemaExpanding((NMTREEVIEWW*)lParam);

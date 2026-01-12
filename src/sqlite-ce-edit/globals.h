@@ -270,6 +270,8 @@ void OnSchemaDoubleClick(void);
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy);
 void PopulateGrid(void);
 void OnGridGetDispInfo(NMLVDISPINFOW *pdi);
+void OnGridColumnClick(int col);
+void GridFindNext(void);
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void OnSchemaDelete(void);
 int GetSelectedObjectType(void);  /* Returns IMG_TABLE, IMG_VIEW, IMG_TRIGGER, or -1 */

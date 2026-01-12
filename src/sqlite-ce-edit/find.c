@@ -96,10 +96,15 @@ static LRESULT CALLBACK FindWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                 GetWindowTextW(g_hwndFindEdit, g_findText, 128);
                 DestroyWindow(hwnd);
                 g_hwndFindDlg = NULL;
-                SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
-                if (g_findText[0]) {
-                    g_searchMode = 1;
-                    DoFindNext();
+                if (g_viewMode == 1 && g_gridView) {
+                    SetFocus(g_hwndGrid);
+                    if (g_findText[0]) GridFindNext();
+                } else {
+                    SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+                    if (g_findText[0]) {
+                        g_searchMode = 1;
+                        DoFindNext();
+                    }
                 }
                 return 0;
             }
@@ -107,7 +112,10 @@ static LRESULT CALLBACK FindWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         case WM_CLOSE:
             DestroyWindow(hwnd);
             g_hwndFindDlg = NULL;
-            SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+            if (g_viewMode == 1 && g_gridView)
+                SetFocus(g_hwndGrid);
+            else
+                SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
             return 0;
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);

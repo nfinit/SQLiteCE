@@ -137,7 +137,12 @@ static void UpdateContextMenu(int mode) {
         AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
         InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Query");
     } else if (mode == 1) {
-        AppendMenuW(hCtx, g_gridView ? MF_STRING | MF_CHECKED : MF_STRING, IDM_VIEWGRID, L"&Grid View\tCtrl+G");
+        wchar_t gridLabel[64];
+        if (g_lastResultRows > 0)
+            wsprintfW(gridLabel, L"&Grid View (%d rows)\tCtrl+G", g_lastResultRows);
+        else
+            lstrcpyW(gridLabel, L"&Grid View\tCtrl+G");
+        AppendMenuW(hCtx, g_gridView ? MF_STRING | MF_CHECKED : MF_STRING, IDM_VIEWGRID, gridLabel);
         AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
         AppendMenuW(hCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
         AppendMenuW(hCtx, MF_STRING, IDM_EXPORTHTMLRES, L"Export &HTML...");

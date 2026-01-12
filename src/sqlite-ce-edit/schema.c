@@ -12,6 +12,7 @@
 #define IMG_KEY      3
 #define IMG_VIEW     4
 #define IMG_TRIGGER  5
+#define IMG_INDEX    6
 
 static HIMAGELIST g_hSchemaImages = NULL;
 
@@ -86,6 +87,11 @@ void GetSchemaStatus(wchar_t *buf, int bufLen) {
 static WNDPROC g_pfnSchemaProc;
 
 static LRESULT CALLBACK SchemaSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    /* Alt+X - Exit */
+    if (msg == WM_SYSKEYDOWN && wParam == 'X') {
+        SendMessage(g_hwndMain, WM_CLOSE, 0, 0);
+        return 0;
+    }
     /* Suppress beep on Enter - only eat WM_CHAR, let WM_KEYDOWN through for TVN_KEYDOWN */
     if (msg == WM_CHAR && wParam == '\r')
         return 0;
@@ -105,7 +111,7 @@ void CreateSchemaView(HWND hwndParent, int x, int y, int cx, int cy) {
     /* Create image list from schema.bmp */
     hBmp = LoadBitmapW(g_hInst, MAKEINTRESOURCEW(IDB_SCHEMA));
     if (hBmp) {
-        g_hSchemaImages = ImageList_Create(16, 16, ILC_COLOR | ILC_MASK, 5, 0);
+        g_hSchemaImages = ImageList_Create(16, 16, ILC_COLOR | ILC_MASK, 7, 0);
         if (g_hSchemaImages) {
             ImageList_AddMasked(g_hSchemaImages, hBmp, RGB(255, 0, 255));
             TreeView_SetImageList(g_hwndSchema, g_hSchemaImages, TVSIL_NORMAL);
@@ -393,8 +399,10 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
     
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {
+            /* sqlite_autoindex_* = primary key, others = user index */
+            int isPK = (strncmp(results[i], "sqlite_autoindex_", 17) == 0);
             MultiByteToWideChar(CP_ACP, 0, results[i], -1, wname, 128);
-            AddTreeItem(pnm->itemNew.hItem, wname, IMG_KEY);
+            AddTreeItem(pnm->itemNew.hItem, wname, isPK ? IMG_KEY : IMG_INDEX);
         }
     }
     if (results) sqlite_free_table(results);
