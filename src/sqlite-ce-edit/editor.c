@@ -182,10 +182,28 @@ void SwitchView(int mode) {
     g_viewMode = mode;
     ShowWindow(g_hwndQuery, mode == 0 ? SW_SHOW : SW_HIDE);
     if (g_hwndLineNum) ShowWindow(g_hwndLineNum, (mode == 0 && g_showLineNumbers) ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndResult, mode == 1 ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndResult, mode == 1 && !g_gridView ? SW_SHOW : SW_HIDE);
+    if (g_hwndGrid) ShowWindow(g_hwndGrid, mode == 1 && g_gridView ? SW_SHOW : SW_HIDE);
     if (g_hwndSchema) ShowWindow(g_hwndSchema, mode == 2 ? SW_SHOW : SW_HIDE);
-    /* Disable exec-at-cursor button in non-query views */
-    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, mode == 0);
+    
+    /* Swap button bitmap/state based on view mode */
+    if (mode == 0) {
+        /* Query view: exec-at-cursor toggle */
+        SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_EXECAT);
+        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
+        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
+    } else if (mode == 1) {
+        /* Results view: grid toggle - checked = grid mode */
+        SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_GRID);
+        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
+        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
+    } else {
+        /* Schema view: disabled */
+        SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_EXECAT);
+        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, FALSE);
+        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
+    }
+    
     /* Update context menu */
     UpdateContextMenu(mode);
     if (mode == 0) {
@@ -193,7 +211,7 @@ void SwitchView(int mode) {
         UpdateLineCount();
         UpdateLineNumbers();
     } else if (mode == 1) {
-        SetFocus(g_hwndResult);
+        SetFocus(g_gridView ? g_hwndGrid : g_hwndResult);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)g_lastResultStatus);
     } else if (mode == 2) {
         wchar_t statusBuf[64];
@@ -227,6 +245,8 @@ void UpdateResultFont(void) {
     lstrcpyW(lf.lfFaceName, L"Courier New");
     g_hFontResult = CreateFontIndirectW(&lf);
     SendMessage(g_hwndResult, WM_SETFONT, (WPARAM)g_hFontResult, TRUE);
+    if (g_hwndGrid)
+        SendMessage(g_hwndGrid, WM_SETFONT, (WPARAM)g_hFontResult, TRUE);
     if (hOld) DeleteObject(hOld);
 }
 

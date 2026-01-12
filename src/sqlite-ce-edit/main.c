@@ -202,6 +202,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 0, cbHeight, rc.right, editHeight,
                 hwnd, (HMENU)1002, g_hInst, NULL);
             
+            /* Grid view */
+            CreateGridView(hwnd, 0, cbHeight, rc.right, editHeight);
+            
             /* Schema view */
             CreateSchemaView(hwnd, 0, cbHeight, rc.right, editHeight);
             }
@@ -237,6 +240,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             MoveWindow(g_hwndQuery, queryLeft, cbHeight, rc.right - queryLeft, editHeight, TRUE);
             MoveWindow(g_hwndResult, 0, cbHeight, rc.right, editHeight, TRUE);
+            if (g_hwndGrid)
+                MoveWindow(g_hwndGrid, 0, cbHeight, rc.right, editHeight, TRUE);
             if (g_hwndSchema)
                 MoveWindow(g_hwndSchema, 0, cbHeight, rc.right, editHeight, TRUE);
             return 0;
@@ -262,8 +267,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_EXECUTE: ExecuteQuery(); break;
                 case IDM_STOP: g_abortQuery = 1; break;
                 case IDM_EXECATCURSOR:
-                    g_execAtCursor = !g_execAtCursor;
-                    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
+                    if (g_viewMode == 0) {
+                        /* Query view: toggle exec-at-cursor */
+                        g_execAtCursor = !g_execAtCursor;
+                        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
+                    } else if (g_viewMode == 1) {
+                        /* Results view: toggle grid/text - checked = grid mode */
+                        g_gridView = !g_gridView;
+                        ShowWindow(g_hwndResult, g_gridView ? SW_HIDE : SW_SHOW);
+                        if (g_hwndGrid) ShowWindow(g_hwndGrid, g_gridView ? SW_SHOW : SW_HIDE);
+                        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
+                        SetFocus(g_gridView ? g_hwndGrid : g_hwndResult);
+                        if (g_gridView) PopulateGrid();
+                    }
                     break;
                 case IDM_FIND:    DoFind(); break;
                 case IDM_FINDNEXT: DoFindNext(); break;

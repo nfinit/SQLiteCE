@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.5.0"
+#define SQLITECEDIT_VERSION L"0.6.0"
 
 /*============================================================================
 ** Menu IDs
@@ -132,6 +132,9 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 /* Timer IDs */
 #define IDT_TAPHOLD 1
 
+/* Control IDs */
+#define IDC_GRID 1001
+
 /*============================================================================
 ** Resource IDs
 **============================================================================*/
@@ -174,6 +177,7 @@ extern HACCEL g_hAccel;
 extern HBRUSH g_hBrushWhite;
 extern HWND g_hwndQuery;
 extern HWND g_hwndResult;
+extern HWND g_hwndGrid;
 extern HWND g_hwndSchema;
 extern HWND g_hwndLineNum;
 extern sqlite *g_db;
@@ -203,6 +207,7 @@ extern int g_viewMode;
 extern int g_showingHint;
 extern int g_suppressLineCount;
 extern int g_execAtCursor;
+extern int g_gridView;
 extern int g_abortQuery;
 extern wchar_t g_lastResultStatus[64];
 extern wchar_t g_findText[128];
@@ -253,6 +258,10 @@ void CreateSchemaView(HWND hwndParent, int x, int y, int cx, int cy);
 void RefreshSchema(void);
 void OnSchemaExpanding(NMTREEVIEWW *pnm);
 void OnSchemaDoubleClick(void);
+
+/* Grid view (grid.c) */
+void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy);
+void PopulateGrid(void);
 void OnSchemaDelete(void);
 int GetSelectedObjectType(void);  /* Returns IMG_TABLE, IMG_VIEW, IMG_TRIGGER, or -1 */
 void GetSchemaStatus(wchar_t *buf, int bufLen);
