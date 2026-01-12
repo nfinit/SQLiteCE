@@ -22,6 +22,49 @@ void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     /* Set font to match results pane */
     if (g_hFontResult)
         SendMessage(g_hwndGrid, WM_SETFONT, (WPARAM)g_hFontResult, TRUE);
+    
+    /* Subclass for keyboard shortcuts */
+    g_pfnGridProc = (WNDPROC)SetWindowLong(g_hwndGrid, GWL_WNDPROC, (LONG)GridProc);
+}
+
+LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN) {
+        int ctrl = GetKeyState(VK_CONTROL) < 0;
+        
+        /* Ctrl+G - Toggle back to text view */
+        if (ctrl && wParam == 'G') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_EXECATCURSOR, 0);
+            return 0;
+        }
+        /* F6/Escape/Backspace - back to query */
+        if (wParam == VK_F6 || wParam == VK_ESCAPE || wParam == VK_BACK) {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+            return 0;
+        }
+        if (wParam == VK_F7) {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
+            return 0;
+        }
+        /* Ctrl+1/2/3 - View switching */
+        if (ctrl && wParam == '1') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+            return 0;
+        }
+        if (ctrl && wParam == '2') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
+            return 0;
+        }
+        if (ctrl && wParam == '3') {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
+            return 0;
+        }
+        /* F5 or Ctrl+E - Execute */
+        if (wParam == VK_F5 || (ctrl && wParam == 'E')) {
+            ExecuteQuery();
+            return 0;
+        }
+    }
+    return CallWindowProc(g_pfnGridProc, hwnd, msg, wParam, lParam);
 }
 
 void PopulateGrid(void) {

@@ -195,6 +195,7 @@ extern int g_showLineNumbers;
 extern int g_lineNumWidth;
 extern WNDPROC g_pfnQueryProc;
 extern WNDPROC g_pfnResultProc;
+extern WNDPROC g_pfnGridProc;
 extern WNDPROC g_pfnLineNumProc;
 
 /* Output buffer */
@@ -262,6 +263,7 @@ void OnSchemaDoubleClick(void);
 /* Grid view (grid.c) */
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy);
 void PopulateGrid(void);
+LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void OnSchemaDelete(void);
 int GetSelectedObjectType(void);  /* Returns IMG_TABLE, IMG_VIEW, IMG_TRIGGER, or -1 */
 void GetSchemaStatus(wchar_t *buf, int bufLen);

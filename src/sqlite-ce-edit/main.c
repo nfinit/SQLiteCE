@@ -377,17 +377,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (wParam == 'O') { DoOpenQuery(); return 0; }
                 if (wParam == 'N') { DoFileNew(); return 0; }
                 if (wParam == 'C') { g_abortQuery = 1; return 0; }
+                if (wParam == '1') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0); return 0; }
+                if (wParam == '2') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0); return 0; }
+                if (wParam == '3') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0); return 0; }
             }
             if (wParam == VK_F5) { ExecuteQuery(); return 0; }
+            if (wParam == VK_F6) { SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0); return 0; }
+            if (wParam == VK_F7) { SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0); return 0; }
             if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT) {
                 if (g_viewMode == 0) SetFocus(g_hwndQuery);
-                else if (g_viewMode == 1) SetFocus(g_hwndResult);
+                else if (g_viewMode == 1) SetFocus(g_gridView ? g_hwndGrid : g_hwndResult);
                 else if (g_viewMode == 2 && g_hwndSchema) SetFocus(g_hwndSchema);
                 return 0;
             }
             if (wParam == VK_RETURN && g_viewMode != 2) {
                 if (g_viewMode == 0) SetFocus(g_hwndQuery);
-                else if (g_viewMode == 1) SetFocus(g_hwndResult);
+                else if (g_viewMode == 1) SetFocus(g_gridView ? g_hwndGrid : g_hwndResult);
                 return 0;
             }
             break;

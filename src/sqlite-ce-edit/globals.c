@@ -37,6 +37,7 @@ int g_showLineNumbers = 1;
 int g_lineNumWidth = 0;
 WNDPROC g_pfnQueryProc;
 WNDPROC g_pfnResultProc;
+WNDPROC g_pfnGridProc;
 WNDPROC g_pfnLineNumProc;
 
 /* Output buffer */
