@@ -96,6 +96,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_SAVEQUERY  106
 #define IDM_EXPORTCSV  107
 #define IDM_EXPORTDB   108
+#define IDM_EXPORTTXT  109
 #define IDM_IMPORTCSV  109
 #define IDM_IMPORTCEDB 110
 #define IDM_EXECUTE  201
@@ -119,6 +120,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 /* Schema context menu */
 #define IDM_SCHEMA_SELECT 700
 #define IDM_SCHEMA_DROP   701
+#define IDM_REFRESH       702
 
 /* Timer IDs */
 #define IDT_TAPHOLD 1
@@ -223,6 +225,7 @@ void UpdateLineCount(void);
 void UpdateLineNumbers(void);
 void SyncLineNumScroll(void);
 void SwitchView(int mode);
+void BuildMenuBar(int mode);
 void UpdateQueryFont(void);
 void UpdateResultFont(void);
 void CycleFontSize(void);
@@ -269,6 +272,7 @@ void DoFileOpen(void);
 void DoOpenQuery(void);
 void DoSaveQuery(void);
 void DoExportCSV(void);
+void DoExportTxt(void);
 void DoExportDb(void);
 void DoImportCSV(void);
 void DoImportCEDB(void);

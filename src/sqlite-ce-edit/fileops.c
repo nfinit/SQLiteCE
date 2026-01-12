@@ -349,6 +349,49 @@ void DoExportCSV(void) {
 }
 
 /*============================================================================
+** Export Results to Text File
+**============================================================================*/
+
+void DoExportTxt(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"results.txt";
+    HANDLE hFile;
+    DWORD dwLen, dwWritten;
+    wchar_t *wbuf;
+    char *buf;
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+    ofn.lpstrDefExt = L"txt";
+    ofn.lpstrTitle = L"Export Results";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    
+    if (!GetSaveFileNameW(&ofn)) return;
+    
+    dwLen = GetWindowTextLengthW(g_hwndResult);
+    if (dwLen == 0) return;
+    
+    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
+    buf = (char*)LocalAlloc(LMEM_FIXED, dwLen + 1);
+    if (wbuf && buf) {
+        GetWindowTextW(g_hwndResult, wbuf, dwLen + 1);
+        WideCharToMultiByte(CP_ACP, 0, wbuf, -1, buf, dwLen + 1, NULL, NULL);
+        
+        hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            WriteFile(hFile, buf, (DWORD)strlen(buf), &dwWritten, NULL);
+            CloseHandle(hFile);
+        }
+    }
+    if (wbuf) LocalFree(wbuf);
+    if (buf) LocalFree(buf);
+}
+
+/*============================================================================
 ** Export Table to CSV (helper for DoExportDb)
 **============================================================================*/
 

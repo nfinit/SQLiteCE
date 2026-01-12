@@ -248,6 +248,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_OPENQUERY: DoOpenQuery(); break;
                 case IDM_SAVEQUERY: DoSaveQuery(); break;
                 case IDM_EXPORTCSV: DoExportCSV(); break;
+                case IDM_EXPORTTXT: DoExportTxt(); break;
                 case IDM_EXPORTDB: DoExportDb(); break;
                 case IDM_IMPORTCSV: DoImportCSV(); break;
                 case IDM_IMPORTCEDB: DoImportCEDB(); break;

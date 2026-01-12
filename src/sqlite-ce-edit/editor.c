@@ -113,6 +113,56 @@ void SyncLineNumScroll(void) {
     UpdateLineNumbers();
 }
 
+static int g_lastMenuMode = 0;  /* Start with Query menu (mode 0) */
+
+static void UpdateContextMenu(int mode) {
+    HMENU hCBMenu, hCtx;
+    
+    /* Only rebuild if mode changed */
+    if (mode == g_lastMenuMode) return;
+    
+    /* Get the actual menu from CommandBar */
+    hCBMenu = CommandBar_GetMenu(g_hwndCB, 0);
+    if (!hCBMenu) return;
+    
+    /* Remove old context menu at position 1 */
+    RemoveMenu(hCBMenu, 1, MF_BYPOSITION);
+    
+    /* Create and insert new context menu */
+    hCtx = CreatePopupMenu();
+    if (mode == 0) {
+        AppendMenuW(hCtx, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
+        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
+        AppendMenuW(hCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
+        AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
+        InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Query");
+    } else if (mode == 1) {
+        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTCSV, L"Export as &CSV...");
+        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTTXT, L"Export as &Text...");
+        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
+        AppendMenuW(hCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
+        AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
+        InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Results");
+    } else {
+        AppendMenuW(hCtx, MF_STRING, IDM_REFRESH, L"&Refresh");
+        InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Schema");
+    }
+    
+    g_lastMenuMode = mode;
+    
+    /* Update View menu radio check - get from CommandBar's menu */
+    {
+        HMENU hViewSub = GetSubMenu(hCBMenu, 2);  /* View is at position 2 */
+        if (hViewSub) {
+            CheckMenuRadioItem(hViewSub, IDM_VIEWQUERY, IDM_VIEWSCHEMA,
+                mode == 0 ? IDM_VIEWQUERY : (mode == 1 ? IDM_VIEWRESULT : IDM_VIEWSCHEMA), MF_BYCOMMAND);
+        }
+    }
+    
+    /* Force CommandBar to redraw */
+    CommandBar_DrawMenuBar(g_hwndCB, 0);
+}
+
 void SwitchView(int mode) {
     g_viewMode = mode;
     ShowWindow(g_hwndQuery, mode == 0 ? SW_SHOW : SW_HIDE);
@@ -121,6 +171,8 @@ void SwitchView(int mode) {
     if (g_hwndSchema) ShowWindow(g_hwndSchema, mode == 2 ? SW_SHOW : SW_HIDE);
     /* Disable exec-at-cursor button in non-query views */
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, mode == 0);
+    /* Update context menu */
+    UpdateContextMenu(mode);
     if (mode == 0) {
         SetFocus(g_hwndQuery);
         UpdateLineCount();
