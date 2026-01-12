@@ -49,6 +49,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 hExport = CreatePopupMenu();
                 AppendMenuW(hExport, MF_STRING, IDM_EXPORTRESULTS, L"&Results...");
                 AppendMenuW(hExport, MF_STRING, IDM_EXPORTTABLE, L"&Table...");
+                AppendMenuW(hExport, MF_STRING, IDM_EXPORTHTML, L"&HTML Table...");
                 AppendMenuW(hExport, MF_STRING, IDM_EXPORTDB, L"&Database...");
                 AppendMenuW(hFile, MF_POPUP, (UINT)hExport, L"&Export");
                 hImport = CreatePopupMenu();
@@ -252,6 +253,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_EXPORTTXT: DoExportTxt(); break;
                 case IDM_EXPORTRESULTS: DoExportResults(); break;
                 case IDM_EXPORTTABLE: DoExportTable(); break;
+                case IDM_EXPORTHTML: DoExportHTML(); break;
+                case IDM_EXPORTHTMLRES: DoExportHTMLResults(); break;
                 case IDM_EXPORTDB: DoExportDb(); break;
                 case IDM_IMPORTCSV: DoImportCSV(); break;
                 case IDM_IMPORTCEDB: DoImportCEDB(); break;

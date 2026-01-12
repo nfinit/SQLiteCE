@@ -99,6 +99,8 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_EXPORTTXT  109
 #define IDM_EXPORTRESULTS 112
 #define IDM_EXPORTTABLE 113
+#define IDM_EXPORTHTML  114
+#define IDM_EXPORTHTMLRES 115
 #define IDM_IMPORTCSV  110
 #define IDM_IMPORTCEDB 111
 #define IDM_EXECUTE  201
@@ -176,6 +178,10 @@ extern HWND g_hwndSchema;
 extern HWND g_hwndLineNum;
 extern sqlite *g_db;
 extern wchar_t g_szDbPath[MAX_PATH];
+extern char **g_lastResult;
+extern int g_lastResultRows;
+extern int g_lastResultCols;
+void FreeLastResults(void);
 extern HFONT g_hFontQuery;
 extern HFONT g_hFontResult;
 extern int g_fontSizes[4];
@@ -288,6 +294,8 @@ void DoExportCSV(void);
 void DoExportTxt(void);
 void DoExportResults(void);
 void DoExportTable(void);
+void DoExportHTML(void);
+void DoExportHTMLResults(void);
 void DoExportDb(void);
 void DoImportCSV(void);
 void DoImportCEDB(void);

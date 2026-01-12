@@ -92,6 +92,61 @@ static void OutputResults(void) {
     }
 }
 
+void FreeLastResults(void) {
+    if (g_lastResult) {
+        int i, total = (g_lastResultRows + 1) * g_lastResultCols;
+        for (i = 0; i < total; i++) {
+            if (g_lastResult[i]) LocalFree(g_lastResult[i]);
+        }
+        LocalFree(g_lastResult);
+        g_lastResult = NULL;
+    }
+    g_lastResultRows = 0;
+    g_lastResultCols = 0;
+}
+
+static void StoreLastResults(void) {
+    int r, c, len;
+    /* Free previous */
+    FreeLastResults();
+    if (g_nCols == 0 || g_resultRows == 0) return;
+    
+    /* Allocate flat array like sqlite_get_table: (nRows+1) * nCols pointers */
+    g_lastResult = (char **)LocalAlloc(LMEM_FIXED, (g_resultRows + 1) * g_nCols * sizeof(char *));
+    if (!g_lastResult) return;
+    
+    g_lastResultRows = g_resultRows;
+    g_lastResultCols = g_nCols;
+    
+    /* Copy header row */
+    for (c = 0; c < g_nCols; c++) {
+        if (g_results[0][c]) {
+            len = strlen_safe(g_results[0][c]);
+            g_lastResult[c] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+            if (g_lastResult[c]) {
+                int i; for (i = 0; i <= len; i++) g_lastResult[c][i] = g_results[0][c][i];
+            }
+        } else {
+            g_lastResult[c] = NULL;
+        }
+    }
+    /* Copy data rows */
+    for (r = 1; r <= g_resultRows; r++) {
+        for (c = 0; c < g_nCols; c++) {
+            int idx = r * g_nCols + c;
+            if (g_results[r][c]) {
+                len = strlen_safe(g_results[r][c]);
+                g_lastResult[idx] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+                if (g_lastResult[idx]) {
+                    int i; for (i = 0; i <= len; i++) g_lastResult[idx][i] = g_results[r][c][i];
+                }
+            } else {
+                g_lastResult[idx] = NULL;
+            }
+        }
+    }
+}
+
 static void FlushResultSet(void) {
     char buf[32];
     char *p = buf + 30;
@@ -105,6 +160,7 @@ static void FlushResultSet(void) {
     OutputLine(" row(s) returned.");
     OutputLine("");
     g_totalRows += g_nRows;
+    StoreLastResults();
     FreeResults();
     g_nRows = 0;
     g_nCols = 0;

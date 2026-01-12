@@ -138,6 +138,7 @@ static void UpdateContextMenu(int mode) {
         InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Query");
     } else if (mode == 1) {
         AppendMenuW(hCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
+        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTHTMLRES, L"Export &HTML...");
         AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
         AppendMenuW(hCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
         AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");

@@ -497,63 +497,62 @@ void DoExportTxt(void) {
 }
 
 /*============================================================================
-** Export Single Table to CSV
+** Export Single Table
 **============================================================================*/
 
-/* Table picker dialog state */
-static HWND g_hwndTblList;
-static char g_selectedTable[128];
-static char **g_tableList;
-static int g_tableCount;
+static HWND g_hwndPickDlg;
+static char g_pickResult[128];
 
-static LRESULT CALLBACK TablePickerProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
-        case WM_INITDIALOG: {
-            RECT rc;
-            int i;
-            wchar_t wname[128];
-            SetWindowTextW(hwnd, L"Select Table");
-            GetClientRect(hwnd, &rc);
-            g_hwndTblList = CreateWindowW(L"LISTBOX", NULL,
-                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY,
-                10, 10, rc.right - 20, rc.bottom - 56,
-                hwnd, (HMENU)101, g_hInst, NULL);
-            for (i = 0; i < g_tableCount; i++) {
-                MultiByteToWideChar(CP_ACP, 0, g_tableList[i], -1, wname, 128);
-                SendMessageW(g_hwndTblList, LB_ADDSTRING, 0, (LPARAM)wname);
-            }
-            SendMessage(g_hwndTblList, LB_SETCURSEL, 0, 0);
-            CreateWindowW(L"BUTTON", L"Export",
-                WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-                10, rc.bottom - 36, 60, 26, hwnd, (HMENU)IDOK, g_hInst, NULL);
-            CreateWindowW(L"BUTTON", L"Cancel",
-                WS_CHILD | WS_VISIBLE,
-                80, rc.bottom - 36, 60, 26, hwnd, (HMENU)IDCANCEL, g_hInst, NULL);
-            SetFocus(g_hwndTblList);
-            return FALSE;
+static LRESULT CALLBACK PickWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_COMMAND) {
+        WORD cmd = LOWORD(wParam);
+        if (cmd == IDCANCEL) {
+            g_pickResult[0] = 0;
+            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            return 0;
         }
-        case WM_COMMAND:
-            if (LOWORD(wParam) == IDOK || (LOWORD(wParam) == 101 && HIWORD(wParam) == LBN_DBLCLK)) {
-                int sel = (int)SendMessage(g_hwndTblList, LB_GETCURSEL, 0, 0);
-                if (sel >= 0 && sel < g_tableCount) {
-                    strcpy(g_selectedTable, g_tableList[sel]);
-                    EndDialog(hwnd, IDOK);
-                }
-            } else if (LOWORD(wParam) == IDCANCEL) {
-                EndDialog(hwnd, IDCANCEL);
+        if (cmd == IDOK || (cmd == 101 && HIWORD(wParam) == LBN_DBLCLK)) {
+            HWND hwndList = GetDlgItem(hwnd, 101);
+            int sel = (int)SendMessage(hwndList, LB_GETCURSEL, 0, 0);
+            if (sel >= 0) {
+                wchar_t wname[128];
+                SendMessageW(hwndList, LB_GETTEXT, sel, (LPARAM)wname);
+                WideCharToMultiByte(CP_ACP, 0, wname, -1, g_pickResult, 128, NULL, NULL);
             }
-            return TRUE;
-        case WM_CLOSE:
-            EndDialog(hwnd, IDCANCEL);
-            return TRUE;
+            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            return 0;
+        }
     }
-    return FALSE;
+    if (msg == WM_CLOSE) {
+        DestroyWindow(hwnd);
+        return 0;
+    }
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+static LRESULT CALLBACK PickListProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
+        SendMessage(GetParent(hwnd), WM_COMMAND, IDOK, 0);
+        return 0;
+    }
+    if (msg == WM_CHAR && wParam == '\r')
+        return 0;
+    return CallWindowProc((WNDPROC)GetWindowLong(hwnd, GWL_USERDATA), hwnd, msg, wParam, lParam);
 }
 
 static int PickTable(char *tblName) {
-    DLGTEMPLATE dlg;
     char **results = NULL;
-    int nRows = 0, nCols = 0, ret;
+    int nRows = 0, nCols = 0;
+    MSG msg;
+    HWND hwndList, hwndOK, hwndCancel;
+    int i;
+    wchar_t wname[128];
+    WNDCLASSW wc;
+    WNDPROC pfnOrig;
     
     /* Get table list */
     sqlite_get_table(g_db,
@@ -566,22 +565,56 @@ static int PickTable(char *tblName) {
         return 0;
     }
     
-    /* Store for dialog */
-    g_tableList = &results[1];  /* Skip header */
-    g_tableCount = nRows;
-    g_selectedTable[0] = 0;
+    /* Register window class */
+    memset(&wc, 0, sizeof(wc));
+    wc.lpfnWndProc = PickWndProc;
+    wc.hInstance = g_hInst;
+    wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
+    wc.lpszClassName = L"PickTableWnd";
+    RegisterClassW(&wc);
     
-    /* Create dialog */
-    memset(&dlg, 0, sizeof(dlg));
-    dlg.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_CENTER;
-    dlg.cx = 120; dlg.cy = 100;
+    /* Create popup window */
+    g_pickResult[0] = 0;
+    g_hwndPickDlg = CreateWindowExW(0, L"PickTableWnd", L"Select Table",
+        WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
+        50, 50, 180, 160, g_hwndMain, NULL, g_hInst, NULL);
     
-    ret = DialogBoxIndirectW(g_hInst, &dlg, g_hwndMain, (DLGPROC)TablePickerProc);
+    hwndList = CreateWindowW(L"LISTBOX", NULL,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY,
+        10, 10, 156, 80, g_hwndPickDlg, (HMENU)101, g_hInst, NULL);
     
+    /* Subclass listbox for Enter key */
+    pfnOrig = (WNDPROC)SetWindowLong(hwndList, GWL_WNDPROC, (LONG)PickListProc);
+    SetWindowLong(hwndList, GWL_USERDATA, (LONG)pfnOrig);
+    
+    for (i = 0; i < nRows; i++) {
+        MultiByteToWideChar(CP_ACP, 0, results[i + 1], -1, wname, 128);
+        SendMessageW(hwndList, LB_ADDSTRING, 0, (LPARAM)wname);
+    }
+    SendMessage(hwndList, LB_SETCURSEL, 0, 0);
+    
+    hwndOK = CreateWindowW(L"BUTTON", L"Export",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+        10, 100, 70, 26, g_hwndPickDlg, (HMENU)IDOK, g_hInst, NULL);
+    hwndCancel = CreateWindowW(L"BUTTON", L"Cancel",
+        WS_CHILD | WS_VISIBLE,
+        90, 100, 70, 26, g_hwndPickDlg, (HMENU)IDCANCEL, g_hInst, NULL);
+    
+    SetFocus(hwndList);
+    EnableWindow(g_hwndMain, FALSE);
+    
+    while (GetMessageW(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    
+    EnableWindow(g_hwndMain, TRUE);
+    SetForegroundWindow(g_hwndMain);
     sqlite_free_table(results);
+    UnregisterClassW(L"PickTableWnd", g_hInst);
     
-    if (ret == IDOK && g_selectedTable[0]) {
-        strcpy(tblName, g_selectedTable);
+    if (g_pickResult[0]) {
+        strcpy(tblName, g_pickResult);
         return 1;
     }
     return 0;
@@ -593,7 +626,7 @@ void DoExportTable(void) {
     char tblName[128];
     char sql[512];
     char **result;
-    int nRow, nCol, i, j;
+    int nRow, nCol, i, j, fmt;
     HANDLE hFile;
     DWORD written;
     char line[4096];
@@ -630,19 +663,29 @@ void DoExportTable(void) {
     
     /* Default filename from table name */
     MultiByteToWideChar(CP_ACP, 0, tblName, -1, szFile, MAX_PATH);
-    lstrcatW(szFile, L".csv");
     
     memset(&ofn, 0, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwndMain;
     ofn.lpstrFile = szFile;
     ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
-    ofn.lpstrDefExt = L"csv";
+    ofn.lpstrFilter = L"CSV (*.csv)\0*.csv\0SQL INSERT (*.sql)\0*.sql\0SQL CREATE+INSERT (*.sql)\0*.sql\0";
     ofn.lpstrTitle = L"Export Table";
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
     
     if (!GetSaveFileNameW(&ofn)) return;
+    
+    /* fmt: 1=CSV, 2=INSERT, 3=CREATE+INSERT */
+    fmt = ofn.nFilterIndex;
+    
+    /* Append extension if missing */
+    {
+        wchar_t *ext = (fmt == 1) ? L".csv" : L".sql";
+        int len = lstrlenW(szFile);
+        int elen = lstrlenW(ext);
+        if (len < elen || lstrcmpiW(szFile + len - elen, ext) != 0)
+            lstrcatW(szFile, ext);
+    }
     
     /* Query table data */
     p = sql;
@@ -658,44 +701,516 @@ void DoExportTable(void) {
         return;
     }
     
-    /* Write header row */
-    lp = line;
-    for (j = 0; j < nCol; j++) {
-        char *val = result[j];
-        if (j > 0) *lp++ = ',';
-        if (val) while (*val) *lp++ = *val++;
-    }
-    *lp++ = '\r'; *lp++ = '\n';
-    WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
-    
-    /* Write data rows */
-    for (i = 1; i <= nRow; i++) {
+    if (fmt == 1) {
+        /* CSV format */
+        /* Write header row */
         lp = line;
         for (j = 0; j < nCol; j++) {
-            char *val = result[i * nCol + j];
-            int needQuote = 0;
-            char *v;
+            char *val = result[j];
             if (j > 0) *lp++ = ',';
-            if (val) {
-                for (v = val; *v; v++) if (*v == ',' || *v == '"' || *v == '\n') needQuote = 1;
-                if (needQuote) {
-                    *lp++ = '"';
-                    for (v = val; *v; v++) {
-                        if (*v == '"') *lp++ = '"';
-                        *lp++ = *v;
-                    }
-                    *lp++ = '"';
-                } else {
-                    while (*val) *lp++ = *val++;
-                }
-            }
+            if (val) while (*val) *lp++ = *val++;
         }
         *lp++ = '\r'; *lp++ = '\n';
         WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
+        
+        /* Write data rows */
+        for (i = 1; i <= nRow; i++) {
+            lp = line;
+            for (j = 0; j < nCol; j++) {
+                char *val = result[i * nCol + j];
+                int needQuote = 0;
+                char *v;
+                if (j > 0) *lp++ = ',';
+                if (val) {
+                    for (v = val; *v; v++) if (*v == ',' || *v == '"' || *v == '\n') needQuote = 1;
+                    if (needQuote) {
+                        *lp++ = '"';
+                        for (v = val; *v; v++) {
+                            if (*v == '"') *lp++ = '"';
+                            *lp++ = *v;
+                        }
+                        *lp++ = '"';
+                    } else {
+                        while (*val) *lp++ = *val++;
+                    }
+                }
+            }
+            *lp++ = '\r'; *lp++ = '\n';
+            WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
+        }
+    } else {
+        /* SQL format */
+        if (fmt == 3) {
+            /* Write CREATE statement */
+            char **ddlRes;
+            int ddlRow, ddlCol;
+            p = sql;
+            for (t = "SELECT sql FROM sqlite_master WHERE type='table' AND name='"; *t; ) *p++ = *t++;
+            for (t = tblName; *t; ) *p++ = *t++;
+            *p++ = '\''; *p = 0;
+            if (sqlite_get_table(g_db, sql, &ddlRes, &ddlRow, &ddlCol, NULL) == SQLITE_OK) {
+                if (ddlRow > 0 && ddlRes[1]) {
+                    WriteFile(hFile, ddlRes[1], strlen(ddlRes[1]), &written, NULL);
+                    WriteFile(hFile, ";\r\n\r\n", 5, &written, NULL);
+                }
+                sqlite_free_table(ddlRes);
+            }
+        }
+        
+        /* Write INSERT statements */
+        for (i = 1; i <= nRow; i++) {
+            lp = line;
+            for (t = "INSERT INTO \""; *t; ) *lp++ = *t++;
+            for (t = tblName; *t; ) *lp++ = *t++;
+            for (t = "\" VALUES ("; *t; ) *lp++ = *t++;
+            for (j = 0; j < nCol; j++) {
+                char *val = result[i * nCol + j];
+                if (j > 0) { *lp++ = ','; *lp++ = ' '; }
+                if (!val) {
+                    for (t = "NULL"; *t; ) *lp++ = *t++;
+                } else {
+                    *lp++ = '\'';
+                    while (*val) {
+                        if (*val == '\'') *lp++ = '\'';
+                        *lp++ = *val++;
+                    }
+                    *lp++ = '\'';
+                }
+            }
+            *lp++ = ')'; *lp++ = ';'; *lp++ = '\r'; *lp++ = '\n';
+            WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
+        }
     }
     
     CloseHandle(hFile);
     sqlite_free_table(result);
+}
+
+/*============================================================================
+** Export HTML Table
+**============================================================================*/
+
+static HWND g_hwndHtmlDlg;
+static int g_htmlIncludeHeader = 1;
+static int g_htmlToClipboard = 0;
+static int g_htmlResult = 0;
+static wchar_t g_htmlTableId[64] = L"";
+static wchar_t g_htmlTableClass[64] = L"";
+
+static LRESULT CALLBACK HtmlDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_COMMAND) {
+        WORD cmd = LOWORD(wParam);
+        if (cmd == IDCANCEL) {
+            g_htmlResult = 0;
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        if (cmd == 201 || cmd == 202) {  /* Save to File or Clipboard */
+            g_htmlIncludeHeader = (SendMessage(GetDlgItem(hwnd, 101), BM_GETCHECK, 0, 0) == BST_CHECKED);
+            GetWindowTextW(GetDlgItem(hwnd, 102), g_htmlTableId, 64);
+            GetWindowTextW(GetDlgItem(hwnd, 103), g_htmlTableClass, 64);
+            g_htmlToClipboard = (cmd == 202);
+            g_htmlResult = 1;
+            DestroyWindow(hwnd);
+            return 0;
+        }
+    }
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+void DoExportHTML(void) {
+    char tblName[128];
+    char sql[512];
+    char **result;
+    int nRow, nCol, i, j;
+    char *p, *buf, *bp;
+    const char *t;
+    size_t bufSize, len;
+    WNDCLASSW wc;
+    MSG msg;
+    HWND hwndChk, hwndLbl, hwndId, hwndClass, hwndSave, hwndClip, hwndCancel;
+    
+    if (!g_db) return;
+    
+    /* Get table name */
+    tblName[0] = 0;
+    if (g_viewMode == 2 && g_hwndSchema) {
+        HTREEITEM hItem = TreeView_GetSelection(g_hwndSchema);
+        if (hItem) {
+            TV_ITEMW item;
+            wchar_t text[128];
+            item.mask = TVIF_TEXT | TVIF_IMAGE;
+            item.hItem = hItem;
+            item.pszText = text;
+            item.cchTextMax = 128;
+            TreeView_GetItem(g_hwndSchema, &item);
+            if (item.iImage == 1) {
+                wchar_t *wp = text;
+                while (*wp && *wp != ' ' && *wp != '(') wp++;
+                *wp = 0;
+                WideCharToMultiByte(CP_ACP, 0, text, -1, tblName, 128, NULL, NULL);
+            }
+        }
+    }
+    if (!tblName[0]) {
+        if (!PickTable(tblName)) return;
+    }
+    
+    /* Show options dialog */
+    memset(&wc, 0, sizeof(wc));
+    wc.lpfnWndProc = HtmlDlgProc;
+    wc.hInstance = g_hInst;
+    wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
+    wc.lpszClassName = L"HtmlExportDlg";
+    RegisterClassW(&wc);
+    
+    g_htmlResult = 0;
+    g_hwndHtmlDlg = CreateWindowExW(0, L"HtmlExportDlg", L"HTML Export Options",
+        WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
+        30, 25, 250, 175, g_hwndMain, NULL, g_hInst, NULL);
+    
+    hwndChk = CreateWindowW(L"BUTTON", L"Include header row (<thead>)",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        10, 10, 225, 20, g_hwndHtmlDlg, (HMENU)101, g_hInst, NULL);
+    SendMessage(hwndChk, BM_SETCHECK, g_htmlIncludeHeader ? BST_CHECKED : BST_UNCHECKED, 0);
+    
+    hwndLbl = CreateWindowW(L"STATIC", L"Table ID:",
+        WS_CHILD | WS_VISIBLE, 10, 38, 60, 18, g_hwndHtmlDlg, NULL, g_hInst, NULL);
+    hwndId = CreateWindowW(L"EDIT", g_htmlTableId,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        75, 35, 160, 22, g_hwndHtmlDlg, (HMENU)102, g_hInst, NULL);
+    
+    hwndLbl = CreateWindowW(L"STATIC", L"Table class:",
+        WS_CHILD | WS_VISIBLE, 10, 63, 60, 18, g_hwndHtmlDlg, NULL, g_hInst, NULL);
+    hwndClass = CreateWindowW(L"EDIT", g_htmlTableClass,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        75, 60, 160, 22, g_hwndHtmlDlg, (HMENU)103, g_hInst, NULL);
+    
+    hwndSave = CreateWindowW(L"BUTTON", L"Save to File...",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+        10, 95, 110, 26, g_hwndHtmlDlg, (HMENU)201, g_hInst, NULL);
+    hwndClip = CreateWindowW(L"BUTTON", L"To Clipboard",
+        WS_CHILD | WS_VISIBLE,
+        125, 95, 110, 26, g_hwndHtmlDlg, (HMENU)202, g_hInst, NULL);
+    hwndCancel = CreateWindowW(L"BUTTON", L"Cancel",
+        WS_CHILD | WS_VISIBLE,
+        80, 130, 80, 26, g_hwndHtmlDlg, (HMENU)IDCANCEL, g_hInst, NULL);
+    
+    EnableWindow(g_hwndMain, FALSE);
+    
+    while (GetMessageW(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    
+    EnableWindow(g_hwndMain, TRUE);
+    SetForegroundWindow(g_hwndMain);
+    UnregisterClassW(L"HtmlExportDlg", g_hInst);
+    
+    if (!g_htmlResult) return;
+    
+    /* Query table data */
+    p = sql;
+    for (t = "SELECT * FROM \""; *t; ) *p++ = *t++;
+    for (t = tblName; *t; ) *p++ = *t++;
+    *p++ = '"'; *p = 0;
+    
+    if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
+    
+    /* Estimate buffer size and allocate */
+    bufSize = 256 + (nRow + 1) * (nCol * 64 + 32);
+    buf = (char *)LocalAlloc(LMEM_FIXED, bufSize);
+    if (!buf) { sqlite_free_table(result); return; }
+    bp = buf;
+    
+    /* Build HTML */
+    /* <table> opening tag with optional id/class */
+    for (t = "<table"; *t; ) *bp++ = *t++;
+    if (g_htmlTableId[0]) {
+        for (t = " id=\""; *t; ) *bp++ = *t++;
+        { wchar_t *w = g_htmlTableId; while (*w) *bp++ = (char)*w++; }
+        *bp++ = '"';
+    }
+    if (g_htmlTableClass[0]) {
+        for (t = " class=\""; *t; ) *bp++ = *t++;
+        { wchar_t *w = g_htmlTableClass; while (*w) *bp++ = (char)*w++; }
+        *bp++ = '"';
+    }
+    for (t = ">\r\n"; *t; ) *bp++ = *t++;
+    
+    /* Header row */
+    if (g_htmlIncludeHeader) {
+        for (t = "<thead><tr>"; *t; ) *bp++ = *t++;
+        for (j = 0; j < nCol; j++) {
+            for (t = "<th>"; *t; ) *bp++ = *t++;
+            if (result[j]) {
+                char *v = result[j];
+                while (*v) {
+                    if (*v == '<') { for (t = "&lt;"; *t; ) *bp++ = *t++; }
+                    else if (*v == '>') { for (t = "&gt;"; *t; ) *bp++ = *t++; }
+                    else if (*v == '&') { for (t = "&amp;"; *t; ) *bp++ = *t++; }
+                    else *bp++ = *v;
+                    v++;
+                }
+            }
+            for (t = "</th>"; *t; ) *bp++ = *t++;
+        }
+        for (t = "</tr></thead>\r\n"; *t; ) *bp++ = *t++;
+    }
+    
+    /* Data rows */
+    for (t = "<tbody>\r\n"; *t; ) *bp++ = *t++;
+    for (i = 1; i <= nRow; i++) {
+        for (t = "<tr>"; *t; ) *bp++ = *t++;
+        for (j = 0; j < nCol; j++) {
+            char *val = result[i * nCol + j];
+            for (t = "<td>"; *t; ) *bp++ = *t++;
+            if (val) {
+                while (*val) {
+                    if (*val == '<') { for (t = "&lt;"; *t; ) *bp++ = *t++; }
+                    else if (*val == '>') { for (t = "&gt;"; *t; ) *bp++ = *t++; }
+                    else if (*val == '&') { for (t = "&amp;"; *t; ) *bp++ = *t++; }
+                    else *bp++ = *val;
+                    val++;
+                }
+            }
+            for (t = "</td>"; *t; ) *bp++ = *t++;
+        }
+        for (t = "</tr>\r\n"; *t; ) *bp++ = *t++;
+    }
+    for (t = "</tbody>\r\n</table>\r\n"; *t; ) *bp++ = *t++;
+    *bp = 0;
+    len = bp - buf;
+    
+    sqlite_free_table(result);
+    
+    if (g_htmlToClipboard) {
+        /* Copy to clipboard - CE needs CF_UNICODETEXT */
+        HLOCAL hMem = LocalAlloc(LMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
+        if (hMem) {
+            wchar_t *pMem = (wchar_t *)LocalLock(hMem);
+            for (i = 0; i <= (int)len; i++) pMem[i] = (wchar_t)(unsigned char)buf[i];
+            LocalUnlock(hMem);
+            if (OpenClipboard(g_hwndMain)) {
+                EmptyClipboard();
+                SetClipboardData(CF_UNICODETEXT, hMem);
+                CloseClipboard();
+            } else {
+                LocalFree(hMem);
+            }
+        }
+    } else {
+        /* Save to file */
+        CE_OPENFILENAME ofn;
+        wchar_t szFile[MAX_PATH];
+        HANDLE hFile;
+        DWORD written;
+        
+        MultiByteToWideChar(CP_ACP, 0, tblName, -1, szFile, MAX_PATH);
+        lstrcatW(szFile, L".html");
+        
+        memset(&ofn, 0, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = g_hwndMain;
+        ofn.lpstrFile = szFile;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrFilter = L"HTML Files (*.html)\0*.html\0All Files (*.*)\0*.*\0";
+        ofn.lpstrDefExt = L"html";
+        ofn.lpstrTitle = L"Export HTML Table";
+        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+        
+        if (GetSaveFileNameW(&ofn)) {
+            hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (hFile != INVALID_HANDLE_VALUE) {
+                WriteFile(hFile, buf, (DWORD)len, &written, NULL);
+                CloseHandle(hFile);
+            }
+        }
+    }
+    
+    LocalFree(buf);
+}
+
+/*============================================================================
+** Export Results as HTML Table
+**============================================================================*/
+
+void DoExportHTMLResults(void) {
+    int i, j, len;
+    char *buf, *bp;
+    const char *t;
+    size_t bufSize;
+    WNDCLASSW wc;
+    MSG msg;
+    HWND hwndChk, hwndLbl, hwndId, hwndClass, hwndSave, hwndClip, hwndCancel;
+    
+    /* Check for results */
+    if (!g_lastResult || g_lastResultRows < 1 || g_lastResultCols < 1) {
+        MessageBoxW(g_hwndMain, L"No results to export", L"Export HTML", MB_OK);
+        return;
+    }
+    
+    /* Show options dialog */
+    memset(&wc, 0, sizeof(wc));
+    wc.lpfnWndProc = HtmlDlgProc;
+    wc.hInstance = g_hInst;
+    wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
+    wc.lpszClassName = L"HtmlExportDlg";
+    RegisterClassW(&wc);
+    
+    g_htmlResult = 0;
+    g_hwndHtmlDlg = CreateWindowExW(0, L"HtmlExportDlg", L"HTML Export Options",
+        WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
+        30, 25, 250, 175, g_hwndMain, NULL, g_hInst, NULL);
+    
+    hwndChk = CreateWindowW(L"BUTTON", L"Include header row (<thead>)",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        10, 10, 225, 20, g_hwndHtmlDlg, (HMENU)101, g_hInst, NULL);
+    SendMessage(hwndChk, BM_SETCHECK, g_htmlIncludeHeader ? BST_CHECKED : BST_UNCHECKED, 0);
+    
+    hwndLbl = CreateWindowW(L"STATIC", L"Table ID:",
+        WS_CHILD | WS_VISIBLE, 10, 38, 60, 18, g_hwndHtmlDlg, NULL, g_hInst, NULL);
+    hwndId = CreateWindowW(L"EDIT", g_htmlTableId,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        75, 35, 160, 22, g_hwndHtmlDlg, (HMENU)102, g_hInst, NULL);
+    
+    hwndLbl = CreateWindowW(L"STATIC", L"Table class:",
+        WS_CHILD | WS_VISIBLE, 10, 63, 60, 18, g_hwndHtmlDlg, NULL, g_hInst, NULL);
+    hwndClass = CreateWindowW(L"EDIT", g_htmlTableClass,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        75, 60, 160, 22, g_hwndHtmlDlg, (HMENU)103, g_hInst, NULL);
+    
+    hwndSave = CreateWindowW(L"BUTTON", L"Save to File...",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+        10, 95, 110, 26, g_hwndHtmlDlg, (HMENU)201, g_hInst, NULL);
+    hwndClip = CreateWindowW(L"BUTTON", L"To Clipboard",
+        WS_CHILD | WS_VISIBLE,
+        125, 95, 110, 26, g_hwndHtmlDlg, (HMENU)202, g_hInst, NULL);
+    hwndCancel = CreateWindowW(L"BUTTON", L"Cancel",
+        WS_CHILD | WS_VISIBLE,
+        80, 130, 80, 26, g_hwndHtmlDlg, (HMENU)IDCANCEL, g_hInst, NULL);
+    
+    EnableWindow(g_hwndMain, FALSE);
+    
+    while (GetMessageW(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    
+    EnableWindow(g_hwndMain, TRUE);
+    SetForegroundWindow(g_hwndMain);
+    UnregisterClassW(L"HtmlExportDlg", g_hInst);
+    
+    if (!g_htmlResult) return;
+    
+    /* Estimate buffer size and allocate */
+    bufSize = 256 + (g_lastResultRows + 1) * (g_lastResultCols * 80 + 32);
+    buf = (char *)LocalAlloc(LMEM_FIXED, bufSize);
+    if (!buf) return;
+    bp = buf;
+    
+    /* Build HTML table opening */
+    for (t = "<table"; *t; ) *bp++ = *t++;
+    if (g_htmlTableId[0]) {
+        for (t = " id=\""; *t; ) *bp++ = *t++;
+        { wchar_t *w = g_htmlTableId; while (*w) *bp++ = (char)*w++; }
+        *bp++ = '"';
+    }
+    if (g_htmlTableClass[0]) {
+        for (t = " class=\""; *t; ) *bp++ = *t++;
+        { wchar_t *w = g_htmlTableClass; while (*w) *bp++ = (char)*w++; }
+        *bp++ = '"';
+    }
+    for (t = ">\r\n"; *t; ) *bp++ = *t++;
+    
+    /* Header row */
+    if (g_htmlIncludeHeader) {
+        for (t = "<thead><tr>"; *t; ) *bp++ = *t++;
+        for (j = 0; j < g_lastResultCols; j++) {
+            char *val = g_lastResult[j];
+            for (t = "<th>"; *t; ) *bp++ = *t++;
+            if (val) {
+                while (*val) {
+                    if (*val == '<') { for (t = "&lt;"; *t; ) *bp++ = *t++; }
+                    else if (*val == '>') { for (t = "&gt;"; *t; ) *bp++ = *t++; }
+                    else if (*val == '&') { for (t = "&amp;"; *t; ) *bp++ = *t++; }
+                    else *bp++ = *val;
+                    val++;
+                }
+            }
+            for (t = "</th>"; *t; ) *bp++ = *t++;
+        }
+        for (t = "</tr></thead>\r\n"; *t; ) *bp++ = *t++;
+    }
+    
+    /* Data rows */
+    for (t = "<tbody>\r\n"; *t; ) *bp++ = *t++;
+    for (i = 1; i <= g_lastResultRows; i++) {
+        for (t = "<tr>"; *t; ) *bp++ = *t++;
+        for (j = 0; j < g_lastResultCols; j++) {
+            char *val = g_lastResult[i * g_lastResultCols + j];
+            for (t = "<td>"; *t; ) *bp++ = *t++;
+            if (val) {
+                while (*val) {
+                    if (*val == '<') { for (t = "&lt;"; *t; ) *bp++ = *t++; }
+                    else if (*val == '>') { for (t = "&gt;"; *t; ) *bp++ = *t++; }
+                    else if (*val == '&') { for (t = "&amp;"; *t; ) *bp++ = *t++; }
+                    else *bp++ = *val;
+                    val++;
+                }
+            }
+            for (t = "</td>"; *t; ) *bp++ = *t++;
+        }
+        for (t = "</tr>\r\n"; *t; ) *bp++ = *t++;
+    }
+    for (t = "</tbody>\r\n</table>\r\n"; *t; ) *bp++ = *t++;
+    *bp = 0;
+    len = (int)(bp - buf);
+    
+    if (g_htmlToClipboard) {
+        HLOCAL hMem = LocalAlloc(LMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
+        if (hMem) {
+            wchar_t *pMem = (wchar_t *)LocalLock(hMem);
+            for (i = 0; i <= len; i++) pMem[i] = (wchar_t)(unsigned char)buf[i];
+            LocalUnlock(hMem);
+            if (OpenClipboard(g_hwndMain)) {
+                EmptyClipboard();
+                SetClipboardData(CF_UNICODETEXT, hMem);
+                CloseClipboard();
+            } else {
+                LocalFree(hMem);
+            }
+        }
+    } else {
+        CE_OPENFILENAME ofn;
+        wchar_t szFile[MAX_PATH] = L"results.html";
+        HANDLE hFile;
+        DWORD written;
+        
+        memset(&ofn, 0, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = g_hwndMain;
+        ofn.lpstrFile = szFile;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrFilter = L"HTML Files (*.html)\0*.html\0All Files (*.*)\0*.*\0";
+        ofn.lpstrDefExt = L"html";
+        ofn.lpstrTitle = L"Export Results as HTML";
+        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+        
+        if (GetSaveFileNameW(&ofn)) {
+            hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (hFile != INVALID_HANDLE_VALUE) {
+                WriteFile(hFile, buf, (DWORD)len, &written, NULL);
+                CloseHandle(hFile);
+            }
+        }
+    }
+    
+    LocalFree(buf);
 }
 
 /*============================================================================
