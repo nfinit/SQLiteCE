@@ -417,7 +417,12 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
-# Project-specific exclusions
-docs/AGENTS/
-.kiro/*
+# macOS artifacts
 ._*
+
+# Local build utilities
+tools/
+
+# Agent context and steering 
+docs/AGENTS/ 
+.kiro/
