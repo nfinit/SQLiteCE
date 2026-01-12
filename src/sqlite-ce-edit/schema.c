@@ -20,24 +20,74 @@ static int g_nTables = 0;
 static int g_nViews = 0;
 static int g_nTriggers = 0;
 
+/* Show sizes option (off by default) */
+int g_showSizes = 0;
+
+/*============================================================================
+** Get database file size
+**============================================================================*/
+
+DWORD GetDatabaseSize(void) {
+    HANDLE hFile;
+    DWORD dwSize = 0;
+    
+    if (!g_db || !g_szDbPath[0]) return 0;  /* :memory: returns 0 */
+    
+    hFile = CreateFileW(g_szDbPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        dwSize = GetFileSize(hFile, NULL);
+        CloseHandle(hFile);
+    }
+    return dwSize;
+}
+
 /*============================================================================
 ** Get schema status string
 **============================================================================*/
 
 void GetSchemaStatus(wchar_t *buf, int bufLen) {
+    DWORD dwSize;
+    
     if (!g_db) {
         lstrcpyW(buf, L"No database");
         return;
     }
-    wsprintfW(buf, L"%d table%s, %d view%s, %d trigger%s",
-        g_nTables, g_nTables == 1 ? L"" : L"s",
-        g_nViews, g_nViews == 1 ? L"" : L"s",
-        g_nTriggers, g_nTriggers == 1 ? L"" : L"s");
+    
+    dwSize = GetDatabaseSize();
+    if (dwSize > 0) {
+        if (dwSize >= 1048576)
+            wsprintfW(buf, L"%d table%s, %d view%s, %d trigger%s (%d.%d MB)",
+                g_nTables, g_nTables == 1 ? L"" : L"s",
+                g_nViews, g_nViews == 1 ? L"" : L"s",
+                g_nTriggers, g_nTriggers == 1 ? L"" : L"s",
+                dwSize / 1048576, (dwSize % 1048576) / 104858);
+        else
+            wsprintfW(buf, L"%d table%s, %d view%s, %d trigger%s (%d KB)",
+                g_nTables, g_nTables == 1 ? L"" : L"s",
+                g_nViews, g_nViews == 1 ? L"" : L"s",
+                g_nTriggers, g_nTriggers == 1 ? L"" : L"s",
+                (dwSize + 1023) / 1024);
+    } else {
+        wsprintfW(buf, L"%d table%s, %d view%s, %d trigger%s",
+            g_nTables, g_nTables == 1 ? L"" : L"s",
+            g_nViews, g_nViews == 1 ? L"" : L"s",
+            g_nTriggers, g_nTriggers == 1 ? L"" : L"s");
+    }
 }
 
 /*============================================================================
 ** Create the schema TreeView control
 **============================================================================*/
+
+static WNDPROC g_pfnSchemaProc;
+
+static LRESULT CALLBACK SchemaSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    /* Suppress beep on Enter - only eat WM_CHAR, let WM_KEYDOWN through for TVN_KEYDOWN */
+    if (msg == WM_CHAR && wParam == '\r')
+        return 0;
+    return CallWindowProc(g_pfnSchemaProc, hwnd, msg, wParam, lParam);
+}
 
 void CreateSchemaView(HWND hwndParent, int x, int y, int cx, int cy) {
     HBITMAP hBmp;
@@ -45,6 +95,9 @@ void CreateSchemaView(HWND hwndParent, int x, int y, int cx, int cy) {
     g_hwndSchema = CreateWindowExW(0, WC_TREEVIEWW, NULL,
         WS_CHILD | WS_BORDER | TVS_HASLINES | TVS_HASBUTTONS | TVS_LINESATROOT,
         x, y, cx, cy, hwndParent, (HMENU)1005, g_hInst, NULL);
+    
+    /* Subclass to suppress Enter beep */
+    g_pfnSchemaProc = (WNDPROC)SetWindowLong(g_hwndSchema, GWL_WNDPROC, (LONG)SchemaSubclassProc);
     
     /* Create image list from schema.bmp */
     hBmp = LoadBitmapW(g_hInst, MAKEINTRESOURCEW(IDB_SCHEMA));
@@ -72,6 +125,51 @@ static HTREEITEM AddTreeItem(HTREEITEM hParent, const wchar_t *text, int image) 
     tvis.item.iImage = image;
     tvis.item.iSelectedImage = image;
     return TreeView_InsertItem(g_hwndSchema, &tvis);
+}
+
+static int GetRowCount(const char *tblname) {
+    char sql[192];
+    char **results = NULL;
+    int nRows = 0, nCols = 0, count = 0;
+    char *p = sql;
+    const char *s = "SELECT COUNT(*) FROM ";
+    
+    while (*s) *p++ = *s++;
+    s = tblname;
+    while (*s) *p++ = *s++;
+    *p = 0;
+    
+    sqlite_get_table(g_db, sql, &results, &nRows, &nCols, NULL);
+    if (results && nRows > 0 && results[1])
+        count = atoi(results[1]);
+    if (results) sqlite_free_table(results);
+    return count;
+}
+
+/* Estimate table size by summing lengths of all values */
+static int GetTableSize(const char *tblname) {
+    char sql[192];
+    char **results = NULL;
+    int nRows = 0, nCols = 0, size = 0, i, j;
+    char *p = sql;
+    const char *s = "SELECT * FROM ";
+    
+    while (*s) *p++ = *s++;
+    s = tblname;
+    while (*s) *p++ = *s++;
+    *p = 0;
+    
+    sqlite_get_table(g_db, sql, &results, &nRows, &nCols, NULL);
+    if (results) {
+        for (i = 1; i <= nRows; i++) {
+            for (j = 0; j < nCols; j++) {
+                if (results[i * nCols + j])
+                    size += strlen(results[i * nCols + j]);
+            }
+        }
+        sqlite_free_table(results);
+    }
+    return size;
 }
 
 void RefreshSchema(void) {
@@ -116,7 +214,22 @@ void RefreshSchema(void) {
     
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {
-            MultiByteToWideChar(CP_ACP, 0, results[i], -1, wname, 128);
+            if (g_showSizes) {
+                int cnt = GetRowCount(results[i]);
+                int sz = GetTableSize(results[i]);
+                wchar_t *wp = wname;
+                const char *cp = results[i];
+                const wchar_t *rows = (cnt == 1) ? L" row, " : L" rows, ";
+                while (*cp) *wp++ = (wchar_t)(unsigned char)*cp++;
+                if (sz >= 1048576)
+                    wsprintfW(wp, L" (%d%s%d.%d MB)", cnt, rows, sz / 1048576, (sz % 1048576) / 104858);
+                else if (sz >= 1024)
+                    wsprintfW(wp, L" (%d%s%d KB)", cnt, rows, (sz + 512) / 1024);
+                else
+                    wsprintfW(wp, L" (%d%s%d B)", cnt, rows, sz);
+            } else {
+                MultiByteToWideChar(CP_ACP, 0, results[i], -1, wname, 128);
+            }
             hItem = AddTreeItem(hRoot, wname, IMG_TABLE);
             AddTreeItem(hItem, L"", IMG_COLUMN);  /* Placeholder */
         }
@@ -157,6 +270,13 @@ void RefreshSchema(void) {
     /* Expand and select root */
     TreeView_Expand(g_hwndSchema, hRoot, TVE_EXPAND);
     TreeView_SelectItem(g_hwndSchema, hRoot);
+    
+    /* Update status bar if in schema view */
+    if (g_viewMode == 2) {
+        wchar_t statusBuf[64];
+        GetSchemaStatus(statusBuf, 64);
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)statusBuf);
+    }
 }
 
 /*============================================================================
@@ -216,6 +336,13 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
     
     /* Only expand tables or views */
     if (item.iImage != IMG_TABLE && item.iImage != IMG_VIEW) return;
+    
+    /* Strip size info if present */
+    {
+        wchar_t *p = text;
+        while (*p && *p != ' ' && *p != '(') p++;
+        *p = 0;
+    }
     
     /* Check if placeholder child exists (means not yet populated) */
     hPlaceholder = TreeView_GetChild(g_hwndSchema, pnm->itemNew.hItem);
@@ -292,6 +419,13 @@ void OnSchemaDoubleClick(void) {
     /* Only for tables and views */
     if (item.iImage != IMG_TABLE && item.iImage != IMG_VIEW) return;
     
+    /* Strip size info if present (e.g., "tablename (10, 2 KB)" -> "tablename") */
+    {
+        wchar_t *p = text;
+        while (*p && *p != ' ' && *p != '(') p++;
+        *p = 0;
+    }
+    
     /* Build and execute SELECT without touching query buffer */
     {
         char *p = sql;
@@ -336,6 +470,13 @@ void OnSchemaDelete(void) {
     else if (item.iImage == IMG_TRIGGER) type = "DROP TRIGGER ";
     else return;
     
+    /* Strip size info if present */
+    {
+        wchar_t *wp = text;
+        while (*wp && *wp != ' ' && *wp != '(') wp++;
+        *wp = 0;
+    }
+    
     /* Confirm */
     wsprintfW(msg, L"Drop '%s'?", text);
     if (MessageBoxW(g_hwndMain, msg, L"Confirm", MB_YESNO | MB_ICONQUESTION) != IDYES)
@@ -352,4 +493,170 @@ void OnSchemaDelete(void) {
     
     ExecuteSQL(sql);
     RefreshSchema();
+}
+
+
+/*============================================================================
+** Export DDL for selected object
+**============================================================================*/
+
+void ExportSelectedDDL(void) {
+    HTREEITEM hItem;
+    TV_ITEMW item;
+    wchar_t text[128];
+    wchar_t szFile[MAX_PATH];
+    char name[128];
+    char sql[256];
+    char **results = NULL;
+    int nRows = 0, nCols = 0;
+    CE_OPENFILENAME ofn;
+    HANDLE hFile;
+    DWORD dwWritten;
+    
+    hItem = TreeView_GetSelection(g_hwndSchema);
+    if (!hItem) return;
+    
+    item.mask = TVIF_TEXT | TVIF_IMAGE;
+    item.hItem = hItem;
+    item.pszText = text;
+    item.cchTextMax = 128;
+    TreeView_GetItem(g_hwndSchema, &item);
+    
+    /* Only tables, views, triggers have DDL */
+    if (item.iImage != IMG_TABLE && item.iImage != IMG_VIEW && item.iImage != IMG_TRIGGER)
+        return;
+    
+    /* Get object name (strip size info if present) */
+    {
+        wchar_t *p = text;
+        while (*p && *p != ' ' && *p != '(') p++;
+        *p = 0;
+    }
+    WideCharToMultiByte(CP_ACP, 0, text, -1, name, 128, NULL, NULL);
+    
+    /* Query DDL from sqlite_master */
+    {
+        char *p = sql;
+        const char *s = "SELECT sql FROM sqlite_master WHERE name='";
+        while (*s) *p++ = *s++;
+        s = name;
+        while (*s) *p++ = *s++;
+        *p++ = '\''; *p = 0;
+    }
+    
+    sqlite_get_table(g_db, sql, &results, &nRows, &nCols, NULL);
+    if (!results || nRows < 1 || !results[1]) {
+        if (results) sqlite_free_table(results);
+        return;
+    }
+    
+    /* Default filename */
+    wsprintfW(szFile, L"%s.sql", text);
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
+    ofn.lpstrDefExt = L"sql";
+    ofn.lpstrTitle = L"Export DDL";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    
+    if (GetSaveFileNameW(&ofn)) {
+        hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            WriteFile(hFile, results[1], strlen(results[1]), &dwWritten, NULL);
+            WriteFile(hFile, ";\r\n", 3, &dwWritten, NULL);
+            CloseHandle(hFile);
+        }
+    }
+    
+    sqlite_free_table(results);
+}
+
+/*============================================================================
+** Export DDL for entire database
+**============================================================================*/
+
+void ExportAllDDL(void) {
+    wchar_t szFile[MAX_PATH];
+    wchar_t dbname[64];
+    char header[256];
+    char **results = NULL;
+    int nRows = 0, nCols = 0, i;
+    CE_OPENFILENAME ofn;
+    HANDLE hFile;
+    DWORD dwWritten;
+    SYSTEMTIME st;
+    
+    if (!g_db) return;
+    
+    /* Get database name for default filename */
+    if (g_szDbPath[0] && g_szDbPath[0] != ':') {
+        wchar_t *p = g_szDbPath + lstrlenW(g_szDbPath);
+        wchar_t *d = dbname;
+        while (p > g_szDbPath && p[-1] != '\\') p--;
+        while (*p && *p != '.') *d++ = *p++;
+        *d = 0;
+    } else {
+        lstrcpyW(dbname, L"memory");
+    }
+    wsprintfW(szFile, L"%s.sql", dbname);
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
+    ofn.lpstrDefExt = L"sql";
+    ofn.lpstrTitle = L"Export All DDL";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    
+    if (!GetSaveFileNameW(&ofn)) return;
+    
+    /* Get all DDL ordered: tables first, then views, then triggers, then indexes */
+    sqlite_get_table(g_db,
+        "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL "
+        "ORDER BY CASE type WHEN 'table' THEN 1 WHEN 'view' THEN 2 WHEN 'trigger' THEN 3 WHEN 'index' THEN 4 END, name",
+        &results, &nRows, &nCols, NULL);
+    
+    if (!results || nRows < 1) {
+        if (results) sqlite_free_table(results);
+        return;
+    }
+    
+    hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        /* Write header with database name and timestamp */
+        GetLocalTime(&st);
+        {
+            char dbname8[64];
+            wchar_t datebuf[32];
+            char *p = header;
+            const char *s;
+            int di;
+            WideCharToMultiByte(CP_ACP, 0, dbname, -1, dbname8, 64, NULL, NULL);
+            for (s = "-- Schema export: "; *s; ) *p++ = *s++;
+            for (s = dbname8; *s; ) *p++ = *s++;
+            *p++ = '\r'; *p++ = '\n';
+            for (s = "-- Exported: "; *s; ) *p++ = *s++;
+            wsprintfW(datebuf, L"%04d-%02d-%02d %02d:%02d:%02d",
+                st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+            for (di = 0; datebuf[di]; di++) *p++ = (char)datebuf[di];
+            *p++ = '\r'; *p++ = '\n'; *p++ = '\r'; *p++ = '\n'; *p = 0;
+        }
+        WriteFile(hFile, header, strlen(header), &dwWritten, NULL);
+        
+        for (i = 1; i <= nRows; i++) {
+            if (results[i]) {
+                WriteFile(hFile, results[i], strlen(results[i]), &dwWritten, NULL);
+                WriteFile(hFile, ";\r\n\r\n", 5, &dwWritten, NULL);
+            }
+        }
+        CloseHandle(hFile);
+    }
+    
+    sqlite_free_table(results);
 }

@@ -194,6 +194,10 @@ void OpenQueryFile(const wchar_t *path) {
                     UpdateTitle();
                     UpdateLineNumbers();
                     LocalFree(wbuf);
+                    /* Switch to query view */
+                    if (g_viewMode != 0) {
+                        SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+                    }
                 }
             }
             if (buf) LocalFree(buf);
@@ -274,7 +278,108 @@ void DoSaveQuery(void) {
 }
 
 /*============================================================================
-** Export Results to CSV
+** Export Results (CSV or Text based on filter selection)
+**============================================================================*/
+
+void DoExportResults(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH] = L"results";
+    HANDLE hFile;
+    DWORD dwLen, dwWritten;
+    wchar_t *wbuf, *wp;
+    char *buf, *bp;
+    int needQuote, isCSV;
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+    ofn.lpstrDefExt = NULL;  /* We'll handle extension ourselves */
+    ofn.lpstrTitle = L"Export Results";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    ofn.nFilterIndex = 1;
+    
+    if (!GetSaveFileNameW(&ofn)) return;
+    
+    /* Check if CSV (filter 1) or Text (filter 2+) */
+    isCSV = (ofn.nFilterIndex == 1);
+    
+    /* Append extension if none present */
+    {
+        wchar_t *p = szFile + lstrlenW(szFile);
+        wchar_t *dot = NULL;
+        while (p > szFile && *p != '\\') {
+            if (*p == '.') dot = p;
+            p--;
+        }
+        if (!dot) {
+            lstrcatW(szFile, isCSV ? L".csv" : L".txt");
+        }
+    }
+    
+    dwLen = GetWindowTextLengthW(g_hwndResult);
+    if (dwLen == 0) return;
+    
+    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
+    buf = (char*)LocalAlloc(LMEM_FIXED, (dwLen * 2) + 1);
+    if (wbuf && buf) {
+        GetWindowTextW(g_hwndResult, wbuf, dwLen + 1);
+        
+        if (isCSV) {
+            /* Convert tabs to commas, handle quoting */
+            bp = buf;
+            wp = wbuf;
+            while (*wp) {
+                if (*wp == '\t') {
+                    *bp++ = ',';
+                    wp++;
+                } else if (*wp == '\r') {
+                    wp++;
+                } else if (*wp == '\n') {
+                    *bp++ = '\r';
+                    *bp++ = '\n';
+                    wp++;
+                } else {
+                    wchar_t *fieldStart = wp;
+                    needQuote = 0;
+                    while (*wp && *wp != '\t' && *wp != '\r' && *wp != '\n') {
+                        if (*wp == ',' || *wp == '"') needQuote = 1;
+                        wp++;
+                    }
+                    if (needQuote) {
+                        *bp++ = '"';
+                        while (fieldStart < wp) {
+                            if (*fieldStart == '"') *bp++ = '"';
+                            *bp++ = (char)*fieldStart++;
+                        }
+                        *bp++ = '"';
+                    } else {
+                        while (fieldStart < wp) *bp++ = (char)*fieldStart++;
+                    }
+                }
+            }
+            *bp = '\0';
+            dwLen = (DWORD)(bp - buf);
+        } else {
+            /* Plain text - just convert to ANSI */
+            WideCharToMultiByte(CP_ACP, 0, wbuf, -1, buf, (dwLen * 2) + 1, NULL, NULL);
+            dwLen = (DWORD)strlen(buf);
+        }
+        
+        hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            WriteFile(hFile, buf, dwLen, &dwWritten, NULL);
+            CloseHandle(hFile);
+        }
+    }
+    if (wbuf) LocalFree(wbuf);
+    if (buf) LocalFree(buf);
+}
+
+/*============================================================================
+** Export Results to CSV (legacy, kept for File menu)
 **============================================================================*/
 
 void DoExportCSV(void) {
@@ -389,6 +494,208 @@ void DoExportTxt(void) {
     }
     if (wbuf) LocalFree(wbuf);
     if (buf) LocalFree(buf);
+}
+
+/*============================================================================
+** Export Single Table to CSV
+**============================================================================*/
+
+/* Table picker dialog state */
+static HWND g_hwndTblList;
+static char g_selectedTable[128];
+static char **g_tableList;
+static int g_tableCount;
+
+static LRESULT CALLBACK TablePickerProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_INITDIALOG: {
+            RECT rc;
+            int i;
+            wchar_t wname[128];
+            SetWindowTextW(hwnd, L"Select Table");
+            GetClientRect(hwnd, &rc);
+            g_hwndTblList = CreateWindowW(L"LISTBOX", NULL,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY,
+                10, 10, rc.right - 20, rc.bottom - 56,
+                hwnd, (HMENU)101, g_hInst, NULL);
+            for (i = 0; i < g_tableCount; i++) {
+                MultiByteToWideChar(CP_ACP, 0, g_tableList[i], -1, wname, 128);
+                SendMessageW(g_hwndTblList, LB_ADDSTRING, 0, (LPARAM)wname);
+            }
+            SendMessage(g_hwndTblList, LB_SETCURSEL, 0, 0);
+            CreateWindowW(L"BUTTON", L"Export",
+                WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                10, rc.bottom - 36, 60, 26, hwnd, (HMENU)IDOK, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Cancel",
+                WS_CHILD | WS_VISIBLE,
+                80, rc.bottom - 36, 60, 26, hwnd, (HMENU)IDCANCEL, g_hInst, NULL);
+            SetFocus(g_hwndTblList);
+            return FALSE;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK || (LOWORD(wParam) == 101 && HIWORD(wParam) == LBN_DBLCLK)) {
+                int sel = (int)SendMessage(g_hwndTblList, LB_GETCURSEL, 0, 0);
+                if (sel >= 0 && sel < g_tableCount) {
+                    strcpy(g_selectedTable, g_tableList[sel]);
+                    EndDialog(hwnd, IDOK);
+                }
+            } else if (LOWORD(wParam) == IDCANCEL) {
+                EndDialog(hwnd, IDCANCEL);
+            }
+            return TRUE;
+        case WM_CLOSE:
+            EndDialog(hwnd, IDCANCEL);
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static int PickTable(char *tblName) {
+    DLGTEMPLATE dlg;
+    char **results = NULL;
+    int nRows = 0, nCols = 0, ret;
+    
+    /* Get table list */
+    sqlite_get_table(g_db,
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        &results, &nRows, &nCols, NULL);
+    
+    if (!results || nRows < 1) {
+        if (results) sqlite_free_table(results);
+        MessageBoxW(g_hwndMain, L"No tables in database", L"Export Table", MB_OK);
+        return 0;
+    }
+    
+    /* Store for dialog */
+    g_tableList = &results[1];  /* Skip header */
+    g_tableCount = nRows;
+    g_selectedTable[0] = 0;
+    
+    /* Create dialog */
+    memset(&dlg, 0, sizeof(dlg));
+    dlg.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_CENTER;
+    dlg.cx = 120; dlg.cy = 100;
+    
+    ret = DialogBoxIndirectW(g_hInst, &dlg, g_hwndMain, (DLGPROC)TablePickerProc);
+    
+    sqlite_free_table(results);
+    
+    if (ret == IDOK && g_selectedTable[0]) {
+        strcpy(tblName, g_selectedTable);
+        return 1;
+    }
+    return 0;
+}
+
+void DoExportTable(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH];
+    char tblName[128];
+    char sql[512];
+    char **result;
+    int nRow, nCol, i, j;
+    HANDLE hFile;
+    DWORD written;
+    char line[4096];
+    char *lp, *p;
+    const char *t;
+    
+    if (!g_db) return;
+    
+    /* Get table name from schema selection or picker */
+    tblName[0] = 0;
+    if (g_viewMode == 2 && g_hwndSchema) {
+        HTREEITEM hItem = TreeView_GetSelection(g_hwndSchema);
+        if (hItem) {
+            TV_ITEMW item;
+            wchar_t text[128];
+            item.mask = TVIF_TEXT | TVIF_IMAGE;
+            item.hItem = hItem;
+            item.pszText = text;
+            item.cchTextMax = 128;
+            TreeView_GetItem(g_hwndSchema, &item);
+            if (item.iImage == 1) {  /* IMG_TABLE */
+                wchar_t *wp = text;
+                while (*wp && *wp != ' ' && *wp != '(') wp++;
+                *wp = 0;
+                WideCharToMultiByte(CP_ACP, 0, text, -1, tblName, 128, NULL, NULL);
+            }
+        }
+    }
+    
+    /* If no table selected, show picker */
+    if (!tblName[0]) {
+        if (!PickTable(tblName)) return;
+    }
+    
+    /* Default filename from table name */
+    MultiByteToWideChar(CP_ACP, 0, tblName, -1, szFile, MAX_PATH);
+    lstrcatW(szFile, L".csv");
+    
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
+    ofn.lpstrDefExt = L"csv";
+    ofn.lpstrTitle = L"Export Table";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    
+    if (!GetSaveFileNameW(&ofn)) return;
+    
+    /* Query table data */
+    p = sql;
+    for (t = "SELECT * FROM \""; *t; ) *p++ = *t++;
+    for (t = tblName; *t; ) *p++ = *t++;
+    *p++ = '"'; *p = 0;
+    
+    if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
+    
+    hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        sqlite_free_table(result);
+        return;
+    }
+    
+    /* Write header row */
+    lp = line;
+    for (j = 0; j < nCol; j++) {
+        char *val = result[j];
+        if (j > 0) *lp++ = ',';
+        if (val) while (*val) *lp++ = *val++;
+    }
+    *lp++ = '\r'; *lp++ = '\n';
+    WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
+    
+    /* Write data rows */
+    for (i = 1; i <= nRow; i++) {
+        lp = line;
+        for (j = 0; j < nCol; j++) {
+            char *val = result[i * nCol + j];
+            int needQuote = 0;
+            char *v;
+            if (j > 0) *lp++ = ',';
+            if (val) {
+                for (v = val; *v; v++) if (*v == ',' || *v == '"' || *v == '\n') needQuote = 1;
+                if (needQuote) {
+                    *lp++ = '"';
+                    for (v = val; *v; v++) {
+                        if (*v == '"') *lp++ = '"';
+                        *lp++ = *v;
+                    }
+                    *lp++ = '"';
+                } else {
+                    while (*val) *lp++ = *val++;
+                }
+            }
+        }
+        *lp++ = '\r'; *lp++ = '\n';
+        WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
+    }
+    
+    CloseHandle(hFile);
+    sqlite_free_table(result);
 }
 
 /*============================================================================

@@ -140,6 +140,7 @@ int OpenDatabase(const wchar_t *path) {
     UpdateTitle();
     UpdateDbSize();
     SetStatusResult(L"");
+    RefreshSchema();
     
     /* Show hint for in-memory database in query pane */
     if (path[0] == ':') {

@@ -47,7 +47,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 AppendMenuW(hFile, MF_POPUP, (UINT)hQueryFile, L"&Query");
                 AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
                 hExport = CreatePopupMenu();
-                AppendMenuW(hExport, MF_STRING, IDM_EXPORTCSV, L"&Results...");
+                AppendMenuW(hExport, MF_STRING, IDM_EXPORTRESULTS, L"&Results...");
+                AppendMenuW(hExport, MF_STRING, IDM_EXPORTTABLE, L"&Table...");
                 AppendMenuW(hExport, MF_STRING, IDM_EXPORTDB, L"&Database...");
                 AppendMenuW(hFile, MF_POPUP, (UINT)hExport, L"&Export");
                 hImport = CreatePopupMenu();
@@ -249,6 +250,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_SAVEQUERY: DoSaveQuery(); break;
                 case IDM_EXPORTCSV: DoExportCSV(); break;
                 case IDM_EXPORTTXT: DoExportTxt(); break;
+                case IDM_EXPORTRESULTS: DoExportResults(); break;
+                case IDM_EXPORTTABLE: DoExportTable(); break;
                 case IDM_EXPORTDB: DoExportDb(); break;
                 case IDM_IMPORTCSV: DoImportCSV(); break;
                 case IDM_IMPORTCEDB: DoImportCEDB(); break;
@@ -287,6 +290,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, FALSE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, TRUE);
                     CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA, IDM_VIEWSCHEMA, MF_BYCOMMAND);
+                    break;
+                case IDM_REFRESH:
+                    if (g_viewMode == 2) RefreshSchema();
+                    break;
+                case IDM_SHOWSIZES:
+                    g_showSizes = !g_showSizes;
+                    ForceMenuRebuild();
+                    RefreshSchema();
+                    break;
+                case IDM_EXPORTDDL:
+                    ExportSelectedDDL();
+                    break;
+                case IDM_EXPORTALLDDL:
+                    ExportAllDDL();
                     break;
                 case IDM_FONTSIZE:
                     CycleFontSize();
@@ -337,9 +354,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (wParam == 'C') { g_abortQuery = 1; return 0; }
             }
             if (wParam == VK_F5) { ExecuteQuery(); return 0; }
-            if (wParam == VK_RETURN || wParam == VK_UP || 
-                wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT) {
-                SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
+            if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT) {
+                if (g_viewMode == 0) SetFocus(g_hwndQuery);
+                else if (g_viewMode == 1) SetFocus(g_hwndResult);
+                else if (g_viewMode == 2 && g_hwndSchema) SetFocus(g_hwndSchema);
+                return 0;
+            }
+            if (wParam == VK_RETURN && g_viewMode != 2) {
+                if (g_viewMode == 0) SetFocus(g_hwndQuery);
+                else if (g_viewMode == 1) SetFocus(g_hwndResult);
                 return 0;
             }
             break;
@@ -355,18 +378,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     TV_KEYDOWN *pKey = (TV_KEYDOWN*)lParam;
                     if (pKey->wVKey == VK_DELETE) {
                         OnSchemaDelete();
+                        return TRUE;
+                    } else if (pKey->wVKey == VK_RETURN) {
+                        OnSchemaDoubleClick();
+                        return TRUE;
                     } else if (pKey->wVKey == VK_ESCAPE) {
                         SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
+                        return TRUE;
                     } else if (GetKeyState(VK_CONTROL) < 0) {
                         if (pKey->wVKey == '1') SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
                         else if (pKey->wVKey == '2') SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0);
                         else if (pKey->wVKey == '3') SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0);
+                        return TRUE;
                     } else if (pKey->wVKey == VK_F5) {
                         ExecuteQuery();
+                        return TRUE;
                     } else if (pKey->wVKey == VK_F6) {
                         SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0);
+                        return TRUE;
                     } else if (pKey->wVKey == VK_F7) {
                         SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0);
+                        return TRUE;
                     }
                 }
             }

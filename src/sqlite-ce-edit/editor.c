@@ -137,14 +137,18 @@ static void UpdateContextMenu(int mode) {
         AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
         InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Query");
     } else if (mode == 1) {
-        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTCSV, L"Export as &CSV...");
-        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTTXT, L"Export as &Text...");
+        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
         AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
         AppendMenuW(hCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
         AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
         InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Results");
     } else {
         AppendMenuW(hCtx, MF_STRING, IDM_REFRESH, L"&Refresh");
+        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
+        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTDDL, L"Export &DDL...");
+        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTALLDDL, L"Export &All DDL...");
+        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
+        AppendMenuW(hCtx, g_showSizes ? MF_STRING | MF_CHECKED : MF_STRING, IDM_SHOWSIZES, L"Show &Details");
         InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Schema");
     }
     
@@ -161,6 +165,11 @@ static void UpdateContextMenu(int mode) {
     
     /* Force CommandBar to redraw */
     CommandBar_DrawMenuBar(g_hwndCB, 0);
+}
+
+void ForceMenuRebuild(void) {
+    g_lastMenuMode = -1;
+    UpdateContextMenu(g_viewMode);
 }
 
 void SwitchView(int mode) {
