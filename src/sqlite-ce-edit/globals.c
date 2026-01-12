@@ -56,6 +56,7 @@ int g_execAtCursor = 0;
 int g_gridView = 0;
 int g_abortQuery = 0;
 wchar_t g_lastResultStatus[64] = L"";
+DWORD g_lastQueryTime = 0;
 wchar_t g_findText[128] = L"";
 int g_searchMode = 0;
 wchar_t g_szQueryPath[MAX_PATH] = L"";

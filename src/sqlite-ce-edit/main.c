@@ -412,6 +412,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         
         case WM_NOTIFY: {
             NMHDR *pnm = (NMHDR*)lParam;
+            if (pnm->hwndFrom == g_hwndGrid && pnm->code == LVN_GETDISPINFOW) {
+                OnGridGetDispInfo((NMLVDISPINFOW*)lParam);
+                return 0;
+            }
             if (pnm->hwndFrom == g_hwndSchema) {
                 if (pnm->code == TVN_ITEMEXPANDINGW) {
                     OnSchemaExpanding((NMTREEVIEWW*)lParam);

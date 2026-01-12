@@ -1,5 +1,5 @@
 /*
-** SQLiteCEdit - Grid view for query results
+** SQLiteCEdit - Grid view for query results (Virtual ListView)
 */
 
 #include "globals.h"
@@ -8,7 +8,7 @@ void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     HIMAGELIST hIml;
     
     g_hwndGrid = CreateWindowExW(0, WC_LISTVIEWW, NULL,
-        WS_CHILD | WS_BORDER | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
+        WS_CHILD | WS_BORDER | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_OWNERDATA,
         x, y, cx, cy, hwndParent, (HMENU)IDC_GRID, g_hInst, NULL);
     
     /* Enable full row select and grid lines */
@@ -28,15 +28,16 @@ void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
 }
 
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_KEYDOWN) {
-        int ctrl = GetKeyState(VK_CONTROL) < 0;
-        int alt = GetKeyState(VK_MENU) < 0;
-        
+    if (msg == WM_SYSKEYDOWN) {
         /* Alt+X - Exit */
-        if (alt && wParam == 'X') {
+        if (wParam == 'X') {
             SendMessage(g_hwndMain, WM_CLOSE, 0, 0);
             return 0;
         }
+    }
+    if (msg == WM_KEYDOWN) {
+        int ctrl = GetKeyState(VK_CONTROL) < 0;
+        
         /* Ctrl+G - Toggle back to text view */
         if (ctrl && wParam == 'G') {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_EXECATCURSOR, 0);
@@ -73,21 +74,54 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return CallWindowProc(g_pfnGridProc, hwnd, msg, wParam, lParam);
 }
 
+void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
+    int row, col;
+    char *val;
+    static wchar_t wbuf[256];
+    
+    if (!(pdi->item.mask & LVIF_TEXT)) return;
+    if (!g_lastResult) return;
+    
+    row = pdi->item.iItem + 1;  /* +1 to skip header row in g_lastResult */
+    col = pdi->item.iSubItem;
+    
+    if (row > g_lastResultRows || col >= g_lastResultCols) {
+        pdi->item.pszText = L"";
+        return;
+    }
+    
+    val = g_lastResult[row * g_lastResultCols + col];
+    if (val) {
+        MultiByteToWideChar(CP_ACP, 0, val, -1, wbuf, 256);
+        pdi->item.pszText = wbuf;
+    } else {
+        pdi->item.pszText = L"(null)";
+    }
+}
+
 void PopulateGrid(void) {
-    int i, j;
+    int j;
     LVCOLUMNW col;
-    LVITEMW item;
     wchar_t wbuf[256];
     RECT rc;
     int totalWidth, colWidth;
+    DWORD startTick, elapsed;
     
     if (!g_hwndGrid) return;
     
+    startTick = GetTickCount();
+    
+    /* Disable repainting during setup */
+    SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
+    
     /* Clear existing */
-    ListView_DeleteAllItems(g_hwndGrid);
+    ListView_SetItemCount(g_hwndGrid, 0);
     while (ListView_DeleteColumn(g_hwndGrid, 0)) ;
     
-    if (!g_lastResult || g_lastResultCols < 1 || g_lastResultRows < 1) return;
+    if (!g_lastResult || g_lastResultCols < 1 || g_lastResultRows < 1) {
+        SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
+        return;
+    }
     
     /* Calculate column width to fill grid */
     GetClientRect(g_hwndGrid, &rc);
@@ -115,45 +149,31 @@ void PopulateGrid(void) {
         ListView_InsertColumn(g_hwndGrid, j, &col);
     }
     
-    /* Add data rows */
-    memset(&item, 0, sizeof(item));
-    item.mask = LVIF_TEXT;
+    /* Set item count - virtual ListView fetches data on demand */
+    ListView_SetItemCount(g_hwndGrid, g_lastResultRows);
     
-    for (i = 1; i <= g_lastResultRows; i++) {
-        /* First column */
-        item.iItem = i - 1;
-        item.iSubItem = 0;
-        if (g_lastResult[i * g_lastResultCols]) {
-            MultiByteToWideChar(CP_ACP, 0, g_lastResult[i * g_lastResultCols], -1, wbuf, 256);
-        } else {
-            lstrcpyW(wbuf, L"(null)");
-        }
-        item.pszText = wbuf;
-        ListView_InsertItem(g_hwndGrid, &item);
-        
-        /* Remaining columns */
-        for (j = 1; j < g_lastResultCols; j++) {
-            char *val = g_lastResult[i * g_lastResultCols + j];
-            if (val) {
-                MultiByteToWideChar(CP_ACP, 0, val, -1, wbuf, 256);
-            } else {
-                lstrcpyW(wbuf, L"(null)");
-            }
-            ListView_SetItemText(g_hwndGrid, i - 1, j, wbuf);
-        }
-    }
-    
-    /* Auto-fit columns to content and header (optional - slow on older devices) */
+    /* Auto-fit columns (optional - sample first 20 rows for speed) */
     if (g_gridAutoSize) {
+        int sampleRows = g_lastResultRows < 20 ? g_lastResultRows : 20;
+        ListView_SetItemCount(g_hwndGrid, sampleRows);
         for (j = 0; j < g_lastResultCols; j++) {
             int contentWidth, headerWidth;
             ListView_SetColumnWidth(g_hwndGrid, j, LVSCW_AUTOSIZE);
             contentWidth = ListView_GetColumnWidth(g_hwndGrid, j);
             ListView_SetColumnWidth(g_hwndGrid, j, LVSCW_AUTOSIZE_USEHEADER);
             headerWidth = ListView_GetColumnWidth(g_hwndGrid, j);
-            /* Use the larger of content or header width */
             if (contentWidth > headerWidth)
                 ListView_SetColumnWidth(g_hwndGrid, j, contentWidth);
         }
+        ListView_SetItemCount(g_hwndGrid, g_lastResultRows);
     }
+    
+    /* Re-enable repainting and refresh */
+    SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(g_hwndGrid, NULL, TRUE);
+    
+    /* Update status bar with query and draw time */
+    elapsed = GetTickCount() - startTick;
+    wsprintfW(wbuf, L"%d row(s), query %lums, draw %lums", g_lastResultRows, g_lastQueryTime, elapsed);
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)wbuf);
 }

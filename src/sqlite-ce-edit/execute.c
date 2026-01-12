@@ -252,6 +252,7 @@ void ExecuteSQL(const char *sql) {
     rc = sqlite_exec(g_db, sql, QueryCallback, NULL, &errmsg);
     
     elapsed = GetTickCount() - startTick;
+    g_lastQueryTime = elapsed;
     
     if (rc == SQLITE_OK && g_nRows > 0) {
         FlushResultSet();

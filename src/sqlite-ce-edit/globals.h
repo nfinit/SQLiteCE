@@ -216,6 +216,7 @@ extern int g_execAtCursor;
 extern int g_gridView;
 extern int g_abortQuery;
 extern wchar_t g_lastResultStatus[64];
+extern DWORD g_lastQueryTime;
 extern wchar_t g_findText[128];
 extern int g_searchMode;
 extern wchar_t g_szQueryPath[MAX_PATH];
@@ -268,6 +269,7 @@ void OnSchemaDoubleClick(void);
 /* Grid view (grid.c) */
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy);
 void PopulateGrid(void);
+void OnGridGetDispInfo(NMLVDISPINFOW *pdi);
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void OnSchemaDelete(void);
 int GetSelectedObjectType(void);  /* Returns IMG_TABLE, IMG_VIEW, IMG_TRIGGER, or -1 */
