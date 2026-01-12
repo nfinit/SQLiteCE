@@ -23,6 +23,9 @@ static int g_nTriggers = 0;
 /* Show sizes option (off by default) */
 int g_showSizes = 0;
 
+/* Grid auto-size columns (off by default - slow on older devices) */
+int g_gridAutoSize = 0;
+
 /*============================================================================
 ** Get database file size
 **============================================================================*/

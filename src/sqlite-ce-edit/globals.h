@@ -113,8 +113,9 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_VIEWQUERY  401
 #define IDM_VIEWRESULT 402
 #define IDM_VIEWSCHEMA 403
-#define IDM_FONTSIZE   404
-#define IDM_OPTIONS    405
+#define IDM_VIEWGRID   404
+#define IDM_FONTSIZE   405
+#define IDM_OPTIONS    406
 #define IDM_ABOUT    501
 #define IDM_RECENT_BASE 600
 #define IDM_RECENT_MAX  604
@@ -155,10 +156,11 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define TB_RESULTS 4
 #define TB_GRID    5
 #define TB_SCHEMA  6
-#define TB_OPEN    7
-#define TB_CLOSE   8
-#define TB_NEW     9
-#define TB_STD_BASE 10
+#define TB_DETAIL  7
+#define TB_OPEN    8
+#define TB_CLOSE   9
+#define TB_NEW     10
+#define TB_STD_BASE 11
 #define TB_VIEW_BASE (TB_STD_BASE + 15)
 
 /*============================================================================
@@ -188,9 +190,12 @@ extern int g_lastResultCols;
 void FreeLastResults(void);
 extern HFONT g_hFontQuery;
 extern HFONT g_hFontResult;
+extern HFONT g_hFontSchema;
+extern HFONT g_hFontGrid;
 extern int g_fontSizes[4];
 extern int g_fontSizeQuery;
 extern int g_fontSizeResult;
+extern int g_fontSizeSchema;
 extern int g_showLineNumbers;
 extern int g_lineNumWidth;
 extern WNDPROC g_pfnQueryProc;
@@ -273,6 +278,9 @@ void ExportAllDDL(void);
 
 /* Schema options */
 extern int g_showSizes;
+
+/* Grid options */
+extern int g_gridAutoSize;
 
 /*============================================================================
 ** Function Declarations - Database (database.c)

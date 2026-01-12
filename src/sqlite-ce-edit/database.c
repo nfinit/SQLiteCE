@@ -142,6 +142,19 @@ int OpenDatabase(const wchar_t *path) {
     SetStatusResult(L"");
     RefreshSchema();
     
+    /* Update hint if still showing */
+    if (g_showingHint && path[0] != ':') {
+        wchar_t hint[256];
+        wchar_t ver[32];
+        const char *v = sqlite_libversion();
+        int i;
+        for (i = 0; v[i] && i < 31; i++) ver[i] = (wchar_t)v[i];
+        ver[i] = 0;
+        wsprintfW(hint,
+            L"-- SQLite/CEdit " SQLITECEDIT_VERSION L" on SQLite %s.\r\n", ver);
+        SetWindowTextW(g_hwndQuery, hint);
+    }
+    
     /* Show hint for in-memory database in query pane */
     if (path[0] == ':') {
         wchar_t hint[256];

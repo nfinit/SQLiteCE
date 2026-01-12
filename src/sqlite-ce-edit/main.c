@@ -87,7 +87,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hMenu, 0);
             
             /* Add toolbar bitmaps */
-            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 10, 0, 0);
+            CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 11, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_STD_SMALL_COLOR, 15, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_VIEW_SMALL_COLOR, 12, 0, 0);
             
@@ -279,6 +279,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
                         SetFocus(g_gridView ? g_hwndGrid : g_hwndResult);
                         if (g_gridView) PopulateGrid();
+                    } else if (g_viewMode == 2) {
+                        /* Schema view: toggle show details */
+                        g_showSizes = !g_showSizes;
+                        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_showSizes);
+                        ForceMenuRebuild();
+                        RefreshSchema();
                     }
                     break;
                 case IDM_FIND:    DoFind(); break;
@@ -309,6 +315,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, FALSE);
                     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, TRUE);
                     CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA, IDM_VIEWSCHEMA, MF_BYCOMMAND);
+                    break;
+                case IDM_VIEWGRID:
+                    /* Toggle grid view - same as IDM_EXECATCURSOR in results mode */
+                    if (g_viewMode == 1) {
+                        SendMessage(hwnd, WM_COMMAND, IDM_EXECATCURSOR, 0);
+                        ForceMenuRebuild();  /* Update checkmark */
+                    }
                     break;
                 case IDM_REFRESH:
                     if (g_viewMode == 2) RefreshSchema();

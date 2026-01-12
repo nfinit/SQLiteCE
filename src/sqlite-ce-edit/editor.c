@@ -137,6 +137,8 @@ static void UpdateContextMenu(int mode) {
         AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
         InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Query");
     } else if (mode == 1) {
+        AppendMenuW(hCtx, g_gridView ? MF_STRING | MF_CHECKED : MF_STRING, IDM_VIEWGRID, L"&Grid View\tCtrl+G");
+        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
         AppendMenuW(hCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
         AppendMenuW(hCtx, MF_STRING, IDM_EXPORTHTMLRES, L"Export &HTML...");
         AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
@@ -198,10 +200,10 @@ void SwitchView(int mode) {
         SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
     } else {
-        /* Schema view: disabled */
-        SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_EXECAT);
-        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, FALSE);
-        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
+        /* Schema view: show details toggle - checked = details shown */
+        SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_DETAIL);
+        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
+        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_showSizes);
     }
     
     /* Update context menu */
@@ -238,15 +240,38 @@ void UpdateQueryFont(void) {
 
 void UpdateResultFont(void) {
     HFONT hOld = g_hFontResult;
+    HFONT hOldGrid = g_hFontGrid;
     LOGFONTW lf;
+    
+    /* Text results - Courier New */
     memset(&lf, 0, sizeof(lf));
     lf.lfHeight = g_fontSizes[g_fontSizeResult];
     lf.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
     lstrcpyW(lf.lfFaceName, L"Courier New");
     g_hFontResult = CreateFontIndirectW(&lf);
     SendMessage(g_hwndResult, WM_SETFONT, (WPARAM)g_hFontResult, TRUE);
+    
+    /* Grid - Tahoma */
+    memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = g_fontSizes[g_fontSizeResult];
+    lstrcpyW(lf.lfFaceName, L"Tahoma");
+    g_hFontGrid = CreateFontIndirectW(&lf);
     if (g_hwndGrid)
-        SendMessage(g_hwndGrid, WM_SETFONT, (WPARAM)g_hFontResult, TRUE);
+        SendMessage(g_hwndGrid, WM_SETFONT, (WPARAM)g_hFontGrid, TRUE);
+    
+    if (hOld) DeleteObject(hOld);
+    if (hOldGrid) DeleteObject(hOldGrid);
+}
+
+void UpdateSchemaFont(void) {
+    HFONT hOld = g_hFontSchema;
+    LOGFONTW lf;
+    memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = g_fontSizes[g_fontSizeSchema];
+    lstrcpyW(lf.lfFaceName, L"Tahoma");
+    g_hFontSchema = CreateFontIndirectW(&lf);
+    if (g_hwndSchema)
+        SendMessage(g_hwndSchema, WM_SETFONT, (WPARAM)g_hFontSchema, TRUE);
     if (hOld) DeleteObject(hOld);
 }
 
@@ -256,9 +281,13 @@ void CycleFontSize(void) {
         UpdateQueryFont();
         SendMessage(g_hwndQuery, EM_SCROLLCARET, 0, 0);
         UpdateLineNumbers();
-    } else {
+    } else if (g_viewMode == 1) {
         g_fontSizeResult = (g_fontSizeResult + 1) % 4;
         UpdateResultFont();
+        if (g_gridView) PopulateGrid();
+    } else if (g_viewMode == 2) {
+        g_fontSizeSchema = (g_fontSizeSchema + 1) % 4;
+        UpdateSchemaFont();
     }
 }
 

@@ -19,9 +19,9 @@ void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     hIml = ImageList_Create(1, 18, ILC_COLOR, 1, 0);
     ListView_SetImageList(g_hwndGrid, hIml, LVSIL_SMALL);
     
-    /* Set font to match results pane */
-    if (g_hFontResult)
-        SendMessage(g_hwndGrid, WM_SETFONT, (WPARAM)g_hFontResult, TRUE);
+    /* Set font to match grid style */
+    if (g_hFontGrid)
+        SendMessage(g_hwndGrid, WM_SETFONT, (WPARAM)g_hFontGrid, TRUE);
     
     /* Subclass for keyboard shortcuts */
     g_pfnGridProc = (WNDPROC)SetWindowLong(g_hwndGrid, GWL_WNDPROC, (LONG)GridProc);
@@ -30,7 +30,13 @@ void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_KEYDOWN) {
         int ctrl = GetKeyState(VK_CONTROL) < 0;
+        int alt = GetKeyState(VK_MENU) < 0;
         
+        /* Alt+X - Exit */
+        if (alt && wParam == 'X') {
+            SendMessage(g_hwndMain, WM_CLOSE, 0, 0);
+            return 0;
+        }
         /* Ctrl+G - Toggle back to text view */
         if (ctrl && wParam == 'G') {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_EXECATCURSOR, 0);
@@ -137,15 +143,17 @@ void PopulateGrid(void) {
         }
     }
     
-    /* Auto-fit columns to content and header */
-    for (j = 0; j < g_lastResultCols; j++) {
-        int contentWidth, headerWidth;
-        ListView_SetColumnWidth(g_hwndGrid, j, LVSCW_AUTOSIZE);
-        contentWidth = ListView_GetColumnWidth(g_hwndGrid, j);
-        ListView_SetColumnWidth(g_hwndGrid, j, LVSCW_AUTOSIZE_USEHEADER);
-        headerWidth = ListView_GetColumnWidth(g_hwndGrid, j);
-        /* Use the larger of content or header width */
-        if (contentWidth > headerWidth)
-            ListView_SetColumnWidth(g_hwndGrid, j, contentWidth);
+    /* Auto-fit columns to content and header (optional - slow on older devices) */
+    if (g_gridAutoSize) {
+        for (j = 0; j < g_lastResultCols; j++) {
+            int contentWidth, headerWidth;
+            ListView_SetColumnWidth(g_hwndGrid, j, LVSCW_AUTOSIZE);
+            contentWidth = ListView_GetColumnWidth(g_hwndGrid, j);
+            ListView_SetColumnWidth(g_hwndGrid, j, LVSCW_AUTOSIZE_USEHEADER);
+            headerWidth = ListView_GetColumnWidth(g_hwndGrid, j);
+            /* Use the larger of content or header width */
+            if (contentWidth > headerWidth)
+                ListView_SetColumnWidth(g_hwndGrid, j, contentWidth);
+        }
     }
 }
