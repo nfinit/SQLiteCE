@@ -135,6 +135,7 @@ static void UpdateContextMenu(int mode) {
         AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
         AppendMenuW(hCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
         AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
+        AppendMenuW(hCtx, MF_STRING, IDM_REPLACE, L"&Replace...\tCtrl+H");
         InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Query");
     } else if (mode == 1) {
         wchar_t gridLabel[64];
@@ -350,9 +351,13 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             DoSaveQuery();
             return 0;
         }
-        /* Ctrl+F - Find, F3 - Find Next */
+        /* Ctrl+F - Find, Ctrl+H - Replace, F3 - Find Next */
         if (ctrl && wParam == 'F') {
             DoFind();
+            return 0;
+        }
+        if (ctrl && wParam == 'H') {
+            DoReplace();
             return 0;
         }
         if (wParam == VK_F3) {

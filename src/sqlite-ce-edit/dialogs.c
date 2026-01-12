@@ -245,6 +245,10 @@ void DoOptions(void) {
     
     /* Modal message loop */
     while (g_hwndOptions && GetMessage(&msg, NULL, 0, 0)) {
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
+            SendMessage(g_hwndOptions, WM_CLOSE, 0, 0);
+            continue;
+        }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }

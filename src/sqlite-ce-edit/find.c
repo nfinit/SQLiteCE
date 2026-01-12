@@ -146,3 +146,232 @@ void DoFind(void) {
         g_hwndMain, NULL, g_hInst, NULL);
     ShowWindow(g_hwndFindDlg, SW_SHOW);
 }
+
+/*============================================================================
+** Find and Replace (Ctrl+H) - Query view only
+**============================================================================*/
+
+static HWND g_hwndReplaceDlg = NULL;
+static HWND g_hwndReplFind = NULL;
+static HWND g_hwndReplWith = NULL;
+static wchar_t g_replaceText[128] = L"";
+
+#define ID_REPL_FIND    201
+#define ID_REPL_REPLACE 202
+#define ID_REPL_ALL     203
+
+static void DoReplaceOne(void) {
+    DWORD selStart, selEnd;
+    
+    if (!g_findText[0]) return;
+    if (g_viewMode != 0) return;  /* Query view only */
+    
+    SendMessage(g_hwndQuery, EM_GETSEL, (WPARAM)&selStart, (LPARAM)&selEnd);
+    
+    /* If we have a selection matching find text, replace it */
+    if (selEnd > selStart) {
+        int selLen = selEnd - selStart;
+        int findLen = lstrlenW(g_findText);
+        if (selLen == findLen) {
+            int len = GetWindowTextLengthW(g_hwndQuery);
+            wchar_t *buf = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+            if (buf) {
+                int i, match = 1;
+                GetWindowTextW(g_hwndQuery, buf, len + 1);
+                /* Case-insensitive compare of selection */
+                for (i = 0; i < selLen && match; i++) {
+                    wchar_t c1 = buf[selStart + i], c2 = g_findText[i];
+                    if (c1 >= 'A' && c1 <= 'Z') c1 += 32;
+                    if (c2 >= 'A' && c2 <= 'Z') c2 += 32;
+                    if (c1 != c2) match = 0;
+                }
+                LocalFree(buf);
+                if (match) {
+                    SendMessage(g_hwndQuery, EM_REPLACESEL, TRUE, (LPARAM)g_replaceText);
+                    g_queryDirty = 1;
+                }
+            }
+        }
+    }
+    /* Find next */
+    DoFindNext();
+}
+
+static int DoReplaceAll(void) {
+    int len, findLen, replLen, count = 0, i, j;
+    wchar_t *buf, *newBuf, *p;
+    
+    if (!g_findText[0]) return 0;
+    if (g_viewMode != 0) return 0;
+    
+    findLen = lstrlenW(g_findText);
+    replLen = lstrlenW(g_replaceText);
+    len = GetWindowTextLengthW(g_hwndQuery);
+    if (len == 0) return 0;
+    
+    buf = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+    if (!buf) return 0;
+    GetWindowTextW(g_hwndQuery, buf, len + 1);
+    
+    /* Count matches first */
+    for (i = 0; i <= len - findLen; i++) {
+        for (j = 0; j < findLen; j++) {
+            wchar_t c1 = buf[i + j], c2 = g_findText[j];
+            if (c1 >= 'A' && c1 <= 'Z') c1 += 32;
+            if (c2 >= 'A' && c2 <= 'Z') c2 += 32;
+            if (c1 != c2) break;
+        }
+        if (j == findLen) count++;
+    }
+    
+    if (count == 0) {
+        LocalFree(buf);
+        return 0;
+    }
+    
+    /* Build new string */
+    newBuf = (wchar_t *)LocalAlloc(LMEM_FIXED, 
+        (len + count * (replLen - findLen) + 1) * sizeof(wchar_t));
+    if (!newBuf) {
+        LocalFree(buf);
+        return 0;
+    }
+    
+    p = newBuf;
+    for (i = 0; i <= len; i++) {
+        if (i <= len - findLen) {
+            for (j = 0; j < findLen; j++) {
+                wchar_t c1 = buf[i + j], c2 = g_findText[j];
+                if (c1 >= 'A' && c1 <= 'Z') c1 += 32;
+                if (c2 >= 'A' && c2 <= 'Z') c2 += 32;
+                if (c1 != c2) break;
+            }
+            if (j == findLen) {
+                for (j = 0; j < replLen; j++) *p++ = g_replaceText[j];
+                i += findLen - 1;
+                continue;
+            }
+        }
+        *p++ = buf[i];
+    }
+    
+    SetWindowTextW(g_hwndQuery, newBuf);
+    g_queryDirty = 1;
+    
+    LocalFree(newBuf);
+    LocalFree(buf);
+    return count;
+}
+
+static WNDPROC g_pfnReplFindProc, g_pfnReplWithProc;
+
+static LRESULT CALLBACK ReplEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    WNDPROC origProc = (hwnd == g_hwndReplFind) ? g_pfnReplFindProc : g_pfnReplWithProc;
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_TAB) {
+            SetFocus((hwnd == g_hwndReplFind) ? g_hwndReplWith : g_hwndReplFind);
+            return 0;
+        }
+        if (wParam == VK_RETURN) {
+            SendMessage(GetParent(hwnd), WM_COMMAND, ID_REPL_FIND, 0);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            SendMessage(GetParent(hwnd), WM_CLOSE, 0, 0);
+            return 0;
+        }
+    }
+    if (msg == WM_CHAR && wParam == 27) {  /* Escape as WM_CHAR */
+        SendMessage(GetParent(hwnd), WM_CLOSE, 0, 0);
+        return 0;
+    }
+    return CallWindowProc(origProc, hwnd, msg, wParam, lParam);
+}
+
+static LRESULT CALLBACK ReplaceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE: {
+            CreateWindowW(L"STATIC", L"Find:",
+                WS_CHILD | WS_VISIBLE, 5, 7, 45, 16, hwnd, NULL, g_hInst, NULL);
+            g_hwndReplFind = CreateWindowW(L"EDIT", g_findText,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP,
+                55, 5, 175, 20, hwnd, (HMENU)101, g_hInst, NULL);
+            CreateWindowW(L"STATIC", L"Replace:",
+                WS_CHILD | WS_VISIBLE, 5, 32, 50, 16, hwnd, NULL, g_hInst, NULL);
+            g_hwndReplWith = CreateWindowW(L"EDIT", g_replaceText,
+                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP,
+                55, 30, 175, 20, hwnd, (HMENU)102, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Find",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+                5, 58, 55, 22, hwnd, (HMENU)ID_REPL_FIND, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Replace",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                65, 58, 60, 22, hwnd, (HMENU)ID_REPL_REPLACE, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"All",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                175, 58, 55, 22, hwnd, (HMENU)ID_REPL_ALL, g_hInst, NULL);
+            g_pfnReplFindProc = (WNDPROC)SetWindowLong(g_hwndReplFind, GWL_WNDPROC, (LONG)ReplEditProc);
+            g_pfnReplWithProc = (WNDPROC)SetWindowLong(g_hwndReplWith, GWL_WNDPROC, (LONG)ReplEditProc);
+            SetFocus(g_hwndReplFind);
+            SendMessage(g_hwndReplFind, EM_SETSEL, 0, -1);
+            return 0;
+        }
+        case WM_COMMAND:
+            GetWindowTextW(g_hwndReplFind, g_findText, 128);
+            GetWindowTextW(g_hwndReplWith, g_replaceText, 128);
+            if (LOWORD(wParam) == ID_REPL_FIND) {
+                if (g_findText[0]) DoFindNext();
+            } else if (LOWORD(wParam) == ID_REPL_REPLACE) {
+                if (g_findText[0]) DoReplaceOne();
+            } else if (LOWORD(wParam) == ID_REPL_ALL) {
+                if (g_findText[0]) {
+                    int n = DoReplaceAll();
+                    wchar_t buf[64];
+                    wsprintfW(buf, L"%d replacement%s made.", n, n == 1 ? L"" : L"s");
+                    MessageBoxW(hwnd, buf, L"Replace All", MB_OK);
+                }
+            }
+            return 0;
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            g_hwndReplaceDlg = NULL;
+            SetFocus(g_hwndQuery);
+            return 0;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+void DoReplace(void) {
+    WNDCLASSW wc = {0};
+    RECT rc;
+    
+    /* Only available in Query view */
+    if (g_viewMode != 0) {
+        MessageBoxW(g_hwndMain, L"Replace is only available in Query view.", L"Replace", MB_OK);
+        return;
+    }
+    
+    if (g_hwndReplaceDlg) {
+        SetFocus(g_hwndReplFind);
+        return;
+    }
+    
+    /* Close find dialog if open */
+    if (g_hwndFindDlg) {
+        DestroyWindow(g_hwndFindDlg);
+        g_hwndFindDlg = NULL;
+    }
+    
+    wc.lpfnWndProc = ReplaceWndProc;
+    wc.hInstance = g_hInst;
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszClassName = L"SQLiteCEReplace";
+    RegisterClassW(&wc);
+    
+    GetWindowRect(g_hwndMain, &rc);
+    g_hwndReplaceDlg = CreateWindowExW(WS_EX_TOOLWINDOW, L"SQLiteCEReplace", L"Replace",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU,
+        rc.left + 20, rc.top + 50, 240, 108,
+        g_hwndMain, NULL, g_hInst, NULL);
+    ShowWindow(g_hwndReplaceDlg, SW_SHOW);
+}

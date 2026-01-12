@@ -68,6 +68,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hQuery, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hQuery, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
             AppendMenuW(hQuery, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
+            AppendMenuW(hQuery, MF_STRING, IDM_REPLACE, L"&Replace...\tCtrl+H");
             AppendMenuW(hMenu, MF_POPUP, (UINT)hQuery, L"&Query");
             
             hView = CreatePopupMenu();
@@ -188,7 +189,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_hwndQuery = CreateWindowW(
                 L"EDIT", L"",
                 WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
-                ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
+                ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_NOHIDESEL,
                 queryLeft, cbHeight, rc.right - queryLeft, editHeight,
                 hwnd, (HMENU)1001, g_hInst, NULL);
             
@@ -289,6 +290,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
                 case IDM_FIND:    DoFind(); break;
                 case IDM_FINDNEXT: DoFindNext(); break;
+                case IDM_REPLACE: DoReplace(); break;
                 case IDM_ABOUT:
                     DoAbout();
                     break;
@@ -390,6 +392,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (wParam == 'O') { DoOpenQuery(); return 0; }
                 if (wParam == 'N') { DoFileNew(); return 0; }
                 if (wParam == 'C') { g_abortQuery = 1; return 0; }
+                if (wParam == 'F') { DoFind(); return 0; }
+                if (wParam == 'H') { DoReplace(); return 0; }
                 if (wParam == '1') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0); return 0; }
                 if (wParam == '2') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0); return 0; }
                 if (wParam == '3') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0); return 0; }
@@ -528,6 +532,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'O'; accel[nAccel].cmd = IDM_OPENQUERY; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'S'; accel[nAccel].cmd = IDM_SAVEQUERY; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'F'; accel[nAccel].cmd = IDM_FIND; nAccel++;
+    accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'H'; accel[nAccel].cmd = IDM_REPLACE; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = '1'; accel[nAccel].cmd = IDM_VIEWQUERY; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = '2'; accel[nAccel].cmd = IDM_VIEWRESULT; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = '3'; accel[nAccel].cmd = IDM_VIEWSCHEMA; nAccel++;

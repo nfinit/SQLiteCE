@@ -106,6 +106,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_EXECUTE  201
 #define IDM_FIND     202
 #define IDM_FINDNEXT 203
+#define IDM_REPLACE  207
 #define IDM_EXECATCURSOR 204
 #define IDM_EXECATCURSOR_PLACEHOLDER 205
 #define IDM_STOP     206
@@ -334,6 +335,7 @@ void OpenQueryFile(const wchar_t *path);
 
 void DoFind(void);
 void DoFindNext(void);
+void DoReplace(void);
 
 /*============================================================================
 ** Function Declarations - Dialogs (dialogs.c)
