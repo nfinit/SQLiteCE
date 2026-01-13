@@ -30,10 +30,10 @@ static LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                 L"(C) Intermountain Systems\n"
                 L"Build date: %s", ver, built);
             CreateWindowW(L"STATIC", NULL, WS_CHILD | WS_VISIBLE | SS_BITMAP,
-                61, 10, 128, 64, hwnd, (HMENU)100, g_hInst, NULL);
+                76, 10, 128, 64, hwnd, (HMENU)100, g_hInst, NULL);
             SendDlgItemMessage(hwnd, 100, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)g_hLogo);
             CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_CENTER,
-                5, 80, 240, 50, hwnd, NULL, g_hInst, NULL);
+                5, 80, 270, 50, hwnd, NULL, g_hInst, NULL);
             return 0;
         }
         case WM_COMMAND:
@@ -75,7 +75,7 @@ void DoAbout(void) {
     GetWindowRect(g_hwndMain, &rc);
     hwndAbout = CreateWindowW(L"SQLiteCEAbout", L"About",
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
-        rc.left + 30, rc.top + 30, 250, 160,
+        rc.left + 30, rc.top + 30, 280, 160,
         g_hwndMain, NULL, g_hInst, NULL);
     ShowWindow(hwndAbout, SW_SHOW);
 }

@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.7.0.13"
+#define SQLITECEDIT_VERSION L"0.7.0.15"
 
 /*============================================================================
 ** Menu IDs
