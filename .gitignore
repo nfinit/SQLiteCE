@@ -426,5 +426,5 @@ Thumbs.db
 tools/
 
 # Agent context and steering 
-docs/AGENTS/ 
+AGENTS/ 
 .kiro/
