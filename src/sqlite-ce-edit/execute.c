@@ -370,8 +370,9 @@ void ExecuteQuery(void) {
                 else if (c == '-' && full[i+1] == '-') inCmt = 1;
                 else if (c == '/' && full[i+1] == '*') { i++; inCmt = 2; }
                 else if (c == ';') {
-                    if (i < cursorPos) stmtStart = i + 1;
-                    else if (stmtEnd == fullLen) stmtEnd = i;
+                    /* Cursor after this semicolon = this statement's end was found */
+                    if (i + 1 < cursorPos) stmtStart = i + 1;
+                    else if (stmtEnd == fullLen) stmtEnd = i + 1;
                 }
             }
         }
