@@ -273,7 +273,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         g_execAtCursor = !g_execAtCursor;
                         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
                     } else if (g_viewMode == 1) {
-                        /* Results view: toggle grid/text - checked = grid mode */
+                        /* Results view: toggle grid/text - but not in edit mode */
+                        if (g_editMode) {
+                            MessageBeep(MB_OK);  /* Beep to indicate locked */
+                            break;
+                        }
                         g_gridView = !g_gridView;
                         ShowWindow(g_hwndResult, g_gridView ? SW_HIDE : SW_SHOW);
                         if (g_hwndGrid) ShowWindow(g_hwndGrid, g_gridView ? SW_SHOW : SW_HIDE);
@@ -423,6 +427,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (pnm->hwndFrom == g_hwndGrid && pnm->code == LVN_COLUMNCLICK) {
                 NMLISTVIEW *pnmlv = (NMLISTVIEW*)lParam;
                 OnGridColumnClick(pnmlv->iSubItem);
+                return 0;
+            }
+            if (pnm->hwndFrom == g_hwndGrid && pnm->code == NM_DBLCLK) {
+                /* Double-click on grid cell - start edit if in edit mode */
+                NMLISTVIEW *pnmlv = (NMLISTVIEW*)lParam;
+                OnGridDoubleClick(pnmlv->iItem, pnmlv->iSubItem);
                 return 0;
             }
             /* Header double-click to auto-size column */

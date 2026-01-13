@@ -105,6 +105,7 @@ void CloseDatabase(void) {
         g_db = NULL;
     }
     g_szDbPath[0] = '\0';
+    ClearEditMode();
     /* Reopen in-memory database as scratchpad */
     g_db = sqlite_open(":memory:", 0, NULL);
     lstrcpyW(g_szDbPath, L":memory:");

@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.6.0"
+#define SQLITECEDIT_VERSION L"0.7.0.7"
 
 /*============================================================================
 ** Menu IDs
@@ -232,6 +232,10 @@ extern int g_recentCount;
 extern wchar_t g_recentQueries[MAX_RECENT_FILES][MAX_PATH];
 extern int g_recentQueryCount;
 
+/* Grid edit mode state */
+extern int g_editMode;
+extern char g_editTableName[128];
+
 /*============================================================================
 ** Function Declarations - Output (output.c)
 **============================================================================*/
@@ -266,6 +270,8 @@ void CreateSchemaView(HWND hwndParent, int x, int y, int cx, int cy);
 void RefreshSchema(void);
 void OnSchemaExpanding(NMTREEVIEWW *pnm);
 void OnSchemaDoubleClick(void);
+void OpenTableForEditing(const char *tablename);
+void ClearEditMode(void);
 
 /* Grid view (grid.c) */
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy);
@@ -274,6 +280,7 @@ void OnGridGetDispInfo(NMLVDISPINFOW *pdi);
 void OnGridColumnClick(int col);
 void GridFindNext(void);
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+void OnGridDoubleClick(int row, int col);
 void OnSchemaDelete(void);
 int GetSelectedObjectType(void);  /* Returns IMG_TABLE, IMG_VIEW, IMG_TRIGGER, or -1 */
 void GetSchemaStatus(wchar_t *buf, int bufLen);

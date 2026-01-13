@@ -409,14 +409,126 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
 }
 
 /*============================================================================
-** Handle double-click - generate SELECT query
+** Clear edit mode state
+**============================================================================*/
+
+void ClearEditMode(void) {
+    g_editMode = 0;
+    g_editTableName[0] = '\0';
+}
+
+/*============================================================================
+** Open a table for editing in grid view
+**============================================================================*/
+
+void OpenTableForEditing(const char *tablename) {
+    char sql[256];
+    char *p = sql;
+    const char *s;
+    int rc;
+    char *errmsg = NULL;
+    wchar_t wbuf[64];
+    DWORD startTick, elapsed;
+    
+    if (!g_db || !tablename) return;
+    
+    /* Clear any previous edit state */
+    ClearEditMode();
+    
+    /* Build SELECT rowid, * FROM tablename */
+    s = "SELECT rowid, * FROM ";
+    while (*s) *p++ = *s++;
+    s = tablename;
+    while (*s) *p++ = *s++;
+    *p++ = ';'; *p = 0;
+    
+    /* Setup for query */
+    g_abortQuery = 0;
+    if (g_clearOnExec) ClearOutput();
+    
+    startTick = GetTickCount();
+    
+    /* Use sqlite_get_table for simplicity */
+    {
+        char **results = NULL;
+        int nRows = 0, nCols = 0;
+        
+        rc = sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
+        
+        elapsed = GetTickCount() - startTick;
+        g_lastQueryTime = elapsed;
+        
+        if (rc == SQLITE_OK && results) {
+            int i, total;
+            
+            /* Free previous results */
+            FreeLastResults();
+            
+            /* Store results - includes rowid as column 0 */
+            g_lastResultRows = nRows;
+            g_lastResultCols = nCols;
+            total = (nRows + 1) * nCols;
+            
+            g_lastResult = (char **)LocalAlloc(LMEM_FIXED, total * sizeof(char *));
+            if (g_lastResult) {
+                for (i = 0; i < total; i++) {
+                    if (results[i]) {
+                        int len = 0;
+                        const char *src = results[i];
+                        while (src[len]) len++;
+                        g_lastResult[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+                        if (g_lastResult[i]) {
+                            int j;
+                            for (j = 0; j <= len; j++) g_lastResult[i][j] = results[i][j];
+                        }
+                    } else {
+                        g_lastResult[i] = NULL;
+                    }
+                }
+            }
+            sqlite_free_table(results);
+            
+            /* Set edit mode */
+            g_editMode = 1;
+            s = tablename;
+            p = g_editTableName;
+            while (*s && (p - g_editTableName) < 127) *p++ = *s++;
+            *p = '\0';
+            
+            /* Update status */
+            {
+                wchar_t wtbl[128];
+                MultiByteToWideChar(CP_ACP, 0, g_editTableName, -1, wtbl, 128);
+                wsprintfW(wbuf, L"Editing: %s (%d rows)", wtbl, nRows);
+            }
+            SetStatusResult(wbuf);
+            
+            /* Populate grid and switch to grid view */
+            g_gridView = 1;
+            PopulateGrid();
+            SwitchView(1);
+            SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
+            SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+            SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+        } else {
+            if (errmsg) {
+                OutputLine(errmsg);
+                sqlite_freemem(errmsg);
+            }
+            SetStatusResult(L"Error opening table");
+        }
+    }
+}
+
+/*============================================================================
+** Handle double-click - open table for editing or view read-only
 **============================================================================*/
 
 void OnSchemaDoubleClick(void) {
     HTREEITEM hItem;
     TV_ITEMW item;
     wchar_t text[128];
-    char sql[256];
+    char name[128];
     
     hItem = TreeView_GetSelection(g_hwndSchema);
     if (!hItem) return;
@@ -437,18 +549,23 @@ void OnSchemaDoubleClick(void) {
         *p = 0;
     }
     
-    /* Build and execute SELECT without touching query buffer */
-    {
+    WideCharToMultiByte(CP_ACP, 0, text, -1, name, 128, NULL, NULL);
+    
+    if (item.iImage == IMG_TABLE) {
+        /* Tables open in editable grid mode */
+        OpenTableForEditing(name);
+    } else {
+        /* Views open read-only via ExecuteSQL */
+        char sql[256];
         char *p = sql;
         const char *s = "SELECT * FROM ";
-        char name[128];
         while (*s) *p++ = *s++;
-        WideCharToMultiByte(CP_ACP, 0, text, -1, name, 128, NULL, NULL);
         s = name;
         while (*s) *p++ = *s++;
         *p++ = ';'; *p = 0;
+        ClearEditMode();
+        ExecuteSQL(sql);
     }
-    ExecuteSQL(sql);
 }
 
 /*============================================================================

@@ -238,6 +238,9 @@ void ExecuteSQL(const char *sql) {
     
     if (!g_db || !sql) return;
     
+    /* Clear edit mode - this is a read-only query path */
+    ClearEditMode();
+    
     /* Setup */
     g_abortQuery = 0;
     if (g_clearOnExec) ClearOutput();
@@ -290,6 +293,9 @@ void ExecuteQuery(void) {
         SetWindowTextW(g_hwndResult, L"No database open.");
         return;
     }
+    
+    /* Clear edit mode - query editor results are read-only */
+    ClearEditMode();
     
     /* Disable Execute while running, enable Stop */
     EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_GRAYED);

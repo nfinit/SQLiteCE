@@ -68,3 +68,7 @@ wchar_t g_recentFiles[MAX_RECENT_FILES][MAX_PATH] = {0};
 int g_recentCount = 0;
 wchar_t g_recentQueries[MAX_RECENT_FILES][MAX_PATH] = {0};
 int g_recentQueryCount = 0;
+
+/* Grid edit mode state */
+int g_editMode = 0;                      /* 1 = grid is editable */
+char g_editTableName[128] = {0};         /* Table being edited */
