@@ -72,3 +72,4 @@ int g_recentQueryCount = 0;
 /* Grid edit mode state */
 int g_editMode = 0;                      /* 1 = grid is editable */
 char g_editTableName[128] = {0};         /* Table being edited */
+int g_gridViewBeforeEdit = 0;            /* Saved g_gridView state before edit mode */

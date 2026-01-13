@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.7.0.9"
+#define SQLITECEDIT_VERSION L"0.7.0.13"
 
 /*============================================================================
 ** Menu IDs
@@ -235,6 +235,7 @@ extern int g_recentQueryCount;
 /* Grid edit mode state */
 extern int g_editMode;
 extern char g_editTableName[128];
+extern int g_gridViewBeforeEdit;
 
 /*============================================================================
 ** Function Declarations - Output (output.c)

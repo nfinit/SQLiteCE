@@ -275,10 +275,17 @@ void ExecuteSQL(const char *sql) {
     sqlite_progress_handler(g_db, 0, NULL, NULL);
     
     /* Switch to results */
+    if (g_gridView && g_hwndGrid)
+        SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
     SwitchView(1);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+    if (g_gridView) PopulateGrid();
+    if (g_gridView && g_hwndGrid) {
+        SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(g_hwndGrid, NULL, TRUE);
+    }
 }
 
 void ExecuteQuery(void) {
@@ -613,10 +620,18 @@ void ExecuteQuery(void) {
     
     /* Switch to results view (unless error - stay in query to show cursor) */
     if (!hadError) {
+        /* Suppress redraw during view switch to avoid flicker */
+        if (g_gridView && g_hwndGrid)
+            SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
         SwitchView(1);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+        if (g_gridView) PopulateGrid();
+        if (g_gridView && g_hwndGrid) {
+            SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
+            InvalidateRect(g_hwndGrid, NULL, TRUE);
+        }
         RefreshSchema();  /* Update schema in case CREATE/DROP was executed */
     }
 }

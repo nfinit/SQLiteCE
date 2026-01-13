@@ -413,8 +413,19 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
 **============================================================================*/
 
 void ClearEditMode(void) {
+    if (!g_editMode) return;
+    
     g_editMode = 0;
     g_editTableName[0] = '\0';
+    
+    /* Restore previous grid/text view state */
+    g_gridView = g_gridViewBeforeEdit;
+    ShowWindow(g_hwndResult, g_gridView ? SW_HIDE : SW_SHOW);
+    if (g_hwndGrid) ShowWindow(g_hwndGrid, g_gridView ? SW_SHOW : SW_HIDE);
+    
+    /* Re-enable the grid toggle button */
+    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
 }
 
 /*============================================================================
@@ -488,6 +499,9 @@ void OpenTableForEditing(const char *tablename) {
             }
             sqlite_free_table(results);
             
+            /* Save current grid view state before entering edit mode */
+            g_gridViewBeforeEdit = g_gridView;
+            
             /* Set edit mode */
             g_editMode = 1;
             s = tablename;
@@ -510,6 +524,10 @@ void OpenTableForEditing(const char *tablename) {
             SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
             SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
             SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+            
+            /* Disable grid/text toggle button while in edit mode */
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
+            SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, TRUE);
         } else {
             if (errmsg) {
                 OutputLine(errmsg);
