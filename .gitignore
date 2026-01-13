@@ -419,6 +419,8 @@ FodyWeavers.xsd
 
 # macOS artifacts
 ._*
+.!*
+Thumbs.db
 
 # Local build utilities
 tools/
