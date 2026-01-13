@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.7.0.15"
+#define SQLITECEDIT_VERSION L"0.7.0.21"
 
 /*============================================================================
 ** Menu IDs
@@ -352,5 +352,13 @@ void DoReplace(void);
 void DoAbout(void);
 void DoOptions(void);
 int PromptForPath(const wchar_t *title, const wchar_t *defPath);
+
+/*============================================================================
+** Function Declarations - Settings (settings.c)
+**============================================================================*/
+
+void LoadSettings(void);
+void SaveSettings(void);
+void ClearSettings(void);
 
 #endif /* GLOBALS_H */

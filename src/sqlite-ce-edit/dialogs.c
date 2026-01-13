@@ -148,6 +148,7 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
 #define IDC_OPT_LINENUMS     1003
 #define IDC_OPT_ERRORMSGBOX  1004
 #define IDC_OPT_DBPATH       1005
+#define IDC_OPT_CLEARREG     1006
 
 static int g_optClearExec, g_optExecAtCursor, g_optLineNums, g_optErrorMsgBox;
 static wchar_t g_optDbPath[MAX_PATH];
@@ -188,6 +189,11 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
                 185, 28, 180, 22, hwnd, (HMENU)IDC_OPT_DBPATH, g_hInst, NULL);
             
+            /* Clear settings button */
+            CreateWindowW(L"BUTTON", L"Clear All Settings...",
+                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                185, 76, 130, 22, hwnd, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
+            
             SendMessage(GetDlgItem(hwnd, IDC_OPT_CLEAREXEC), BM_SETCHECK, g_optClearExec, 0);
             SendMessage(GetDlgItem(hwnd, IDC_OPT_EXECATCURSOR), BM_SETCHECK, g_optExecAtCursor, 0);
             SendMessage(GetDlgItem(hwnd, IDC_OPT_LINENUMS), BM_SETCHECK, g_optLineNums, 0);
@@ -198,6 +204,15 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             if (LOWORD(wParam) == IDOK) {
                 ApplyOptions(hwnd);
                 DestroyWindow(hwnd);
+                return 0;
+            }
+            if (LOWORD(wParam) == IDC_OPT_CLEARREG) {
+                if (MessageBoxW(hwnd, L"Clear all saved settings and recent files?", 
+                                L"Confirm", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+                    ClearSettings();
+                    MessageBoxW(hwnd, L"Settings cleared. Restart to use defaults.", 
+                                L"Settings", MB_OK | MB_ICONINFORMATION);
+                }
                 return 0;
             }
             break;

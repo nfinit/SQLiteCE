@@ -507,6 +507,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (r == IDCANCEL) return 0;
                 if (r == IDYES) DoSaveQuery();
             }
+            SaveSettings();
             DestroyWindow(hwnd);
             return 0;
         
@@ -537,6 +538,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     
     g_hInst = hInst;
     InitCommonControls();
+    LoadSettings();
     
     /* Build accelerator table */
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'O'; accel[nAccel].cmd = IDM_OPENQUERY; nAccel++;
@@ -570,6 +572,10 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     
     SendMessage(g_hwndMain, WM_SETICON, ICON_SMALL, 
         (LPARAM)LoadImage(hInst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 16, 16, 0));
+    
+    /* Update menus with loaded recent files */
+    UpdateRecentMenu();
+    UpdateRecentQueryMenu();
     
     OpenDatabase(L":memory:");
     
