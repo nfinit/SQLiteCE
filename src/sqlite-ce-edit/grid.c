@@ -23,6 +23,7 @@ static int g_editCol = -1;         /* Display column being edited */
 static void StartCellEdit(int row, int col);
 static void CommitCellEdit(void);
 static void CancelCellEdit(void);
+static void DeleteSelectedRow(void);
 
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     HIMAGELIST hIml;
@@ -157,6 +158,11 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (wParam == VK_F2 && g_editMode) {
             int sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
             if (sel >= 0) StartCellEdit(sel, 0);
+            return 0;
+        }
+        /* Delete - Delete selected row (only in edit mode) */
+        if (wParam == VK_DELETE && g_editMode) {
+            DeleteSelectedRow();
             return 0;
         }
     }
@@ -557,6 +563,65 @@ static void CancelCellEdit(void) {
     g_editRow = -1;
     g_editCol = -1;
     SetFocus(g_hwndGrid);
+}
+
+static void DeleteSelectedRow(void) {
+    int sel, dataRow, rowidIdx;
+    char *rowid;
+    char sql[256];
+    char tableName[128];
+    char *p;
+    const char *s;
+    char *errmsg = NULL;
+    int rc;
+    
+    sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
+    if (sel < 0) return;
+    
+    /* Save table name before it gets cleared */
+    s = g_editTableName;
+    p = tableName;
+    while (*s) *p++ = *s++;
+    *p = '\0';
+    
+    /* Confirm deletion */
+    if (MessageBoxW(g_hwndMain, L"Delete this row?", L"Confirm Delete",
+                    MB_YESNO | MB_ICONQUESTION) != IDYES)
+        return;
+    
+    /* Get rowid */
+    dataRow = g_sortIndex ? g_sortIndex[sel] : sel;
+    rowidIdx = (dataRow + 1) * g_lastResultCols;
+    rowid = g_lastResult[rowidIdx];
+    
+    if (!rowid) return;
+    
+    /* Build DELETE statement */
+    p = sql;
+    s = "DELETE FROM \"";
+    while (*s) *p++ = *s++;
+    s = tableName;
+    while (*s) *p++ = *s++;
+    s = "\" WHERE rowid = ";
+    while (*s) *p++ = *s++;
+    s = rowid;
+    while (*s) *p++ = *s++;
+    *p++ = ';';
+    *p = '\0';
+    
+    /* Execute DELETE */
+    rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
+    
+    if (rc != SQLITE_OK) {
+        wchar_t wmsg[256];
+        MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
+        MessageBoxW(g_hwndMain, wmsg, L"Delete Failed", MB_OK | MB_ICONERROR);
+        if (errmsg) sqlite_freemem(errmsg);
+        return;
+    }
+    
+    /* Re-query to refresh grid */
+    OpenTableForEditing(tableName);
 }
 
 static void CommitCellEdit(void) {
