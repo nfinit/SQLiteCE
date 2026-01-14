@@ -336,9 +336,13 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             ExecuteQuery();
             return 0;
         }
-        /* Ctrl+O - Open Query */
+        /* Ctrl+O - Open Query (or Database if editor empty) */
         if (ctrl && wParam == 'O') {
-            DoOpenQuery();
+            if ((GetWindowTextLengthW(g_hwndQuery) == 0 || g_showingHint) &&
+                lstrcmpW(g_szDbPath, L":memory:") == 0)
+                DoFileOpen();
+            else
+                DoOpenQuery();
             return 0;
         }
         /* Ctrl+N - New */
@@ -477,9 +481,13 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             ExecuteQuery();
             return 0;
         }
-        /* Ctrl+O - Open Query */
+        /* Ctrl+O - Open Query (or Database if editor empty) */
         if (ctrl && wParam == 'O') {
-            DoOpenQuery();
+            if ((GetWindowTextLengthW(g_hwndQuery) == 0 || g_showingHint) &&
+                lstrcmpW(g_szDbPath, L":memory:") == 0)
+                DoFileOpen();
+            else
+                DoOpenQuery();
             return 0;
         }
         /* Ctrl+N - New */
