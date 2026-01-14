@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.7.0"
+#define SQLITECEDIT_VERSION L"0.8.0.4"
 
 /*============================================================================
 ** Menu IDs
@@ -118,6 +118,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_FONTSIZE   405
 #define IDM_OPTIONS    406
 #define IDM_ABOUT    501
+#define IDM_HELP     502
 #define IDM_RECENT_BASE 600
 #define IDM_RECENT_MAX  604
 #define IDM_RECENT_QUERY_BASE 610

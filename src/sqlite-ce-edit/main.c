@@ -78,12 +78,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_hViewMenu = hView;
             AppendMenuW(hMenu, MF_POPUP, (UINT)hView, L"&View");
             
-            {
-                HMENU hHelp = CreatePopupMenu();
-                AppendMenuW(hHelp, MF_STRING, IDM_ABOUT, L"&About...");
-                AppendMenuW(hMenu, MF_POPUP, (UINT)hHelp, L"&Help");
-            }
-            
             g_hMenu = hMenu;
             CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hMenu, 0);
             
@@ -157,7 +151,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             CommandBar_AddButtons(g_hwndCB, 15, tbButtons);
             
-            CommandBar_AddAdornments(g_hwndCB, 0, 0);
+            CommandBar_AddAdornments(g_hwndCB, CMDBAR_HELP, 0);
             cbHeight = CommandBar_Height(g_hwndCB);
             
             GetClientRect(hwnd, &rc);
@@ -296,6 +290,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_FINDNEXT: DoFindNext(); break;
                 case IDM_REPLACE: DoReplace(); break;
                 case IDM_ABOUT:
+                    DoAbout();
+                    break;
+                case IDM_HELP:
                     DoAbout();
                     break;
                 case IDM_OPTIONS:
@@ -499,6 +496,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             break;
         }
+        
+        case WM_HELP:
+            DoAbout();
+            return TRUE;
         
         case WM_CLOSE:
             if (g_queryDirty) {
