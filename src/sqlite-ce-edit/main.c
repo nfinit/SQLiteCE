@@ -59,6 +59,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hFile, MF_STRING, IDM_OPTIONS, L"&Options...");
                 AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hFile, MF_STRING, IDM_ABOUT, L"&About SQLite/CEdit...");
+                AppendMenuW(hFile, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hFile, MF_STRING, IDM_EXIT, L"E&xit\tAlt+X");
             }
             AppendMenuW(hMenu, MF_POPUP, (UINT)hFile, L"&File");
