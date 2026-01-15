@@ -224,6 +224,11 @@ static LRESULT CALLBACK PickerListProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             OnItemActivate();
             return 0;
         }
+        if (wParam == VK_ESCAPE) {
+            g_pickerOK = 0;
+            PostMessage(g_hwndPicker, WM_CLOSE, 0, 0);
+            return 0;
+        }
         if (wParam == VK_BACK) {
             /* Backspace goes up one directory */
             if (lstrcmpW(g_pickerDir, L"\\") != 0) {
@@ -317,6 +322,13 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             }
             break;
         }
+        case WM_KEYDOWN:
+            if (wParam == VK_ESCAPE) {
+                g_pickerOK = 0;
+                PostMessage(hwnd, WM_CLOSE, 0, 0);
+                return 0;
+            }
+            break;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
@@ -397,15 +409,15 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     /* Filename edit */
     g_hwndFilename = CreateWindowW(L"EDIT", g_pickerResult,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-        10, 118, dlgW - 20, 22, g_hwndPicker, (HMENU)102, g_hInst, NULL);
+        10, 110, dlgW - 20, 22, g_hwndPicker, (HMENU)102, g_hInst, NULL);
     
     /* Buttons */
     CreateWindowW(L"BUTTON", saveMode ? L"Save" : L"Open",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-        dlgW - 160, 144, 70, 24, g_hwndPicker, (HMENU)IDOK, g_hInst, NULL);
+        dlgW - 160, 140, 70, 22, g_hwndPicker, (HMENU)IDOK, g_hInst, NULL);
     CreateWindowW(L"BUTTON", L"Cancel",
         WS_CHILD | WS_VISIBLE,
-        dlgW - 80, 144, 70, 24, g_hwndPicker, (HMENU)IDCANCEL, g_hInst, NULL);
+        dlgW - 80, 140, 70, 22, g_hwndPicker, (HMENU)IDCANCEL, g_hInst, NULL);
     
     /* Populate list */
     PopulateFileList();
