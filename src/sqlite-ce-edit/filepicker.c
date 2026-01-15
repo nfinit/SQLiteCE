@@ -19,6 +19,7 @@ static const wchar_t *g_pickerFilter = NULL;
 static const wchar_t *g_pickerDefExt = NULL;
 static int g_pickerSaveMode = 0;
 static int g_pickerOK = 0;
+static int g_pickerDone = 0;
 static WNDPROC g_pfnListProc = NULL;
 
 /*============================================================================
@@ -334,6 +335,7 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             return 0;
         case WM_DESTROY:
             g_hwndPicker = NULL;
+            g_pickerDone = 1;
             return 0;
     }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -358,6 +360,7 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     g_pickerDefExt = defExt;
     g_pickerSaveMode = saveMode;
     g_pickerOK = 0;
+    g_pickerDone = 0;
     
     /* Set initial directory */
     if (initialDir && initialDir[0]) {
@@ -378,12 +381,18 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
         lstrcpyW(g_pickerResult, fn);
     }
     
-    /* Register window class */
-    wc.lpfnWndProc = PickerWndProc;
-    wc.hInstance = g_hInst;
-    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
-    wc.lpszClassName = L"SQLiteCEFilePicker";
-    RegisterClassW(&wc);
+    /* Register window class once */
+    {
+        static int classRegistered = 0;
+        if (!classRegistered) {
+            wc.lpfnWndProc = PickerWndProc;
+            wc.hInstance = g_hInst;
+            wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+            wc.lpszClassName = L"SQLiteCEFilePicker";
+            RegisterClassW(&wc);
+            classRegistered = 1;
+        }
+    }
     
     /* Create dialog */
     GetWindowRect(hwndOwner, &rc);
@@ -427,14 +436,15 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     
     /* Modal loop */
     EnableWindow(hwndOwner, FALSE);
-    while (g_hwndPicker && GetMessageW(&msg, NULL, 0, 0)) {
+    
+    while (!g_pickerDone && GetMessageW(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    EnableWindow(hwndOwner, TRUE);
-    SetForegroundWindow(hwndOwner);
     
-    UnregisterClassW(L"SQLiteCEFilePicker", g_hInst);
+    EnableWindow(hwndOwner, TRUE);
+    ShowWindow(hwndOwner, SW_SHOWNORMAL);
+    SetForegroundWindow(hwndOwner);
     
     /* Copy result */
     if (g_pickerOK && g_pickerResult[0]) {

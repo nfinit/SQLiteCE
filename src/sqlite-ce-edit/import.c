@@ -53,7 +53,6 @@ static int ParseCSVLine(char *line, char **fields, int maxFields) {
 }
 
 void DoImportCSV(void) {
-    CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH] = L"";
     wchar_t tblName[64];
     wchar_t *wp;
@@ -73,16 +72,9 @@ void DoImportCSV(void) {
         return;
     }
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
-    ofn.lpstrTitle = L"Import CSV";
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    
-    if (!GetOpenFileNameW(&ofn)) return;
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Import CSV", L"CSV Files (*.csv)\0*.csv\0",
+            NULL, NULL, 0)) return;
     
     fn = GetFilename(szFile);
     wp = tblName;

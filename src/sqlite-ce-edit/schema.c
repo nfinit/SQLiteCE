@@ -694,7 +694,6 @@ void ExportSelectedDDL(void) {
     char sql[256];
     char **results = NULL;
     int nRows = 0, nCols = 0;
-    CE_OPENFILENAME ofn;
     HANDLE hFile;
     DWORD dwWritten;
     
@@ -738,17 +737,9 @@ void ExportSelectedDDL(void) {
     /* Default filename */
     wsprintfW(szFile, L"%s.sql", text);
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
-    ofn.lpstrDefExt = L"sql";
-    ofn.lpstrTitle = L"Export DDL";
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    
-    if (GetSaveFileNameW(&ofn)) {
+    if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Export DDL", L"SQL Files (*.sql)\0*.sql\0",
+            L"sql", NULL, 1)) {
         hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile != INVALID_HANDLE_VALUE) {
             WriteFile(hFile, results[1], strlen(results[1]), &dwWritten, NULL);
@@ -770,7 +761,6 @@ void ExportAllDDL(void) {
     char header[256];
     char **results = NULL;
     int nRows = 0, nCols = 0, i;
-    CE_OPENFILENAME ofn;
     HANDLE hFile;
     DWORD dwWritten;
     SYSTEMTIME st;
@@ -789,17 +779,9 @@ void ExportAllDDL(void) {
     }
     wsprintfW(szFile, L"%s.sql", dbname);
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
-    ofn.lpstrDefExt = L"sql";
-    ofn.lpstrTitle = L"Export All DDL";
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    
-    if (!GetSaveFileNameW(&ofn)) return;
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Export All DDL", L"SQL Files (*.sql)\0*.sql\0",
+            L"sql", NULL, 1)) return;
     
     /* Get all DDL ordered: tables first, then views, then triggers, then indexes */
     sqlite_get_table(g_db,

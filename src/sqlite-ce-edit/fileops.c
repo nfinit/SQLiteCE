@@ -215,21 +215,12 @@ void OpenQueryFile(const wchar_t *path) {
 }
 
 void DoOpenQuery(void) {
-    CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH] = L"";
     int i;
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
-    ofn.lpstrTitle = L"Open Query";
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    ofn.lpstrInitialDir = g_szLastQueryDir;
-    
-    if (GetOpenFileNameW(&ofn)) {
+    if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Open Query", L"SQL Files (*.sql)\0*.sql\0",
+            NULL, g_szLastQueryDir, 0)) {
         /* Remember directory for next time */
         lstrcpyW(g_szLastQueryDir, szFile);
         for (i = lstrlenW(g_szLastQueryDir) - 1; i >= 0; i--) {
@@ -241,7 +232,6 @@ void DoOpenQuery(void) {
 }
 
 void DoSaveQuery(void) {
-    CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH];
     HANDLE hFile;
     DWORD dwLen, dwWritten;
@@ -253,17 +243,10 @@ void DoSaveQuery(void) {
         lstrcpyW(szFile, g_szQueryPath);
     } else {
         lstrcpyW(szFile, L"query.sql");
-        memset(&ofn, 0, sizeof(ofn));
-        ofn.lStructSize = sizeof(ofn);
-        ofn.hwndOwner = g_hwndMain;
-        ofn.lpstrFile = szFile;
-        ofn.nMaxFile = MAX_PATH;
-        ofn.lpstrFilter = L"SQL Files (*.sql)\0*.sql\0All Files (*.*)\0*.*\0";
-        ofn.lpstrDefExt = L"sql";
-        ofn.lpstrTitle = L"Save Query";
-        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
         
-        if (!GetSaveFileNameW(&ofn)) return;
+        if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+                L"Save Query", L"SQL Files (*.sql)\0*.sql\0",
+                L"sql", g_szLastQueryDir, 1)) return;
         lstrcpyW(g_szQueryPath, szFile);
         UpdateTitle();
     }
@@ -290,29 +273,21 @@ void DoSaveQuery(void) {
 **============================================================================*/
 
 void DoExportResults(void) {
-    CE_OPENFILENAME ofn;
-    wchar_t szFile[MAX_PATH] = L"results";
+    wchar_t szFile[MAX_PATH] = L"results.csv";
     HANDLE hFile;
     DWORD dwLen, dwWritten;
     wchar_t *wbuf, *wp;
     char *buf, *bp;
     int needQuote, isCSV;
+    wchar_t *dot;
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
-    ofn.lpstrDefExt = NULL;  /* We'll handle extension ourselves */
-    ofn.lpstrTitle = L"Export Results";
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    ofn.nFilterIndex = 1;
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Export Results", L"CSV Files (*.csv)\0*.csv\0",
+            L"csv", NULL, 1)) return;
     
-    if (!GetSaveFileNameW(&ofn)) return;
-    
-    /* Check if CSV (filter 1) or Text (filter 2+) */
-    isCSV = (ofn.nFilterIndex == 1);
+    /* Check extension to determine format */
+    dot = szFile + lstrlenW(szFile) - 4;
+    isCSV = (dot > szFile && (lstrcmpiW(dot, L".csv") == 0));
     
     /* Append extension if none present */
     {
@@ -510,6 +485,7 @@ void DoExportTxt(void) {
 
 static HWND g_hwndPickDlg;
 static char g_pickResult[128];
+static int g_pickDone;
 
 static LRESULT CALLBACK PickWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_COMMAND) {
@@ -536,7 +512,7 @@ static LRESULT CALLBACK PickWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
     }
     if (msg == WM_DESTROY) {
-        PostQuitMessage(0);
+        g_pickDone = 1;
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -573,16 +549,23 @@ static int PickTable(char *tblName) {
         return 0;
     }
     
-    /* Register window class */
-    memset(&wc, 0, sizeof(wc));
-    wc.lpfnWndProc = PickWndProc;
-    wc.hInstance = g_hInst;
-    wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
-    wc.lpszClassName = L"PickTableWnd";
-    RegisterClassW(&wc);
+    /* Register window class once */
+    {
+        static int classRegistered = 0;
+        if (!classRegistered) {
+            memset(&wc, 0, sizeof(wc));
+            wc.lpfnWndProc = PickWndProc;
+            wc.hInstance = g_hInst;
+            wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
+            wc.lpszClassName = L"PickTableWnd";
+            RegisterClassW(&wc);
+            classRegistered = 1;
+        }
+    }
     
     /* Create popup window */
     g_pickResult[0] = 0;
+    g_pickDone = 0;
     g_hwndPickDlg = CreateWindowExW(0, L"PickTableWnd", L"Select Table",
         WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
         50, 50, 180, 160, g_hwndMain, NULL, g_hInst, NULL);
@@ -611,15 +594,15 @@ static int PickTable(char *tblName) {
     SetFocus(hwndList);
     EnableWindow(g_hwndMain, FALSE);
     
-    while (GetMessageW(&msg, NULL, 0, 0)) {
+    while (!g_pickDone && GetMessageW(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
     
     EnableWindow(g_hwndMain, TRUE);
+    ShowWindow(g_hwndMain, SW_SHOWNORMAL);
     SetForegroundWindow(g_hwndMain);
     sqlite_free_table(results);
-    UnregisterClassW(L"PickTableWnd", g_hInst);
     
     if (g_pickResult[0]) {
         strcpy(tblName, g_pickResult);
@@ -629,7 +612,6 @@ static int PickTable(char *tblName) {
 }
 
 void DoExportTable(void) {
-    CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH];
     char tblName[128];
     char sql[512];
@@ -640,6 +622,7 @@ void DoExportTable(void) {
     char line[4096];
     char *lp, *p;
     const char *t;
+    wchar_t *ext;
     
     if (!g_db) return;
     
@@ -671,28 +654,18 @@ void DoExportTable(void) {
     
     /* Default filename from table name */
     MultiByteToWideChar(CP_ACP, 0, tblName, -1, szFile, MAX_PATH);
+    lstrcatW(szFile, L".csv");
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"CSV (*.csv)\0*.csv\0SQL INSERT (*.sql)\0*.sql\0SQL CREATE+INSERT (*.sql)\0*.sql\0";
-    ofn.lpstrTitle = L"Export Table";
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Export Table", L"CSV (*.csv)\0*.csv\0",
+            L"csv", NULL, 1)) return;
     
-    if (!GetSaveFileNameW(&ofn)) return;
-    
-    /* fmt: 1=CSV, 2=INSERT, 3=CREATE+INSERT */
-    fmt = ofn.nFilterIndex;
-    
-    /* Append extension if missing */
-    {
-        wchar_t *ext = (fmt == 1) ? L".csv" : L".sql";
-        int len = lstrlenW(szFile);
-        int elen = lstrlenW(ext);
-        if (len < elen || lstrcmpiW(szFile + len - elen, ext) != 0)
-            lstrcatW(szFile, ext);
+    /* Determine format from extension: csv=1, sql=2 (INSERT), default csv */
+    ext = szFile + lstrlenW(szFile) - 4;
+    if (ext > szFile && lstrcmpiW(ext, L".sql") == 0) {
+        fmt = 2;  /* SQL INSERT */
+    } else {
+        fmt = 1;  /* CSV */
     }
     
     /* Query table data */
