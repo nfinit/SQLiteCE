@@ -51,23 +51,58 @@ static void GetFilterExt(const wchar_t *filter, wchar_t *ext, int maxLen) {
 ** Populate file list for current directory
 **============================================================================*/
 
+#define MAX_ENTRIES 256
+
+static void SortAndAdd(wchar_t entries[][MAX_PATH], int count, int bracket) {
+    int i, j;
+    wchar_t temp[MAX_PATH];
+    /* Simple insertion sort */
+    for (i = 1; i < count; i++) {
+        lstrcpyW(temp, entries[i]);
+        j = i - 1;
+        while (j >= 0 && lstrcmpiW(entries[j], temp) > 0) {
+            lstrcpyW(entries[j + 1], entries[j]);
+            j--;
+        }
+        lstrcpyW(entries[j + 1], temp);
+    }
+    /* Add to listbox */
+    for (i = 0; i < count; i++) {
+        if (bracket) {
+            wchar_t item[MAX_PATH];
+            wsprintfW(item, L"[%s]", entries[i]);
+            SendMessageW(g_hwndList, LB_ADDSTRING, 0, (LPARAM)item);
+        } else {
+            SendMessageW(g_hwndList, LB_ADDSTRING, 0, (LPARAM)entries[i]);
+        }
+    }
+}
+
 static void PopulateFileList(void) {
     WIN32_FIND_DATAW fd;
     HANDLE hFind;
     wchar_t pattern[MAX_PATH];
     wchar_t ext[32];
     int atRoot;
+    static wchar_t entries[MAX_ENTRIES][MAX_PATH];
+    int count;
     
     SendMessageW(g_hwndList, LB_RESETCONTENT, 0, 0);
     
     atRoot = (lstrcmpW(g_pickerDir, L"\\") == 0);
+    
+    /* Add [.] for save mode - confirms with current filename */
+    if (g_pickerSaveMode) {
+        SendMessageW(g_hwndList, LB_ADDSTRING, 0, (LPARAM)L"[.]");
+    }
     
     /* Add parent directory entry if not at root */
     if (!atRoot) {
         SendMessageW(g_hwndList, LB_ADDSTRING, 0, (LPARAM)L"[..]");
     }
     
-    /* Add subdirectories */
+    /* Collect subdirectories */
+    count = 0;
     if (atRoot) {
         lstrcpyW(pattern, L"\\*");
     } else {
@@ -77,16 +112,16 @@ static void PopulateFileList(void) {
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
             if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
-                fd.cFileName[0] != '.') {
-                wchar_t item[MAX_PATH];
-                wsprintfW(item, L"[%s]", fd.cFileName);
-                SendMessageW(g_hwndList, LB_ADDSTRING, 0, (LPARAM)item);
+                fd.cFileName[0] != '.' && count < MAX_ENTRIES) {
+                lstrcpyW(entries[count++], fd.cFileName);
             }
         } while (FindNextFileW(hFind, &fd));
         FindClose(hFind);
     }
+    SortAndAdd(entries, count, 1);
     
-    /* Add files matching filter */
+    /* Collect files matching filter */
+    count = 0;
     GetFilterExt(g_pickerFilter, ext, 32);
     if (atRoot) {
         if (ext[0]) {
@@ -105,12 +140,13 @@ static void PopulateFileList(void) {
     hFind = FindFirstFileW(pattern, &fd);
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
-            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                SendMessageW(g_hwndList, LB_ADDSTRING, 0, (LPARAM)fd.cFileName);
+            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && count < MAX_ENTRIES) {
+                lstrcpyW(entries[count++], fd.cFileName);
             }
         } while (FindNextFileW(hFind, &fd));
         FindClose(hFind);
     }
+    SortAndAdd(entries, count, 0);
     
     /* Update path display */
     SetWindowTextW(g_hwndPath, g_pickerDir);
@@ -136,7 +172,12 @@ static void OnItemActivate(void) {
     SendMessageW(g_hwndList, LB_GETTEXT, sel, (LPARAM)item);
     
     if (item[0] == '[') {
-        /* Directory - navigate into it */
+        /* Special entries */
+        if (lstrcmpW(item, L"[.]") == 0) {
+            /* Save to current directory - simulate OK button */
+            SendMessageW(g_hwndPicker, WM_COMMAND, IDOK, 0);
+            return;
+        }
         if (lstrcmpW(item, L"[..]") == 0) {
             /* Go up one level */
             wchar_t *p = g_pickerDir + lstrlenW(g_pickerDir) - 1;
@@ -430,7 +471,7 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     
     /* File listbox */
     g_hwndList = CreateWindowW(L"LISTBOX", NULL,
-        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY | LBS_SORT,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY,
         10, 34, dlgW - 20, 80, g_hwndPicker, (HMENU)101, g_hInst, NULL);
     
     /* Subclass listbox */
