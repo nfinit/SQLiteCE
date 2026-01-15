@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.8.0.24"
+#define SQLITECEDIT_VERSION L"0.8.0.29"
 
 /*============================================================================
 ** Menu IDs
@@ -322,6 +322,15 @@ const wchar_t *GetFilename(const wchar_t *path);
 
 void ExecuteQuery(void);
 void ExecuteSQL(const char *sql);
+
+/*============================================================================
+** Function Declarations - File Picker (filepicker.c)
+**============================================================================*/
+
+int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
+                     const wchar_t *title, const wchar_t *filter,
+                     const wchar_t *defExt, const wchar_t *initialDir,
+                     int saveMode);
 
 /*============================================================================
 ** Function Declarations - File Operations (fileops.c)

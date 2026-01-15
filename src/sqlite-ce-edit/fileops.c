@@ -43,7 +43,6 @@ static void GetDataPath(wchar_t *path, int maxLen) {
 **============================================================================*/
 
 void DoFileNew(void) {
-    CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH];
     wchar_t szDataPath[MAX_PATH];
     
@@ -51,42 +50,24 @@ void DoFileNew(void) {
     GetDataPath(szDataPath, MAX_PATH);
     lstrcpyW(szFile, L"new.db");
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
-    ofn.lpstrDefExt = L"db";
-    ofn.lpstrTitle = L"New Database";
-    ofn.lpstrInitialDir = szDataPath;
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    
-    if (GetSaveFileNameW(&ofn)) {
+    if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"New Database", L"Database Files (*.db)\0*.db\0",
+            L"db", szDataPath, 1)) {
         DeleteFileW(szFile);
         OpenDatabase(szFile);
     }
 }
 
 void DoFileOpen(void) {
-    CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH] = L"";
     wchar_t szDataPath[MAX_PATH];
     
     /* Get data path (storage card or My Documents) */
     GetDataPath(szDataPath, MAX_PATH);
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
-    ofn.lpstrTitle = L"Open Database";
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    ofn.lpstrInitialDir = szDataPath;
-    
-    if (GetOpenFileNameW(&ofn)) {
+    if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Open Database", L"Database Files (*.db)\0*.db\0",
+            NULL, szDataPath, 0)) {
         OpenDatabase(szFile);
     }
 }
