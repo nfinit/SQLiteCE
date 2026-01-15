@@ -24,30 +24,60 @@ static int g_pickerOK = 0;
 static int g_pickerDone = 0;
 static WNDPROC g_pfnListProc = NULL;
 static WNDPROC g_pfnEditProc = NULL;
+static HWND g_hwndFilter = NULL;
+
+/* Forward declarations */
+static void PopulateFilterCombo(const wchar_t *filter);
 
 /*============================================================================
-** Helper: Extract extension filter (e.g., "*.db" from filter string)
+** Helper: Get extension from current filter selection
 **============================================================================*/
 
-static void GetFilterExt(const wchar_t *filter, wchar_t *ext, int maxLen) {
-    /* Filter format: "Description\0*.ext\0..." - find first *.ext */
-    const wchar_t *p = filter;
+static void GetCurrentFilterExt(wchar_t *ext, int maxLen) {
+    wchar_t item[64];
     ext[0] = 0;
-    if (!p) return;
+    if (!g_hwndFilter) return;
     
-    /* Skip description */
-    while (*p) p++;
-    p++;
-    
-    /* Copy extension pattern */
-    if (*p == '*' && *(p+1) == '.') {
+    GetWindowTextW(g_hwndFilter, item, 64);
+    /* Item is like "*.csv" or "*.*" */
+    if (item[0] == '*' && item[1] == '.') {
         int i = 0;
-        p += 2;  /* Skip *. */
-        while (*p && *p != '\0' && i < maxLen - 1) {
+        const wchar_t *p = item + 2;
+        while (*p && i < maxLen - 1) {
+            if (*p == '*') { ext[0] = 0; return; }  /* *.* means all */
             ext[i++] = *p++;
         }
         ext[i] = 0;
     }
+}
+
+/*============================================================================
+** Populate filter combobox from filter string
+**============================================================================*/
+
+static void PopulateFilterCombo(const wchar_t *filter) {
+    const wchar_t *p = filter;
+    if (!filter || !g_hwndFilter) return;
+    
+    SendMessageW(g_hwndFilter, CB_RESETCONTENT, 0, 0);
+    
+    /* Filter format: "Desc\0*.ext\0Desc2\0*.ext2\0\0" */
+    while (*p) {
+        /* Skip description */
+        while (*p) p++;
+        p++;
+        if (!*p) break;
+        /* Add pattern (e.g., "*.csv") */
+        SendMessageW(g_hwndFilter, CB_ADDSTRING, 0, (LPARAM)p);
+        while (*p) p++;
+        p++;
+    }
+    
+    /* Add "All files" option */
+    SendMessageW(g_hwndFilter, CB_ADDSTRING, 0, (LPARAM)L"*.*");
+    
+    /* Select first item */
+    SendMessageW(g_hwndFilter, CB_SETCURSEL, 0, 0);
 }
 
 /*============================================================================
@@ -125,7 +155,7 @@ static void PopulateFileList(void) {
     
     /* Collect files matching filter */
     count = 0;
-    GetFilterExt(g_pickerFilter, ext, 32);
+    GetCurrentFilterExt(ext, 32);
     if (atRoot) {
         if (ext[0]) {
             wsprintfW(pattern, L"\\*.%s", ext);
@@ -272,7 +302,8 @@ static void OnTypeAhead(wchar_t ch) {
 
 static void TabNext(HWND from) {
     if (from == g_hwndList) SetFocus(g_hwndFilename);
-    else if (from == g_hwndFilename) SetFocus(g_hwndOK);
+    else if (from == g_hwndFilename) SetFocus(g_hwndFilter);
+    else if (from == g_hwndFilter) SetFocus(g_hwndOK);
     else if (from == g_hwndOK) SetFocus(g_hwndCancel);
     else SetFocus(g_hwndList);
 }
@@ -280,8 +311,39 @@ static void TabNext(HWND from) {
 static void TabPrev(HWND from) {
     if (from == g_hwndList) SetFocus(g_hwndCancel);
     else if (from == g_hwndFilename) SetFocus(g_hwndList);
-    else if (from == g_hwndOK) SetFocus(g_hwndFilename);
+    else if (from == g_hwndFilter) SetFocus(g_hwndFilename);
+    else if (from == g_hwndOK) SetFocus(g_hwndFilter);
     else SetFocus(g_hwndOK);
+}
+
+/*============================================================================
+** Combobox subclass for Tab/Enter/Escape handling
+**============================================================================*/
+
+static WNDPROC g_pfnComboProc = NULL;
+
+static LRESULT CALLBACK PickerComboProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_TAB) {
+            if (GetKeyState(VK_SHIFT) & 0x8000)
+                TabPrev(hwnd);
+            else
+                TabNext(hwnd);
+            return 0;
+        }
+        if (wParam == VK_RETURN) {
+            SendMessageW(g_hwndPicker, WM_COMMAND, IDOK, 0);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            g_pickerOK = 0;
+            PostMessage(g_hwndPicker, WM_CLOSE, 0, 0);
+            return 0;
+        }
+    }
+    if (msg == WM_CHAR && (wParam == '\t' || wParam == '\r'))
+        return 0;
+    return CallWindowProc(g_pfnComboProc, hwnd, msg, wParam, lParam);
 }
 
 /*============================================================================
@@ -325,6 +387,11 @@ static LRESULT CALLBACK PickerBtnProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 TabPrev(hwnd);
             else
                 TabNext(hwnd);
+            return 0;
+        }
+        if (wParam == VK_RETURN) {
+            /* Trigger the focused button */
+            SendMessageW(g_hwndPicker, WM_COMMAND, GetDlgCtrlID(hwnd), 0);
             return 0;
         }
         if (wParam == VK_ESCAPE) {
@@ -408,17 +475,24 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                         wsprintfW(g_pickerResult, L"%s\\%s", g_pickerDir, filename);
                     }
                     
-                    /* Add default extension if missing */
-                    if (g_pickerDefExt && g_pickerDefExt[0]) {
+                    /* Add extension from filter if missing */
+                    {
                         wchar_t *p = g_pickerResult + lstrlenW(g_pickerResult);
+                        wchar_t ext[32];
                         int hasExt = 0;
                         while (p > g_pickerResult && *p != '\\') {
                             if (*p == '.') { hasExt = 1; break; }
                             p--;
                         }
                         if (!hasExt) {
-                            lstrcatW(g_pickerResult, L".");
-                            lstrcatW(g_pickerResult, g_pickerDefExt);
+                            GetCurrentFilterExt(ext, 32);
+                            if (ext[0]) {
+                                lstrcatW(g_pickerResult, L".");
+                                lstrcatW(g_pickerResult, ext);
+                            } else if (g_pickerDefExt && g_pickerDefExt[0]) {
+                                lstrcatW(g_pickerResult, L".");
+                                lstrcatW(g_pickerResult, g_pickerDefExt);
+                            }
                         }
                     }
                     
@@ -463,6 +537,11 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 }
                 return 0;
             }
+            /* Filter combobox change - refresh file list */
+            if (cmd == 103 && notify == CBN_SELCHANGE) {
+                PopulateFileList();
+                return 0;
+            }
             break;
         }
         case WM_KEYDOWN:
@@ -494,7 +573,8 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     WNDCLASSW wc = {0};
     MSG msg;
     RECT rc;
-    int dlgW = 300, dlgH = 195;
+    int dlgW = 360, dlgH = 195;
+    int filterW = 70;
     
     /* Initialize state */
     g_pickerResult[0] = 0;
@@ -521,6 +601,16 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
             p++;
         }
         lstrcpyW(g_pickerResult, fn);
+        
+        /* Strip extension from pre-filled filename */
+        {
+            wchar_t *dot = NULL, *s = g_pickerResult;
+            while (*s) {
+                if (*s == '.') dot = s;
+                s++;
+            }
+            if (dot) *dot = 0;
+        }
     }
     
     /* Register window class once */
@@ -560,10 +650,19 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     /* Filename edit */
     g_hwndFilename = CreateWindowW(L"EDIT", g_pickerResult,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-        10, 110, dlgW - 20, 22, g_hwndPicker, (HMENU)102, g_hInst, NULL);
+        10, 116, dlgW - filterW - 25, 22, g_hwndPicker, (HMENU)102, g_hInst, NULL);
     
     /* Subclass edit */
     g_pfnEditProc = (WNDPROC)SetWindowLong(g_hwndFilename, GWL_WNDPROC, (LONG)PickerEditProc);
+    
+    /* Filter combobox */
+    g_hwndFilter = CreateWindowW(L"COMBOBOX", NULL,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | CBS_DROPDOWNLIST,
+        dlgW - filterW - 10, 116, filterW, 100, g_hwndPicker, (HMENU)103, g_hInst, NULL);
+    PopulateFilterCombo(filter);
+    
+    /* Subclass combobox */
+    g_pfnComboProc = (WNDPROC)SetWindowLong(g_hwndFilter, GWL_WNDPROC, (LONG)PickerComboProc);
     
     /* Buttons */
     g_hwndOK = CreateWindowW(L"BUTTON", saveMode ? L"Save" : L"Open",
