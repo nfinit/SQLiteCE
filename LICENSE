@@ -1,3 +1,10 @@
+This project contains components under different licenses:
+
+src/sqlite/    - Public domain (Retained riginal source files of SQLite 2.8.17)
+src/sqlite-ce/ - Public domain (Windows CE porting layer for SQLite library)
+
+All other code (SQLite/CEdit, SQLite/CE Test, others):
+
 BSD 2-Clause License
 
 Copyright (c) 2026, Intermountain Systems 
