@@ -13,6 +13,8 @@ static HWND g_hwndPicker = NULL;
 static HWND g_hwndList = NULL;
 static HWND g_hwndPath = NULL;
 static HWND g_hwndFilename = NULL;
+static HWND g_hwndOK = NULL;
+static HWND g_hwndCancel = NULL;
 static wchar_t g_pickerDir[MAX_PATH];
 static wchar_t g_pickerResult[MAX_PATH];
 static const wchar_t *g_pickerFilter = NULL;
@@ -21,6 +23,7 @@ static int g_pickerSaveMode = 0;
 static int g_pickerOK = 0;
 static int g_pickerDone = 0;
 static WNDPROC g_pfnListProc = NULL;
+static WNDPROC g_pfnEditProc = NULL;
 
 /*============================================================================
 ** Helper: Extract extension filter (e.g., "*.db" from filter string)
@@ -264,11 +267,88 @@ static void OnTypeAhead(wchar_t ch) {
 }
 
 /*============================================================================
+** Tab navigation helper
+**============================================================================*/
+
+static void TabNext(HWND from) {
+    if (from == g_hwndList) SetFocus(g_hwndFilename);
+    else if (from == g_hwndFilename) SetFocus(g_hwndOK);
+    else if (from == g_hwndOK) SetFocus(g_hwndCancel);
+    else SetFocus(g_hwndList);
+}
+
+static void TabPrev(HWND from) {
+    if (from == g_hwndList) SetFocus(g_hwndCancel);
+    else if (from == g_hwndFilename) SetFocus(g_hwndList);
+    else if (from == g_hwndOK) SetFocus(g_hwndFilename);
+    else SetFocus(g_hwndOK);
+}
+
+/*============================================================================
+** Edit subclass for Tab/Enter handling
+**============================================================================*/
+
+static LRESULT CALLBACK PickerEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_TAB) {
+            if (GetKeyState(VK_SHIFT) & 0x8000)
+                TabPrev(hwnd);
+            else
+                TabNext(hwnd);
+            return 0;
+        }
+        if (wParam == VK_RETURN) {
+            SendMessageW(g_hwndPicker, WM_COMMAND, IDOK, 0);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            g_pickerOK = 0;
+            PostMessage(g_hwndPicker, WM_CLOSE, 0, 0);
+            return 0;
+        }
+    }
+    if (msg == WM_CHAR && wParam == '\t')
+        return 0;
+    return CallWindowProc(g_pfnEditProc, hwnd, msg, wParam, lParam);
+}
+
+/*============================================================================
+** Button subclass for Tab handling
+**============================================================================*/
+
+static WNDPROC g_pfnBtnProc = NULL;
+
+static LRESULT CALLBACK PickerBtnProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_TAB) {
+            if (GetKeyState(VK_SHIFT) & 0x8000)
+                TabPrev(hwnd);
+            else
+                TabNext(hwnd);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            g_pickerOK = 0;
+            PostMessage(g_hwndPicker, WM_CLOSE, 0, 0);
+            return 0;
+        }
+    }
+    return CallWindowProc(g_pfnBtnProc, hwnd, msg, wParam, lParam);
+}
+
+/*============================================================================
 ** List subclass for keyboard handling
 **============================================================================*/
 
 static LRESULT CALLBACK PickerListProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_KEYDOWN) {
+        if (wParam == VK_TAB) {
+            if (GetKeyState(VK_SHIFT) & 0x8000)
+                TabPrev(hwnd);
+            else
+                TabNext(hwnd);
+            return 0;
+        }
         if (wParam == VK_RETURN) {
             OnItemActivate();
             return 0;
@@ -482,13 +562,20 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
         10, 110, dlgW - 20, 22, g_hwndPicker, (HMENU)102, g_hInst, NULL);
     
+    /* Subclass edit */
+    g_pfnEditProc = (WNDPROC)SetWindowLong(g_hwndFilename, GWL_WNDPROC, (LONG)PickerEditProc);
+    
     /* Buttons */
-    CreateWindowW(L"BUTTON", saveMode ? L"Save" : L"Open",
+    g_hwndOK = CreateWindowW(L"BUTTON", saveMode ? L"Save" : L"Open",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
         dlgW - 160, 140, 70, 22, g_hwndPicker, (HMENU)IDOK, g_hInst, NULL);
-    CreateWindowW(L"BUTTON", L"Cancel",
+    g_hwndCancel = CreateWindowW(L"BUTTON", L"Cancel",
         WS_CHILD | WS_VISIBLE,
         dlgW - 80, 140, 70, 22, g_hwndPicker, (HMENU)IDCANCEL, g_hInst, NULL);
+    
+    /* Subclass buttons */
+    g_pfnBtnProc = (WNDPROC)SetWindowLong(g_hwndOK, GWL_WNDPROC, (LONG)PickerBtnProc);
+    SetWindowLong(g_hwndCancel, GWL_WNDPROC, (LONG)PickerBtnProc);
     
     /* Populate list */
     PopulateFileList();

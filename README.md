@@ -69,7 +69,7 @@ To install the full SQLite/CE distribution:
 - Place the binaries `SQLiteCEdit.exe` and `SQLiteCETest.exe` in a location of your choosing, such as a directory in `\Program Files` or on your storage card.
 - Create shortcuts on the desktop and Start menu (`\Windows\Programs`) as desired
 
-# Notes and limitations
+# Limitations
 
 SQLite/CE is based on SQLite 2.8, which is quite old (from 2004,) but also much simpler and lighter on memory than newer 3.x releases, while still being much more powerful than the majority of extant database management systems available for Windows CE. But while SQLite/CE can still be very useful, it's important to keep its limitations in mind.
 
@@ -160,7 +160,7 @@ the public domain.
 
 ## Generative AI 
 
-The SQLite/CE port and front-end applications have been developed with a lot of
+The SQLite/CE port and front-end applications have been developed with significant 
 AI assistance, primarily from Claude Opus 4.5. While each new feature and change
 is fairly well-tested after implementation and during daily use, be aware that
 this codebase may have some strange patterns or bugs littered throughout it. The
