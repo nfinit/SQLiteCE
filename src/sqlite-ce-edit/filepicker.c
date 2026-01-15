@@ -173,11 +173,18 @@ static void OnItemActivate(void) {
             wsprintfW(g_pickerResult, L"%s\\%s", g_pickerDir, item);
         }
         
-        if (!g_pickerSaveMode) {
-            /* In open mode, double-click/Enter on file confirms */
-            g_pickerOK = 1;
-            PostMessage(g_hwndPicker, WM_CLOSE, 0, 0);
+        /* In save mode, confirm overwrite */
+        if (g_pickerSaveMode) {
+            if (MessageBoxW(g_hwndPicker, L"File exists. Overwrite?",
+                    L"Confirm", MB_YESNO | MB_ICONQUESTION) != IDYES) {
+                SetFocus(g_hwndList);
+                return;
+            }
         }
+        
+        /* File selected - confirm dialog */
+        g_pickerOK = 1;
+        PostMessage(g_hwndPicker, WM_CLOSE, 0, 0);
     }
 }
 
@@ -291,6 +298,20 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                         if (!hasExt) {
                             lstrcatW(g_pickerResult, L".");
                             lstrcatW(g_pickerResult, g_pickerDefExt);
+                        }
+                    }
+                    
+                    /* In save mode, confirm overwrite if file exists */
+                    if (g_pickerSaveMode) {
+                        HANDLE hTest = CreateFileW(g_pickerResult, 0, 0, NULL,
+                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                        if (hTest != INVALID_HANDLE_VALUE) {
+                            CloseHandle(hTest);
+                            if (MessageBoxW(hwnd, L"File exists. Overwrite?",
+                                    L"Confirm", MB_YESNO | MB_ICONQUESTION) != IDYES) {
+                                SetFocus(g_hwndFilename);
+                                return 0;
+                            }
                         }
                     }
                     
