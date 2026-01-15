@@ -27,6 +27,19 @@ int g_showSizes = 0;
 /* Grid auto-size columns (off by default - slow on older devices) */
 int g_gridAutoSize = 1;
 
+/* Use storage card for backups (off by default) */
+int g_useStorageCard = 0;
+
+/* Use storage card for data (off by default) */
+int g_useStorageCardData = 0;
+
+/* Relative data path (appended to base) */
+wchar_t g_szDataRelPath[MAX_PATH] = L"\\Data";
+
+/* Base paths (hidden settings, editable via registry) */
+wchar_t g_szLocalBasePath[MAX_PATH] = L"\\My Documents";
+wchar_t g_szCardBasePath[MAX_PATH] = L"";
+
 /*============================================================================
 ** Get database file size
 **============================================================================*/

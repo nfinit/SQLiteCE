@@ -35,12 +35,17 @@ static SettingDef g_intSettings[] = {
     { L"ShowErrorMsgBox",SET_INT, &g_showErrorMsgBox,  0, NULL },
     { L"ShowSizes",      SET_INT, &g_showSizes,        0, NULL },
     { L"GridAutoSize",   SET_INT, &g_gridAutoSize,     1, NULL },
+    { L"UseStorageCard", SET_INT, &g_useStorageCard,   0, NULL },
+    { L"UseStorageCardData", SET_INT, &g_useStorageCardData, 0, NULL },
     { NULL, 0, NULL, 0, NULL }
 };
 
 /* String settings */
 static SettingDef g_strSettings[] = {
     { L"DefaultDbPath",  SET_STR, g_szDefaultDbPath,   0, L"\\My Documents\\Data" },
+    { L"DataRelPath",    SET_STR, g_szDataRelPath,     0, L"\\Data" },
+    { L"LocalBasePath",  SET_STR, g_szLocalBasePath,   0, L"\\My Documents" },
+    { L"CardBasePath",   SET_STR, g_szCardBasePath,    0, L"" },
     { NULL, 0, NULL, 0, NULL }
 };
 

@@ -67,9 +67,10 @@ void UpdateDbSize(void) {
         wsprintfW(buf, L"%s", name);
     SetStatusDb(buf);
     
-    /* Enable/disable Close based on whether we have a real file */
+    /* Enable/disable Close and Backup based on whether we have a real file */
     canClose = (g_szDbPath[0] && g_szDbPath[0] != ':');
     EnableMenuItem(g_hMenu, IDM_CLOSE, canClose ? MF_ENABLED : MF_GRAYED);
+    EnableMenuItem(g_hMenu, IDM_BACKUP, canClose ? MF_ENABLED : MF_GRAYED);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_CLOSE, canClose);
 }
 
@@ -113,8 +114,9 @@ void CloseDatabase(void) {
     SetWindowTextW(g_hwndResult, L"");
     SetStatusDb(L":memory:");
     SetStatusResult(L"");
-    /* Disable Close for in-memory database */
+    /* Disable Close and Backup for in-memory database */
     EnableMenuItem(g_hMenu, IDM_CLOSE, MF_GRAYED);
+    EnableMenuItem(g_hMenu, IDM_BACKUP, MF_GRAYED);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_CLOSE, FALSE);
 }
 

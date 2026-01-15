@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.8.0.10"
+#define SQLITECEDIT_VERSION L"0.8.0.24"
 
 /*============================================================================
 ** Menu IDs
@@ -103,6 +103,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_EXPORTHTMLRES 115
 #define IDM_IMPORTCSV  110
 #define IDM_IMPORTCEDB 111
+#define IDM_BACKUP     116
 #define IDM_EXECUTE  201
 #define IDM_FIND     202
 #define IDM_FINDNEXT 203
@@ -293,6 +294,13 @@ void ExportAllDDL(void);
 /* Schema options */
 extern int g_showSizes;
 
+/* Backup options */
+extern int g_useStorageCard;
+extern int g_useStorageCardData;
+extern wchar_t g_szDataRelPath[MAX_PATH];
+extern wchar_t g_szLocalBasePath[MAX_PATH];
+extern wchar_t g_szCardBasePath[MAX_PATH];
+
 /* Grid options */
 extern int g_gridAutoSize;
 
@@ -330,6 +338,7 @@ void DoExportTable(void);
 void DoExportHTML(void);
 void DoExportHTMLResults(void);
 void DoExportDb(void);
+void DoBackupDatabase(void);
 void DoImportCSV(void);
 void DoImportCEDB(void);
 void AddRecentFile(const wchar_t *path);

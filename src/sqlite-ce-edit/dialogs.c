@@ -149,8 +149,12 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
 #define IDC_OPT_ERRORMSGBOX  1004
 #define IDC_OPT_DBPATH       1005
 #define IDC_OPT_CLEARREG     1006
+#define IDC_OPT_STORAGECARD  1007
+#define IDC_OPT_STORAGECARDDATA 1008
+#define IDC_OPT_DBPATHLABEL  1009
 
 static int g_optClearExec, g_optExecAtCursor, g_optLineNums, g_optErrorMsgBox;
+static int g_optStorageCard, g_optStorageCardData;
 static wchar_t g_optDbPath[MAX_PATH];
 static HWND g_hwndOptions = NULL;
 static int g_optResult = 0;
@@ -160,8 +164,32 @@ static void ApplyOptions(HWND hwnd) {
     g_optExecAtCursor = SendMessage(GetDlgItem(hwnd, IDC_OPT_EXECATCURSOR), BM_GETCHECK, 0, 0);
     g_optLineNums = SendMessage(GetDlgItem(hwnd, IDC_OPT_LINENUMS), BM_GETCHECK, 0, 0);
     g_optErrorMsgBox = SendMessage(GetDlgItem(hwnd, IDC_OPT_ERRORMSGBOX), BM_GETCHECK, 0, 0);
+    g_optStorageCardData = SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARDDATA), BM_GETCHECK, 0, 0);
+    g_optStorageCard = SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARD), BM_GETCHECK, 0, 0);
     GetWindowTextW(GetDlgItem(hwnd, IDC_OPT_DBPATH), g_optDbPath, MAX_PATH);
     g_optResult = 1;
+}
+
+static void UpdatePathDisplay(HWND hwnd) {
+    wchar_t label[128];
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind;
+    int useCard = SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARDDATA), BM_GETCHECK, 0, 0);
+    
+    if (useCard) {
+        /* Try to detect actual storage card */
+        hFind = FindFirstFileW(L"\\Storage Card*", &fd);
+        if (hFind != INVALID_HANDLE_VALUE && (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            wsprintfW(label, L"Data path (in \\%s%s):", fd.cFileName, g_szCardBasePath);
+            FindClose(hFind);
+        } else {
+            if (hFind != INVALID_HANDLE_VALUE) FindClose(hFind);
+            lstrcpyW(label, L"Data path (no card found):");
+        }
+    } else {
+        wsprintfW(label, L"Data path (in %s):", g_szLocalBasePath);
+    }
+    SetWindowTextW(GetDlgItem(hwnd, IDC_OPT_DBPATHLABEL), label);
 }
 
 static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -180,30 +208,43 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             CreateWindowW(L"BUTTON", L"Message box on error",
                 WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                 10, 76, 165, 20, hwnd, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Use storage card for data",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                10, 98, 190, 20, hwnd, (HMENU)IDC_OPT_STORAGECARDDATA, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Use storage card for backups",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                10, 120, 190, 20, hwnd, (HMENU)IDC_OPT_STORAGECARD, g_hInst, NULL);
             
             /* Right column - paths */
-            CreateWindowW(L"STATIC", L"Default database path:",
+            CreateWindowW(L"STATIC", L"Data path:",
                 WS_CHILD | WS_VISIBLE,
-                185, 10, 150, 16, hwnd, NULL, g_hInst, NULL);
+                210, 10, 230, 16, hwnd, (HMENU)IDC_OPT_DBPATHLABEL, g_hInst, NULL);
             CreateWindowW(L"EDIT", g_optDbPath,
                 WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-                185, 28, 180, 22, hwnd, (HMENU)IDC_OPT_DBPATH, g_hInst, NULL);
+                210, 28, 230, 22, hwnd, (HMENU)IDC_OPT_DBPATH, g_hInst, NULL);
             
             /* Clear settings button */
             CreateWindowW(L"BUTTON", L"Clear All Settings...",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                185, 76, 130, 22, hwnd, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
+                210, 98, 140, 22, hwnd, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
             
             SendMessage(GetDlgItem(hwnd, IDC_OPT_CLEAREXEC), BM_SETCHECK, g_optClearExec, 0);
             SendMessage(GetDlgItem(hwnd, IDC_OPT_EXECATCURSOR), BM_SETCHECK, g_optExecAtCursor, 0);
             SendMessage(GetDlgItem(hwnd, IDC_OPT_LINENUMS), BM_SETCHECK, g_optLineNums, 0);
             SendMessage(GetDlgItem(hwnd, IDC_OPT_ERRORMSGBOX), BM_SETCHECK, g_optErrorMsgBox, 0);
+            SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARDDATA), BM_SETCHECK, g_optStorageCardData, 0);
+            SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARD), BM_SETCHECK, g_optStorageCard, 0);
+            UpdatePathDisplay(hwnd);
             return 0;
         }
         case WM_COMMAND:
             if (LOWORD(wParam) == IDOK) {
                 ApplyOptions(hwnd);
                 DestroyWindow(hwnd);
+                return 0;
+            }
+            if (LOWORD(wParam) == IDC_OPT_STORAGECARDDATA) {
+                UpdatePathDisplay(hwnd);
                 return 0;
             }
             if (LOWORD(wParam) == IDC_OPT_CLEARREG) {
@@ -241,7 +282,9 @@ void DoOptions(void) {
     g_optExecAtCursor = g_execAtCursor;
     g_optLineNums = g_showLineNumbers;
     g_optErrorMsgBox = g_showErrorMsgBox;
-    lstrcpyW(g_optDbPath, g_szDefaultDbPath);
+    g_optStorageCard = g_useStorageCard;
+    g_optStorageCardData = g_useStorageCardData;
+    lstrcpyW(g_optDbPath, g_szDataRelPath);
     g_optResult = 0;
     
     wc.lpfnWndProc = OptionsWndProc;
@@ -254,7 +297,7 @@ void DoOptions(void) {
     g_hwndOptions = CreateWindowExW(WS_EX_CAPTIONOKBTN,
         L"SQLiteCEOptions", L"Options",
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
-        rc.left + 20, rc.top + 30, 380, 125,
+        rc.left + 20, rc.top + 30, 460, 170,
         g_hwndMain, NULL, g_hInst, NULL);
     ShowWindow(g_hwndOptions, SW_SHOW);
     
@@ -272,7 +315,9 @@ void DoOptions(void) {
         g_clearOnExec = g_optClearExec;
         g_execAtCursor = g_optExecAtCursor;
         g_showErrorMsgBox = g_optErrorMsgBox;
-        lstrcpyW(g_szDefaultDbPath, g_optDbPath);
+        g_useStorageCard = g_optStorageCard;
+        g_useStorageCardData = g_optStorageCardData;
+        lstrcpyW(g_szDataRelPath, g_optDbPath);
         
         /* Sync toolbar button state */
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);

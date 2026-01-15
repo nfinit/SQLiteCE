@@ -5,25 +5,51 @@
 #include "globals.h"
 
 /*============================================================================
+** Storage Card Detection Helper
+**============================================================================*/
+
+static int FindStorageCard(wchar_t *cardPath, int maxLen) {
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind;
+    
+    hFind = FindFirstFileW(L"\\Storage Card*", &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            wsprintfW(cardPath, L"\\%s", fd.cFileName);
+            FindClose(hFind);
+            return 1;
+        }
+        FindClose(hFind);
+    }
+    cardPath[0] = 0;
+    return 0;
+}
+
+/* Get effective data path based on storage card option */
+static void GetDataPath(wchar_t *path, int maxLen) {
+    wchar_t cardPath[MAX_PATH];
+    
+    if (g_useStorageCardData && FindStorageCard(cardPath, MAX_PATH)) {
+        /* Card base path is appended after detected card path */
+        wsprintfW(path, L"%s%s%s", cardPath, g_szCardBasePath, g_szDataRelPath);
+    } else {
+        wsprintfW(path, L"%s%s", g_szLocalBasePath, g_szDataRelPath);
+    }
+    CreateDirectoryW(path, NULL);
+}
+
+/*============================================================================
 ** File New/Open
 **============================================================================*/
 
 void DoFileNew(void) {
     CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH];
-    int createdDir = 0;
+    wchar_t szDataPath[MAX_PATH];
     
-    /* Try to create default directory if it doesn't exist */
-    if (g_szDefaultDbPath[0]) {
-        DWORD attr = GetFileAttributesW(g_szDefaultDbPath);
-        if (attr == 0xFFFFFFFF) {
-            if (CreateDirectoryW(g_szDefaultDbPath, NULL))
-                createdDir = 1;
-        }
-        lstrcpyW(szFile, L"new.db");
-    } else {
-        lstrcpyW(szFile, L"new.db");
-    }
+    /* Get data path (storage card or My Documents) */
+    GetDataPath(szDataPath, MAX_PATH);
+    lstrcpyW(szFile, L"new.db");
     
     memset(&ofn, 0, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
@@ -33,21 +59,22 @@ void DoFileNew(void) {
     ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
     ofn.lpstrDefExt = L"db";
     ofn.lpstrTitle = L"New Database";
-    ofn.lpstrInitialDir = g_szDefaultDbPath[0] ? g_szDefaultDbPath : NULL;
+    ofn.lpstrInitialDir = szDataPath;
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
     
     if (GetSaveFileNameW(&ofn)) {
         DeleteFileW(szFile);
         OpenDatabase(szFile);
-    } else if (createdDir) {
-        /* Remove directory if we created it and user cancelled */
-        RemoveDirectoryW(g_szDefaultDbPath);
     }
 }
 
 void DoFileOpen(void) {
     CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH] = L"";
+    wchar_t szDataPath[MAX_PATH];
+    
+    /* Get data path (storage card or My Documents) */
+    GetDataPath(szDataPath, MAX_PATH);
     
     memset(&ofn, 0, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
@@ -57,7 +84,7 @@ void DoFileOpen(void) {
     ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
     ofn.lpstrTitle = L"Open Database";
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    if (g_szDefaultDbPath[0]) ofn.lpstrInitialDir = g_szDefaultDbPath;
+    ofn.lpstrInitialDir = szDataPath;
     
     if (GetOpenFileNameW(&ofn)) {
         OpenDatabase(szFile);
@@ -1449,4 +1476,102 @@ void DoExportDb(void) {
     }
     
     sqlite_close(destDb);
+}
+
+/*============================================================================
+** Backup Database
+**============================================================================*/
+
+void DoBackupDatabase(void) {
+    wchar_t szBackup[MAX_PATH];
+    wchar_t szBackupDir[MAX_PATH];
+    wchar_t szCardPath[MAX_PATH];
+    wchar_t szDbName[64];
+    wchar_t szStatus[128];
+    SYSTEMTIME st;
+    const wchar_t *fn;
+    wchar_t *d;
+    HANDLE hSrc, hDst;
+    BYTE buf[4096];
+    DWORD dwRead, dwWritten;
+    int ok = 0;
+    
+    /* Must have a file-based database */
+    if (!g_db || g_szDbPath[0] == ':' || g_szDbPath[0] == 0) {
+        MessageBoxW(g_hwndMain, L"No database file to backup", L"Backup", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    
+    /* Extract database name (without extension) */
+    fn = GetFilename(g_szDbPath);
+    d = szDbName;
+    while (*fn && *fn != '.' && d < szDbName + 60) *d++ = *fn++;
+    *d = 0;
+    
+    /* Build backup directory path */
+    if (g_useStorageCard && FindStorageCard(szCardPath, MAX_PATH)) {
+        wsprintfW(szBackupDir, L"%s%s%s", szCardPath, g_szCardBasePath, g_szDataRelPath);
+        CreateDirectoryW(szBackupDir, NULL);
+        lstrcatW(szBackupDir, L"\\Backups");
+    } else {
+        wsprintfW(szBackupDir, L"%s%s", g_szLocalBasePath, g_szDataRelPath);
+        CreateDirectoryW(szBackupDir, NULL);
+        lstrcatW(szBackupDir, L"\\Backups");
+    }
+    
+    /* Create directory structure: BackupDir\dbname\ */
+    CreateDirectoryW(szBackupDir, NULL);
+    lstrcatW(szBackupDir, L"\\");
+    lstrcatW(szBackupDir, szDbName);
+    CreateDirectoryW(szBackupDir, NULL);
+    
+    /* Build backup filename: BackupDir\dbname\dbname_YYYYMMDD_HHMMSS.bak.db */
+    GetLocalTime(&st);
+    wsprintfW(szBackup, L"%s\\%s_%04d%02d%02d_%02d%02d%02d.bak.db",
+        szBackupDir, szDbName,
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    
+    /* Show status during backup */
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Backing up...");
+    UpdateWindow(g_hwndStatus);
+    
+    /* Close database to ensure file is flushed */
+    sqlite_close(g_db);
+    g_db = NULL;
+    
+    /* Copy file */
+    hSrc = CreateFileW(g_szDbPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (hSrc != INVALID_HANDLE_VALUE) {
+        hDst = CreateFileW(szBackup, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hDst != INVALID_HANDLE_VALUE) {
+            ok = 1;
+            while (ReadFile(hSrc, buf, sizeof(buf), &dwRead, NULL) && dwRead > 0) {
+                if (!WriteFile(hDst, buf, dwRead, &dwWritten, NULL) || dwWritten != dwRead) {
+                    ok = 0;
+                    break;
+                }
+            }
+            CloseHandle(hDst);
+            if (!ok) DeleteFileW(szBackup);
+        }
+        CloseHandle(hSrc);
+    }
+    
+    /* Reopen database */
+    {
+        char szPath[MAX_PATH * 2];
+        WideCharToMultiByte(CP_ACP, 0, g_szDbPath, -1, szPath, sizeof(szPath), NULL, NULL);
+        g_db = sqlite_open(szPath, 0, NULL);
+    }
+    
+    if (ok) {
+        fn = GetFilename(szBackup);
+        wsprintfW(szStatus, L"Backed up to %s", fn);
+    } else {
+        lstrcpyW(szStatus, L"Backup failed");
+        MessageBoxW(g_hwndMain, L"Backup failed", L"Error", MB_OK | MB_ICONERROR);
+    }
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)szStatus);
+    
+    RefreshSchema();
 }
