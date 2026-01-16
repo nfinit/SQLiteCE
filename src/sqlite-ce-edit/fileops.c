@@ -366,25 +366,17 @@ void DoExportResults(void) {
 **============================================================================*/
 
 void DoExportCSV(void) {
-    CE_OPENFILENAME ofn;
-    wchar_t szFile[MAX_PATH] = L"results.csv";
+    wchar_t szFile[MAX_PATH] = L"results";
     HANDLE hFile;
     DWORD dwLen, dwWritten;
     wchar_t *wbuf, *wp;
     char *buf, *bp;
     int needQuote;
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
-    ofn.lpstrDefExt = L"csv";
-    ofn.lpstrTitle = L"Export Results";
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    
-    if (!GetSaveFileNameW(&ofn)) return;
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Export Results",
+            L"CSV Files\0*.csv\0All Files\0*.*\0",
+            L"csv", NULL, 1)) return;
     
     dwLen = GetWindowTextLengthW(g_hwndResult);
     if (dwLen == 0) return;
@@ -441,24 +433,16 @@ void DoExportCSV(void) {
 **============================================================================*/
 
 void DoExportTxt(void) {
-    CE_OPENFILENAME ofn;
-    wchar_t szFile[MAX_PATH] = L"results.txt";
+    wchar_t szFile[MAX_PATH] = L"results";
     HANDLE hFile;
     DWORD dwLen, dwWritten;
     wchar_t *wbuf;
     char *buf;
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
-    ofn.lpstrDefExt = L"txt";
-    ofn.lpstrTitle = L"Export Results";
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    
-    if (!GetSaveFileNameW(&ofn)) return;
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Export Results",
+            L"Text Files\0*.txt\0All Files\0*.*\0",
+            L"txt", NULL, 1)) return;
     
     dwLen = GetWindowTextLengthW(g_hwndResult);
     if (dwLen == 0) return;
@@ -986,25 +970,16 @@ void DoExportHTML(void) {
         }
     } else {
         /* Save to file */
-        CE_OPENFILENAME ofn;
         wchar_t szFile[MAX_PATH];
         HANDLE hFile;
         DWORD written;
         
         MultiByteToWideChar(CP_ACP, 0, tblName, -1, szFile, MAX_PATH);
-        lstrcatW(szFile, L".html");
         
-        memset(&ofn, 0, sizeof(ofn));
-        ofn.lStructSize = sizeof(ofn);
-        ofn.hwndOwner = g_hwndMain;
-        ofn.lpstrFile = szFile;
-        ofn.nMaxFile = MAX_PATH;
-        ofn.lpstrFilter = L"HTML Files (*.html)\0*.html\0All Files (*.*)\0*.*\0";
-        ofn.lpstrDefExt = L"html";
-        ofn.lpstrTitle = L"Export HTML Table";
-        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-        
-        if (GetSaveFileNameW(&ofn)) {
+        if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+                L"Export HTML Table",
+                L"HTML Files\0*.html\0All Files\0*.*\0",
+                L"html", NULL, 1)) {
             hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
             if (hFile != INVALID_HANDLE_VALUE) {
                 WriteFile(hFile, buf, (DWORD)len, &written, NULL);
@@ -1167,22 +1142,14 @@ void DoExportHTMLResults(void) {
             }
         }
     } else {
-        CE_OPENFILENAME ofn;
-        wchar_t szFile[MAX_PATH] = L"results.html";
+        wchar_t szFile[MAX_PATH] = L"results";
         HANDLE hFile;
         DWORD written;
         
-        memset(&ofn, 0, sizeof(ofn));
-        ofn.lStructSize = sizeof(ofn);
-        ofn.hwndOwner = g_hwndMain;
-        ofn.lpstrFile = szFile;
-        ofn.nMaxFile = MAX_PATH;
-        ofn.lpstrFilter = L"HTML Files (*.html)\0*.html\0All Files (*.*)\0*.*\0";
-        ofn.lpstrDefExt = L"html";
-        ofn.lpstrTitle = L"Export Results as HTML";
-        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-        
-        if (GetSaveFileNameW(&ofn)) {
+        if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+                L"Export Results as HTML",
+                L"HTML Files\0*.html\0All Files\0*.*\0",
+                L"html", NULL, 1)) {
             hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
             if (hFile != INVALID_HANDLE_VALUE) {
                 WriteFile(hFile, buf, (DWORD)len, &written, NULL);
@@ -1278,8 +1245,7 @@ static void ExportTableToCSV(const wchar_t *dir, const char *tblName) {
 **============================================================================*/
 
 void DoExportDb(void) {
-    CE_OPENFILENAME ofn;
-    wchar_t szFile[MAX_PATH] = L"export.db";
+    wchar_t szFile[MAX_PATH] = L"export";
     char szDestPath[MAX_PATH * 2];
     sqlite *destDb;
     char **result;
@@ -1291,16 +1257,10 @@ void DoExportDb(void) {
     
     if (!g_db) return;
     
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter = L"SQLite Database (*.db)\0*.db\0CSV Folder (*.csv)\0*.csv\0";
-    ofn.lpstrTitle = L"Export Database";
-    ofn.Flags = OFN_PATHMUSTEXIST;
-    
-    if (!GetSaveFileNameW(&ofn)) return;
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Export Database",
+            L"SQLite Database\0*.db\0CSV Folder\0*.csv\0",
+            L"db", NULL, 1)) return;
     
     /* Detect mode by extension */
     {

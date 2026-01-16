@@ -26,6 +26,13 @@ static WNDPROC g_pfnListProc = NULL;
 static WNDPROC g_pfnEditProc = NULL;
 static HWND g_hwndFilter = NULL;
 
+/* Type-ahead buffer */
+#define TYPEAHEAD_TIMER_ID 1
+#define TYPEAHEAD_TIMEOUT 800
+#define TYPEAHEAD_MAX 16
+static wchar_t g_typeAhead[TYPEAHEAD_MAX + 1];
+static int g_typeAheadLen = 0;
+
 /* Forward declarations */
 static void PopulateFilterCombo(const wchar_t *filter);
 
@@ -119,6 +126,10 @@ static void PopulateFileList(void) {
     int atRoot;
     static wchar_t entries[MAX_ENTRIES][MAX_PATH];
     int count;
+    
+    /* Reset type-ahead on directory change */
+    g_typeAheadLen = 0;
+    g_typeAhead[0] = 0;
     
     SendMessageW(g_hwndList, LB_RESETCONTENT, 0, 0);
     
@@ -263,33 +274,49 @@ static void OnItemActivate(void) {
 }
 
 /*============================================================================
-** Type-ahead: jump to first file starting with typed character
+** Type-ahead: jump to first file matching typed prefix
 **============================================================================*/
 
-static void OnTypeAhead(wchar_t ch) {
-    int count, i, start, idx;
-    wchar_t item[MAX_PATH];
-    wchar_t upper = ch;
-    wchar_t first;
+static int MatchPrefix(const wchar_t *item, const wchar_t *prefix, int prefixLen) {
+    const wchar_t *p = item;
+    int i;
+    wchar_t ic, pc;
     
-    /* Convert to uppercase for comparison */
-    if (upper >= 'a' && upper <= 'z') upper -= 32;
+    /* Skip directory brackets */
+    if (*p == '[') p++;
+    
+    for (i = 0; i < prefixLen && *p; i++, p++) {
+        ic = *p; pc = prefix[i];
+        if (ic >= 'a' && ic <= 'z') ic -= 32;
+        if (pc >= 'a' && pc <= 'z') pc -= 32;
+        if (ic != pc) return 0;
+    }
+    return (i == prefixLen);
+}
+
+static void OnTypeAhead(wchar_t ch) {
+    int count, i, start;
+    wchar_t item[MAX_PATH];
+    
+    /* Append to buffer */
+    if (g_typeAheadLen < TYPEAHEAD_MAX) {
+        g_typeAhead[g_typeAheadLen++] = ch;
+        g_typeAhead[g_typeAheadLen] = 0;
+    }
+    
+    /* Reset timer */
+    KillTimer(g_hwndPicker, TYPEAHEAD_TIMER_ID);
+    SetTimer(g_hwndPicker, TYPEAHEAD_TIMER_ID, TYPEAHEAD_TIMEOUT, NULL);
     
     count = (int)SendMessageW(g_hwndList, LB_GETCOUNT, 0, 0);
     start = (int)SendMessageW(g_hwndList, LB_GETCURSEL, 0, 0);
     if (start < 0) start = 0;
     
-    /* Search from current position + 1, wrapping around */
-    for (i = 1; i <= count; i++) {
-        idx = (start + i) % count;
+    /* Search from start, then wrap */
+    for (i = 0; i < count; i++) {
+        int idx = (start + i) % count;
         SendMessageW(g_hwndList, LB_GETTEXT, idx, (LPARAM)item);
-        
-        /* Skip directory brackets */
-        first = item[0];
-        if (first == '[' && item[1]) first = item[1];
-        if (first >= 'a' && first <= 'z') first -= 32;
-        
-        if (first == upper) {
+        if (MatchPrefix(item, g_typeAhead, g_typeAheadLen)) {
             SendMessageW(g_hwndList, LB_SETCURSEL, idx, 0);
             return;
         }
@@ -369,7 +396,7 @@ static LRESULT CALLBACK PickerEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             return 0;
         }
     }
-    if (msg == WM_CHAR && wParam == '\t')
+    if (msg == WM_CHAR && (wParam == '\t' || wParam == '\r'))
         return 0;
     return CallWindowProc(g_pfnEditProc, hwnd, msg, wParam, lParam);
 }
@@ -400,6 +427,8 @@ static LRESULT CALLBACK PickerBtnProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             return 0;
         }
     }
+    if (msg == WM_CHAR && wParam == '\r')
+        return 0;
     return CallWindowProc(g_pfnBtnProc, hwnd, msg, wParam, lParam);
 }
 
@@ -548,6 +577,14 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             if (wParam == VK_ESCAPE) {
                 g_pickerOK = 0;
                 PostMessage(hwnd, WM_CLOSE, 0, 0);
+                return 0;
+            }
+            break;
+        case WM_TIMER:
+            if (wParam == TYPEAHEAD_TIMER_ID) {
+                KillTimer(hwnd, TYPEAHEAD_TIMER_ID);
+                g_typeAheadLen = 0;
+                g_typeAhead[0] = 0;
                 return 0;
             }
             break;
