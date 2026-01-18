@@ -110,12 +110,28 @@ static sqlite *g_db = NULL;  /* Shared database handle for tests */
 static DWORD g_cumulativeMs = 0;  /* Sum of individual test times */
 static int g_iterations = 1;  /* Number of iterations per test */
 
+/* Test categories */
+#define CAT_IO      0
+#define CAT_SCHEMA  1
+#define CAT_CRUD    2
+#define CAT_QUERY   3
+#define CAT_ERROR   4
+#define CAT_COUNT   5
+
+static const char *g_catNames[CAT_COUNT] = {
+    "I/O", "Schema", "CRUD", "Query", "Error Handling"
+};
+static DWORD g_catMs[CAT_COUNT];
+static int g_catTests[CAT_COUNT];
+static int g_catPassed[CAT_COUNT];
+
 /* Test function type - returns 1 for pass, 0 for fail */
 typedef int (*TestFunc)(void);
 
 typedef struct {
     const char *name;
     TestFunc func;
+    int category;
     DWORD lastMs;  /* Timing from last run */
 } TestCase;
 
@@ -151,11 +167,14 @@ static void ClearDebugContext(void) {
 }
 
 /* Record test result with timing */
-static void RecordTest(const char *name, int passed, DWORD ms) {
+static void RecordTest(const char *name, int passed, DWORD ms, int category) {
     g_nTests++;
     g_cumulativeMs += ms;
+    g_catMs[category] += ms;
+    g_catTests[category]++;
     if (passed) {
         g_nPassed++;
+        g_catPassed[category]++;
         Output("  [PASS] ");
     } else {
         Output("  [FAIL] ");
@@ -1196,101 +1215,81 @@ static int test_time_now(void) {
 **============================================================================*/
 
 static TestCase g_tests[] = {
-    /* Basic operations */
-    { "Open :memory: database",     test_open_memory },
-    { "Open file database",         test_open_file },
-    { "CREATE TABLE",               test_create_table },
-    { "DROP TABLE",                 test_drop_table },
+    /* I/O Operations */
+    { "Open :memory: database",     test_open_memory,           CAT_IO },
+    { "Open file database",         test_open_file,             CAT_IO },
+    { "File persistence",           test_persistence,           CAT_IO },
+    { "Export DB schema",           test_export_db_schema,      CAT_IO },
+    { "Export DB data",             test_export_db_data,        CAT_IO },
+    { "Memory DB isolation",        test_memory_isolation,      CAT_IO },
     
-    /* CRUD */
-    { "INSERT with explicit id",    test_insert },
-    { "INSERT with auto id",        test_insert_null_id },
-    { "SELECT rows",                test_select },
-    { "SELECT rowid",               test_select_rowid },
-    { "SELECT explicit INTEGER PK", test_select_explicit_id },
-    { "UPDATE",                     test_update },
-    { "DELETE",                     test_delete },
+    /* Schema Operations */
+    { "CREATE TABLE",               test_create_table,          CAT_SCHEMA },
+    { "DROP TABLE",                 test_drop_table,            CAT_SCHEMA },
+    { "CREATE TRIGGER",             test_trigger_create,        CAT_SCHEMA },
+    { "DROP TRIGGER",               test_trigger_drop,          CAT_SCHEMA },
+    { "CREATE VIEW",                test_view_create,           CAT_SCHEMA },
+    { "DROP VIEW",                  test_view_drop,             CAT_SCHEMA },
+    { "CREATE INDEX",               test_index_create,          CAT_SCHEMA },
+    { "DROP INDEX",                 test_index_drop,            CAT_SCHEMA },
+    { "sqlite_master tables",       test_sqlite_master_tables,  CAT_SCHEMA },
+    { "sqlite_master indexes",      test_sqlite_master_indexes, CAT_SCHEMA },
+    { "VIEW in sqlite_master",      test_view_in_sqlite_master, CAT_SCHEMA },
+    { "INDEX in sqlite_master",     test_index_in_sqlite_master,CAT_SCHEMA },
     
-    /* Data types */
-    { "INTEGER type",               test_type_integer },
-    { "Negative INTEGER",           test_type_negative },
-    { "TEXT type",                  test_type_text },
-    { "NULL value",                 test_type_null },
+    /* CRUD Operations */
+    { "INSERT with explicit id",    test_insert,                CAT_CRUD },
+    { "INSERT with auto id",        test_insert_null_id,        CAT_CRUD },
+    { "SELECT rows",                test_select,                CAT_CRUD },
+    { "SELECT rowid",               test_select_rowid,          CAT_CRUD },
+    { "SELECT explicit INTEGER PK", test_select_explicit_id,    CAT_CRUD },
+    { "UPDATE",                     test_update,                CAT_CRUD },
+    { "DELETE",                     test_delete,                CAT_CRUD },
+    { "Multiple row insert",        test_multiple_rows,         CAT_CRUD },
+    { "INTEGER type",               test_type_integer,          CAT_CRUD },
+    { "Negative INTEGER",           test_type_negative,         CAT_CRUD },
+    { "TEXT type",                  test_type_text,             CAT_CRUD },
+    { "NULL value",                 test_type_null,             CAT_CRUD },
+    { "SQL quote escaping",         test_sql_quote_escape,      CAT_CRUD },
+    { "Transaction COMMIT",         test_transaction_commit,    CAT_CRUD },
+    { "Transaction ROLLBACK",       test_transaction_rollback,  CAT_CRUD },
+    { "Empty table SELECT",         test_empty_table_select,    CAT_CRUD },
+    { "String with quotes",         test_string_embedded_quotes,CAT_CRUD },
+    { "Large integer (32-bit max)", test_large_integer,         CAT_CRUD },
     
-    /* Multiple rows */
-    { "Multiple row insert",        test_multiple_rows },
-    { "ORDER BY",                   test_order_by },
-    { "COUNT(*)",                   test_count },
+    /* Query Processing */
+    { "ORDER BY",                   test_order_by,              CAT_QUERY },
+    { "ORDER BY multiple cols",     test_order_by_multiple,     CAT_QUERY },
+    { "COUNT(*)",                   test_count,                 CAT_QUERY },
+    { "SUM aggregate",              test_sum,                   CAT_QUERY },
+    { "MIN/MAX aggregate",          test_min_max,               CAT_QUERY },
+    { "GROUP BY with HAVING",       test_group_by_having,       CAT_QUERY },
+    { "JOIN",                       test_join,                  CAT_QUERY },
+    { "VIEW with JOIN",             test_view_with_join,        CAT_QUERY },
+    { "SELECT from VIEW",           test_view_select,           CAT_QUERY },
+    { "LIKE pattern",               test_like,                  CAT_QUERY },
+    { "IS NULL",                    test_is_null,               CAT_QUERY },
+    { "NULL comparisons",           test_null_comparisons,      CAT_QUERY },
+    { "Subquery in WHERE",          test_subquery_where,        CAT_QUERY },
+    { "Subquery in FROM",           test_subquery_from,         CAT_QUERY },
+    { "UNION",                      test_union,                 CAT_QUERY },
+    { "UNION ALL",                  test_union_all,             CAT_QUERY },
+    { "LIMIT and OFFSET",           test_limit_offset,          CAT_QUERY },
+    { "Trigger fires on INSERT",    test_trigger_fires_insert,  CAT_QUERY },
+    { "Trigger fires on UPDATE",    test_trigger_fires_update,  CAT_QUERY },
+    { "Trigger fires on DELETE",    test_trigger_fires_delete,  CAT_QUERY },
+    { "Trigger NEW.column ref",     test_trigger_new_reference, CAT_QUERY },
+    { "UNIQUE INDEX constraint",    test_index_unique,          CAT_QUERY },
+    { "datetime('now')",            test_datetime_now,          CAT_QUERY },
+    { "date('now')",                test_date_now,              CAT_QUERY },
+    { "time('now')",                test_time_now,              CAT_QUERY },
     
-    /* Persistence */
-    { "File persistence",           test_persistence },
+    /* Error Handling */
+    { "Invalid SQL error",          test_invalid_sql,           CAT_ERROR },
+    { "Missing table error",        test_missing_table,         CAT_ERROR },
+    { "Constraint violation",       test_constraint_violation,  CAT_ERROR },
     
-    /* Advanced */
-    { "Transaction COMMIT",         test_transaction_commit },
-    { "Transaction ROLLBACK",       test_transaction_rollback },
-    { "LIKE pattern",               test_like },
-    { "IS NULL",                    test_is_null },
-    { "SUM aggregate",              test_sum },
-    { "MIN/MAX aggregate",          test_min_max },
-    { "JOIN",                       test_join },
-    
-    /* Export/Import (0.2.0) */
-    { "SQL quote escaping",         test_sql_quote_escape },
-    { "sqlite_master tables",       test_sqlite_master_tables },
-    { "sqlite_master indexes",      test_sqlite_master_indexes },
-    { "Export DB schema",           test_export_db_schema },
-    { "Export DB data",             test_export_db_data },
-    
-    /* Error handling */
-    { "Invalid SQL error",          test_invalid_sql },
-    { "Missing table error",        test_missing_table },
-    { "Constraint violation",       test_constraint_violation },
-    
-    /* Memory databases */
-    { "Memory DB isolation",        test_memory_isolation },
-    
-    /* Triggers (0.5.0) */
-    { "CREATE TRIGGER",             test_trigger_create },
-    { "Trigger fires on INSERT",    test_trigger_fires_insert },
-    { "Trigger fires on UPDATE",    test_trigger_fires_update },
-    { "Trigger fires on DELETE",    test_trigger_fires_delete },
-    { "Trigger NEW.column ref",     test_trigger_new_reference },
-    { "DROP TRIGGER",               test_trigger_drop },
-    
-    /* Views (0.5.0) */
-    { "CREATE VIEW",                test_view_create },
-    { "SELECT from VIEW",           test_view_select },
-    { "VIEW with JOIN",             test_view_with_join },
-    { "DROP VIEW",                  test_view_drop },
-    { "VIEW in sqlite_master",      test_view_in_sqlite_master },
-    
-    /* Indexes (0.5.0) */
-    { "CREATE INDEX",               test_index_create },
-    { "UNIQUE INDEX constraint",    test_index_unique },
-    { "DROP INDEX",                 test_index_drop },
-    { "INDEX in sqlite_master",     test_index_in_sqlite_master },
-    
-    /* Complex queries (0.5.0) */
-    { "Subquery in WHERE",          test_subquery_where },
-    { "Subquery in FROM",           test_subquery_from },
-    { "UNION",                      test_union },
-    { "UNION ALL",                  test_union_all },
-    { "GROUP BY with HAVING",       test_group_by_having },
-    { "ORDER BY multiple cols",     test_order_by_multiple },
-    { "LIMIT and OFFSET",           test_limit_offset },
-    
-    /* Edge cases (0.5.0) */
-    { "Empty table SELECT",         test_empty_table_select },
-    { "NULL comparisons",           test_null_comparisons },
-    { "String with quotes",         test_string_embedded_quotes },
-    { "Large integer (32-bit max)", test_large_integer },
-    
-    /* Date/Time functions (0.5.0) */
-    { "datetime('now')",            test_datetime_now },
-    { "date('now')",                test_date_now },
-    { "time('now')",                test_time_now },
-    
-    { NULL, NULL }
+    { NULL, NULL, 0 }
 };
 
 /*============================================================================
@@ -1308,9 +1307,43 @@ static void OutputMemoryInfo(void) {
     OutputLine(" KB");
 }
 
+/* Processor architecture constants - may be missing from CE 2.0 headers */
+#ifndef PROCESSOR_ARCHITECTURE_SHX
+#define PROCESSOR_ARCHITECTURE_SHX 4
+#endif
+#ifndef PROCESSOR_ARCHITECTURE_ARM
+#define PROCESSOR_ARCHITECTURE_ARM 5
+#endif
+
+static void OutputDeviceInfo(void) {
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    Output("CPU: ");
+    switch (si.wProcessorArchitecture) {
+        case PROCESSOR_ARCHITECTURE_SHX:
+            Output("SH");
+            break;
+        case PROCESSOR_ARCHITECTURE_MIPS:
+            Output("MIPS");
+            break;
+        case PROCESSOR_ARCHITECTURE_ARM:
+            Output("ARM");
+            break;
+        case PROCESSOR_ARCHITECTURE_INTEL:
+            Output("x86");
+            break;
+        default:
+            Output("Unknown");
+            break;
+    }
+    Output(" (level ");
+    OutputInt("", si.wProcessorLevel);
+    OutputLine(")");
+}
+
 static void RunTests(void) {
     TestCase *t;
-    int result, iter;
+    int result, iter, cat;
     DWORD totalStart, totalEnd;
     DWORD testStart, testEnd, testMs;
     
@@ -1326,9 +1359,19 @@ static void RunTests(void) {
     ClearOutput();
     g_batchMode = 1;
     
+    /* Reset category stats */
+    for (cat = 0; cat < CAT_COUNT; cat++) {
+        g_catMs[cat] = 0;
+        g_catTests[cat] = 0;
+        g_catPassed[cat] = 0;
+    }
+    
     OutputLine("=== SQLite/CEbench ===");
-    Output("SQLite version: ");
+    Output("Version: ");
+    Output("1.0.0");
+    Output("  SQLite: ");
     OutputLine(sqlite_libversion());
+    OutputDeviceInfo();
     OutputMemoryInfo();
     if (g_iterations > 1) {
         Output("Iterations: ");
@@ -1346,16 +1389,31 @@ static void RunTests(void) {
         return;
     }
     
-    for (t = g_tests; t->name; t++) {
-        testStart = GetTickCount();
-        result = 1;
-        for (iter = 0; iter < g_iterations && result; iter++) {
-            result = t->func();
+    /* Run tests grouped by category */
+    for (cat = 0; cat < CAT_COUNT; cat++) {
+        int hasTests = 0;
+        for (t = g_tests; t->name; t++) {
+            if (t->category == cat) { hasTests = 1; break; }
         }
-        testEnd = GetTickCount();
-        testMs = testEnd - testStart;
-        t->lastMs = testMs;
-        RecordTest(t->name, result, testMs);
+        if (!hasTests) continue;
+        
+        Output("--- ");
+        Output(g_catNames[cat]);
+        OutputLine(" ---");
+        
+        for (t = g_tests; t->name; t++) {
+            if (t->category != cat) continue;
+            testStart = GetTickCount();
+            result = 1;
+            for (iter = 0; iter < g_iterations && result; iter++) {
+                result = t->func();
+            }
+            testEnd = GetTickCount();
+            testMs = testEnd - testStart;
+            t->lastMs = testMs;
+            RecordTest(t->name, result, testMs, cat);
+        }
+        OutputLine("");
     }
     
     sqlite_close(g_db);
@@ -1363,7 +1421,6 @@ static void RunTests(void) {
     
     totalEnd = GetTickCount();
     
-    OutputLine("");
     OutputLine("--- Summary ---");
     OutputInt("Tests:      ", g_nTests);
     OutputLine("");
@@ -1371,6 +1428,30 @@ static void RunTests(void) {
     OutputLine("");
     OutputInt("Failed:     ", g_nTests - g_nPassed);
     OutputLine("");
+    OutputLine("");
+    
+    /* Category breakdown */
+    for (cat = 0; cat < CAT_COUNT; cat++) {
+        int pct;
+        if (g_catTests[cat] == 0) continue;
+        Output(g_catNames[cat]);
+        Output(":  ");
+        /* Pad category name */
+        {
+            int len = 0;
+            const char *p = g_catNames[cat];
+            while (*p++) len++;
+            while (len++ < 14) Output(" ");
+        }
+        OutputInt("", (int)g_catMs[cat]);
+        Output(" ms");
+        pct = (g_cumulativeMs > 0) ? (int)((g_catMs[cat] * 100) / g_cumulativeMs) : 0;
+        Output(" (");
+        OutputInt("", pct);
+        OutputLine("%)");
+    }
+    OutputLine("");
+    
     OutputInt("Cumulative: ", (int)g_cumulativeMs);
     OutputLine(" ms");
     OutputInt("Total:      ", (int)(totalEnd - totalStart));
