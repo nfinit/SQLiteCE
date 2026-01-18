@@ -9,7 +9,7 @@
 #include <commctrl.h>
 #include "sqlite.h"
 
-#define APP_VERSION L"1.0.0"
+#define APP_VERSION "1.1.0"
 
 /* Rich Edit message - may not be in CE headers */
 #ifndef EM_SETBKGNDCOLOR
@@ -106,33 +106,197 @@ static void OutputInt(const char *prefix, int val) {
 
 static int g_nTests = 0;
 static int g_nPassed = 0;
-static sqlite *g_db = NULL;  /* Shared database handle for tests */
 static DWORD g_cumulativeMs = 0;  /* Sum of individual test times */
 static int g_iterations = 1;  /* Number of iterations per test */
 
+/* Database handles for each path */
+static sqlite *g_db = NULL;       /* Memory (:memory:) */
+static sqlite *g_ramDb = NULL;    /* RAM filesystem */
+static sqlite *g_flashDb = NULL;  /* Storage card */
+static sqlite *g_curDb = NULL;    /* Current db for parameterized tests */
+
 /* Test categories */
-#define CAT_IO      0
-#define CAT_SCHEMA  1
-#define CAT_CRUD    2
-#define CAT_QUERY   3
-#define CAT_ERROR   4
-#define CAT_COUNT   5
+#define CAT_INIT    0   /* Database creation, schema loading */
+#define CAT_WRITE   1   /* INSERT operations */
+#define CAT_READ    2   /* SELECT operations */
+#define CAT_UPDATE  3   /* UPDATE/DELETE operations */
+#define CAT_QUERY   4   /* Complex queries (JOIN, aggregate, subquery) */
+#define CAT_SCHEMA  5   /* DDL operations */
+#define CAT_ERROR   6   /* Error path validation */
+#define CAT_COUNT   7
 
 static const char *g_catNames[CAT_COUNT] = {
-    "I/O", "Schema", "CRUD", "Query", "Error Handling"
+    "Init", "Write", "Read", "Update", "Query", "Schema", "Error"
 };
 static DWORD g_catMs[CAT_COUNT];
 static int g_catTests[CAT_COUNT];
 static int g_catPassed[CAT_COUNT];
 
+/* Storage paths */
+#define PATH_MEM    0   /* :memory: */
+#define PATH_RAM    1   /* \Temp (RAM filesystem) */
+#define PATH_FLASH  2   /* \Storage Card\Temp */
+#define PATH_COUNT  3
+
+static const char *g_pathNames[PATH_COUNT] = {
+    "Memory", "Object Store", "Flash"
+};
+static DWORD g_pathMs[PATH_COUNT];
+static int g_pathTests[PATH_COUNT];
+
+/*============================================================================
+** Benchmark Schema
+**============================================================================*/
+
+static const char *g_benchSchema =
+    "CREATE TABLE customers("
+        "id INTEGER PRIMARY KEY, "
+        "name TEXT, "
+        "region TEXT);"
+    "CREATE TABLE products("
+        "id INTEGER PRIMARY KEY, "
+        "name TEXT, "
+        "price REAL);"
+    "CREATE TABLE orders("
+        "id INTEGER PRIMARY KEY, "
+        "customer_id INTEGER, "
+        "order_date TEXT);"
+    "CREATE TABLE order_items("
+        "order_id INTEGER, "
+        "product_id INTEGER, "
+        "qty INTEGER);"
+    "CREATE INDEX idx_orders_cust ON orders(customer_id);"
+    "CREATE INDEX idx_items_order ON order_items(order_id);";
+
+/* Seed data - small set for validation, can scale up */
+static const char *g_benchSeed =
+    "INSERT INTO customers VALUES(1,'Acme Corp','West');"
+    "INSERT INTO customers VALUES(2,'Globex','East');"
+    "INSERT INTO customers VALUES(3,'Initech','Central');"
+    "INSERT INTO products VALUES(1,'Widget',9.99);"
+    "INSERT INTO products VALUES(2,'Gadget',19.99);"
+    "INSERT INTO products VALUES(3,'Gizmo',29.99);"
+    "INSERT INTO orders VALUES(1,1,'1997-01-15');"
+    "INSERT INTO orders VALUES(2,1,'1997-02-20');"
+    "INSERT INTO orders VALUES(3,2,'1997-03-10');"
+    "INSERT INTO order_items VALUES(1,1,5);"
+    "INSERT INTO order_items VALUES(1,2,3);"
+    "INSERT INTO order_items VALUES(2,3,10);"
+    "INSERT INTO order_items VALUES(3,1,2);"
+    "INSERT INTO order_items VALUES(3,2,7);";
+
+/* Load schema and seed data into a database */
+static int LoadBenchSchema(sqlite *db) {
+    if (sqlite_exec(db, g_benchSchema, NULL, NULL, NULL) != SQLITE_OK)
+        return 0;
+    if (sqlite_exec(db, g_benchSeed, NULL, NULL, NULL) != SQLITE_OK)
+        return 0;
+    return 1;
+}
+
+/* Test path configuration */
+static char g_testPath[128] = "\\Temp";  /* Default: RAM filesystem */
+static wchar_t g_testPathW[128] = L"\\Temp";
+static int g_useStorageCard = 0;
+static wchar_t g_storageCardPath[64] = L"";
+static int g_currentPath = PATH_RAM;  /* Current path being tested */
+
+/* Path-specific test paths */
+static char g_ramPath[128] = "\\Temp";
+static wchar_t g_ramPathW[128] = L"\\Temp";
+static char g_flashPath[128] = "";
+static wchar_t g_flashPathW[128] = L"";
+
+/* Detect storage card (matches SQLite/CEdit pattern) */
+static int FindStorageCard(void) {
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind;
+    
+    hFind = FindFirstFileW(L"\\Storage Card*", &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            wsprintfW(g_storageCardPath, L"\\%s", fd.cFileName);
+            /* Set up flash path */
+            wsprintfW(g_flashPathW, L"%s\\Temp", g_storageCardPath);
+            WideCharToMultiByte(CP_ACP, 0, g_flashPathW, -1, g_flashPath, 128, NULL, NULL);
+            FindClose(hFind);
+            return 1;
+        }
+        FindClose(hFind);
+    }
+    g_storageCardPath[0] = 0;
+    g_flashPath[0] = 0;
+    g_flashPathW[0] = 0;
+    return 0;
+}
+
+/* Update test path based on storage card setting */
+static void UpdateTestPath(void) {
+    if (g_useStorageCard && g_storageCardPath[0]) {
+        wsprintfW(g_testPathW, L"%s\\Temp", g_storageCardPath);
+    } else {
+        lstrcpyW(g_testPathW, L"\\Temp");
+    }
+    /* Convert to ANSI for SQLite */
+    WideCharToMultiByte(CP_ACP, 0, g_testPathW, -1, g_testPath, 128, NULL, NULL);
+}
+
+/* Set current path for parameterized tests */
+static void SetCurrentPath(int pathType) {
+    g_currentPath = pathType;
+    switch (pathType) {
+        case PATH_RAM:
+            lstrcpyW(g_testPathW, g_ramPathW);
+            WideCharToMultiByte(CP_ACP, 0, g_testPathW, -1, g_testPath, 128, NULL, NULL);
+            break;
+        case PATH_FLASH:
+            if (g_flashPath[0]) {
+                lstrcpyW(g_testPathW, g_flashPathW);
+                WideCharToMultiByte(CP_ACP, 0, g_testPathW, -1, g_testPath, 128, NULL, NULL);
+            }
+            break;
+        default:  /* PATH_MEM - no file path needed */
+            break;
+    }
+}
+
+/* Build full path for test file */
+static void BuildTestPath(char *dest, const char *filename) {
+    char *d = dest;
+    const char *s = g_testPath;
+    while (*s) *d++ = *s++;
+    *d++ = '\\';
+    s = filename;
+    while (*s) *d++ = *s++;
+    *d = '\0';
+}
+
+static void BuildTestPathW(wchar_t *dest, const wchar_t *filename) {
+    wchar_t *d = dest;
+    const wchar_t *s = g_testPathW;
+    while (*s) *d++ = *s++;
+    *d++ = L'\\';
+    s = filename;
+    while (*s) *d++ = *s++;
+    *d = L'\0';
+}
+
 /* Test function type - returns 1 for pass, 0 for fail */
 typedef int (*TestFunc)(void);
+
+/* Path applicability flags */
+#define PMASK_MEM   (1 << PATH_MEM)
+#define PMASK_RAM   (1 << PATH_RAM)
+#define PMASK_FLASH (1 << PATH_FLASH)
+#define PMASK_ALL   (PMASK_MEM | PMASK_RAM | PMASK_FLASH)
+#define PMASK_FILE  (PMASK_RAM | PMASK_FLASH)  /* File-based paths only */
 
 typedef struct {
     const char *name;
     TestFunc func;
     int category;
-    DWORD lastMs;  /* Timing from last run */
+    int pathMask;     /* Which paths this test applies to */
+    DWORD lastMs;     /* Timing from last run */
 } TestCase;
 
 /* Debug context for failed tests */
@@ -166,8 +330,16 @@ static void ClearDebugContext(void) {
     g_debugContext[0] = '\0';
 }
 
+/* Path suffixes for output */
+static const char *g_pathSuffix[PATH_COUNT] = {
+    "", " (ObjStore)", " (Flash)"
+};
+
 /* Record test result with timing */
-static void RecordTest(const char *name, int passed, DWORD ms, int category) {
+static void RecordTest(const char *name, int passed, DWORD ms, int category, int path) {
+    int nameLen = 0;
+    const char *p;
+    
     g_nTests++;
     g_cumulativeMs += ms;
     g_catMs[category] += ms;
@@ -180,18 +352,18 @@ static void RecordTest(const char *name, int passed, DWORD ms, int category) {
         Output("  [FAIL] ");
     }
     Output(name);
+    Output(g_pathSuffix[path]);
     if (g_debugContext[0]) {
         Output(" (");
         Output(g_debugContext);
         Output(")");
     }
     /* Right-align timing */
-    {
-        int nameLen = 0;
-        const char *p = name;
-        while (*p++) nameLen++;
-        while (nameLen++ < 28) Output(" ");
-    }
+    p = name;
+    while (*p++) nameLen++;
+    p = g_pathSuffix[path];
+    while (*p++) nameLen++;
+    while (nameLen++ < 36) Output(" ");
     OutputInt("", (int)ms);
     Output(" ms");
     if (g_iterations > 1) {
@@ -269,12 +441,34 @@ static int test_open_memory(void) {
 
 static int test_open_file(void) {
     sqlite *db;
-    DeleteFileW(L"\\Temp\\test_open.db");
-    db = sqlite_open("\\Temp\\test_open.db", 0, NULL);
+    char path[128];
+    wchar_t pathW[128];
+    BuildTestPath(path, "test_open.db");
+    BuildTestPathW(pathW, L"test_open.db");
+    DeleteFileW(pathW);
+    db = sqlite_open(path, 0, NULL);
     if (!db) return 0;
     sqlite_close(db);
-    DeleteFileW(L"\\Temp\\test_open.db");
+    DeleteFileW(pathW);
     return 1;
+}
+
+static int test_load_schema(void) {
+    sqlite *db;
+    int ok, count;
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+    ok = LoadBenchSchema(db);
+    if (ok) {
+        /* Verify schema loaded - check table count */
+        sqlite *saved = g_db;
+        g_db = db;
+        count = CountRows("SELECT name FROM sqlite_master WHERE type='table'");
+        ok = (count == 4);  /* customers, products, orders, order_items */
+        g_db = saved;
+    }
+    sqlite_close(db);
+    return ok;
 }
 
 static int test_create_table(void) {
@@ -402,11 +596,14 @@ static int test_type_null(void) {
 **============================================================================*/
 
 static int test_persistence(void) {
-    const char *path = "\\Temp\\test_persist.db";
+    char path[128];
+    wchar_t pathW[128];
     sqlite *db1, *db2, *saved_db;
     int ok = 0;
     
-    DeleteFileW(L"\\Temp\\test_persist.db");
+    BuildTestPath(path, "test_persist.db");
+    BuildTestPathW(pathW, L"test_persist.db");
+    DeleteFileW(pathW);
     
     /* Create and populate */
     db1 = sqlite_open(path, 0, NULL);
@@ -424,7 +621,7 @@ static int test_persistence(void) {
     sqlite_close(db2);
     g_db = saved_db;
     
-    DeleteFileW(L"\\Temp\\test_persist.db");
+    DeleteFileW(pathW);
     return ok;
 }
 
@@ -702,14 +899,19 @@ static int test_sqlite_master_indexes(void) {
 }
 
 static int test_export_db_schema(void) {
-    const char *srcPath = "\\Temp\\exp_src.db";
-    const char *dstPath = "\\Temp\\exp_dst.db";
+    char srcPath[128], dstPath[128];
+    wchar_t srcPathW[128], dstPathW[128];
     sqlite *srcDb, *dstDb;
     char **result;
     int nRow, nCol, ok = 0;
     
-    DeleteFileW(L"\\Temp\\exp_src.db");
-    DeleteFileW(L"\\Temp\\exp_dst.db");
+    BuildTestPath(srcPath, "exp_src.db");
+    BuildTestPath(dstPath, "exp_dst.db");
+    BuildTestPathW(srcPathW, L"exp_src.db");
+    BuildTestPathW(dstPathW, L"exp_dst.db");
+    
+    DeleteFileW(srcPathW);
+    DeleteFileW(dstPathW);
     
     /* Create source with schema */
     srcDb = sqlite_open(srcPath, 0, NULL);
@@ -745,20 +947,25 @@ static int test_export_db_schema(void) {
         sqlite_close(dstDb);
     }
     
-    DeleteFileW(L"\\Temp\\exp_src.db");
-    DeleteFileW(L"\\Temp\\exp_dst.db");
+    DeleteFileW(srcPathW);
+    DeleteFileW(dstPathW);
     return ok;
 }
 
 static int test_export_db_data(void) {
-    const char *srcPath = "\\Temp\\expd_src.db";
-    const char *dstPath = "\\Temp\\expd_dst.db";
+    char srcPath[128], dstPath[128];
+    wchar_t srcPathW[128], dstPathW[128];
     sqlite *srcDb, *dstDb;
     char **result;
     int nRow, nCol, ok = 0;
     
-    DeleteFileW(L"\\Temp\\expd_src.db");
-    DeleteFileW(L"\\Temp\\expd_dst.db");
+    BuildTestPath(srcPath, "expd_src.db");
+    BuildTestPath(dstPath, "expd_dst.db");
+    BuildTestPathW(srcPathW, L"expd_src.db");
+    BuildTestPathW(dstPathW, L"expd_dst.db");
+    
+    DeleteFileW(srcPathW);
+    DeleteFileW(dstPathW);
     
     /* Create source with data */
     srcDb = sqlite_open(srcPath, 0, NULL);
@@ -803,8 +1010,8 @@ static int test_export_db_data(void) {
         sqlite_close(dstDb);
     }
     
-    DeleteFileW(L"\\Temp\\expd_src.db");
-    DeleteFileW(L"\\Temp\\expd_dst.db");
+    DeleteFileW(srcPathW);
+    DeleteFileW(dstPathW);
     return ok;
 }
 
@@ -1179,6 +1386,88 @@ static int test_large_integer(void) {
 }
 
 /*============================================================================
+** Test Cases - Benchmark Schema Queries
+** These use the shared schema: customers, products, orders, order_items
+**============================================================================*/
+
+/* Helper: setup and teardown benchmark schema on g_db */
+static int g_benchSchemaLoaded = 0;
+
+static int SetupBenchSchema(void) {
+    if (g_benchSchemaLoaded) return 1;
+    if (!LoadBenchSchema(g_db)) return 0;
+    g_benchSchemaLoaded = 1;
+    return 1;
+}
+
+static int test_bench_join_orders(void) {
+    int count;
+    if (!SetupBenchSchema()) return 0;
+    /* Join orders with customers */
+    count = CountRows(
+        "SELECT o.id, c.name FROM orders o, customers c "
+        "WHERE o.customer_id = c.id");
+    return (count == 3);  /* 3 orders in seed data */
+}
+
+static int test_bench_join_items(void) {
+    int count;
+    if (!SetupBenchSchema()) return 0;
+    /* Join order_items with products */
+    count = CountRows(
+        "SELECT oi.order_id, p.name, oi.qty FROM order_items oi, products p "
+        "WHERE oi.product_id = p.id");
+    return (count == 5);  /* 5 order_items in seed data */
+}
+
+static int test_bench_three_way_join(void) {
+    int count;
+    if (!SetupBenchSchema()) return 0;
+    /* Three-way join: customers -> orders -> order_items */
+    count = CountRows(
+        "SELECT c.name, o.order_date, oi.qty "
+        "FROM customers c, orders o, order_items oi "
+        "WHERE c.id = o.customer_id AND o.id = oi.order_id");
+    return (count == 5);
+}
+
+static int test_bench_aggregate_sum(void) {
+    int total;
+    if (!SetupBenchSchema()) return 0;
+    /* Sum quantities per order */
+    total = GetInt("SELECT SUM(qty) FROM order_items WHERE order_id = 1");
+    return (total == 8);  /* 5 + 3 from seed data */
+}
+
+static int test_bench_aggregate_count(void) {
+    int count;
+    if (!SetupBenchSchema()) return 0;
+    /* Count orders per customer */
+    count = GetInt(
+        "SELECT COUNT(*) FROM orders WHERE customer_id = 1");
+    return (count == 2);  /* Customer 1 has 2 orders */
+}
+
+static int test_bench_indexed_lookup(void) {
+    int count;
+    if (!SetupBenchSchema()) return 0;
+    /* Lookup using index on customer_id */
+    count = CountRows(
+        "SELECT * FROM orders WHERE customer_id = 2");
+    return (count == 1);
+}
+
+static int test_bench_subquery(void) {
+    int count;
+    if (!SetupBenchSchema()) return 0;
+    /* Subquery: customers with orders */
+    count = CountRows(
+        "SELECT * FROM customers WHERE id IN "
+        "(SELECT DISTINCT customer_id FROM orders)");
+    return (count == 2);  /* Customers 1 and 2 have orders */
+}
+
+/*============================================================================
 ** Test Cases - Date/Time Functions (0.5.0)
 **============================================================================*/
 
@@ -1215,81 +1504,94 @@ static int test_time_now(void) {
 **============================================================================*/
 
 static TestCase g_tests[] = {
-    /* I/O Operations */
-    { "Open :memory: database",     test_open_memory,           CAT_IO },
-    { "Open file database",         test_open_file,             CAT_IO },
-    { "File persistence",           test_persistence,           CAT_IO },
-    { "Export DB schema",           test_export_db_schema,      CAT_IO },
-    { "Export DB data",             test_export_db_data,        CAT_IO },
-    { "Memory DB isolation",        test_memory_isolation,      CAT_IO },
+    /* Init - Database/file operations */
+    { "Open :memory: database",     test_open_memory,           CAT_INIT, PMASK_MEM },
+    { "Open file database",         test_open_file,             CAT_INIT, PMASK_FILE },
+    { "Load benchmark schema",      test_load_schema,           CAT_INIT, PMASK_MEM },
+    { "File persistence",           test_persistence,           CAT_INIT, PMASK_FILE },
+    { "Export DB schema",           test_export_db_schema,      CAT_INIT, PMASK_FILE },
+    { "Export DB data",             test_export_db_data,        CAT_INIT, PMASK_FILE },
+    { "Memory DB isolation",        test_memory_isolation,      CAT_INIT, PMASK_MEM },
     
-    /* Schema Operations */
-    { "CREATE TABLE",               test_create_table,          CAT_SCHEMA },
-    { "DROP TABLE",                 test_drop_table,            CAT_SCHEMA },
-    { "CREATE TRIGGER",             test_trigger_create,        CAT_SCHEMA },
-    { "DROP TRIGGER",               test_trigger_drop,          CAT_SCHEMA },
-    { "CREATE VIEW",                test_view_create,           CAT_SCHEMA },
-    { "DROP VIEW",                  test_view_drop,             CAT_SCHEMA },
-    { "CREATE INDEX",               test_index_create,          CAT_SCHEMA },
-    { "DROP INDEX",                 test_index_drop,            CAT_SCHEMA },
-    { "sqlite_master tables",       test_sqlite_master_tables,  CAT_SCHEMA },
-    { "sqlite_master indexes",      test_sqlite_master_indexes, CAT_SCHEMA },
-    { "VIEW in sqlite_master",      test_view_in_sqlite_master, CAT_SCHEMA },
-    { "INDEX in sqlite_master",     test_index_in_sqlite_master,CAT_SCHEMA },
+    /* Write - INSERT operations */
+    { "INSERT with explicit id",    test_insert,                CAT_WRITE, PMASK_ALL },
+    { "INSERT with auto id",        test_insert_null_id,        CAT_WRITE, PMASK_ALL },
+    { "Multiple row insert",        test_multiple_rows,         CAT_WRITE, PMASK_ALL },
+    { "INTEGER type",               test_type_integer,          CAT_WRITE, PMASK_ALL },
+    { "Negative INTEGER",           test_type_negative,         CAT_WRITE, PMASK_ALL },
+    { "TEXT type",                  test_type_text,             CAT_WRITE, PMASK_ALL },
+    { "NULL value",                 test_type_null,             CAT_WRITE, PMASK_ALL },
+    { "SQL quote escaping",         test_sql_quote_escape,      CAT_WRITE, PMASK_ALL },
+    { "String with quotes",         test_string_embedded_quotes,CAT_WRITE, PMASK_ALL },
+    { "Large integer (32-bit max)", test_large_integer,         CAT_WRITE, PMASK_ALL },
+    { "Transaction COMMIT",         test_transaction_commit,    CAT_WRITE, PMASK_ALL },
+    { "Transaction ROLLBACK",       test_transaction_rollback,  CAT_WRITE, PMASK_ALL },
     
-    /* CRUD Operations */
-    { "INSERT with explicit id",    test_insert,                CAT_CRUD },
-    { "INSERT with auto id",        test_insert_null_id,        CAT_CRUD },
-    { "SELECT rows",                test_select,                CAT_CRUD },
-    { "SELECT rowid",               test_select_rowid,          CAT_CRUD },
-    { "SELECT explicit INTEGER PK", test_select_explicit_id,    CAT_CRUD },
-    { "UPDATE",                     test_update,                CAT_CRUD },
-    { "DELETE",                     test_delete,                CAT_CRUD },
-    { "Multiple row insert",        test_multiple_rows,         CAT_CRUD },
-    { "INTEGER type",               test_type_integer,          CAT_CRUD },
-    { "Negative INTEGER",           test_type_negative,         CAT_CRUD },
-    { "TEXT type",                  test_type_text,             CAT_CRUD },
-    { "NULL value",                 test_type_null,             CAT_CRUD },
-    { "SQL quote escaping",         test_sql_quote_escape,      CAT_CRUD },
-    { "Transaction COMMIT",         test_transaction_commit,    CAT_CRUD },
-    { "Transaction ROLLBACK",       test_transaction_rollback,  CAT_CRUD },
-    { "Empty table SELECT",         test_empty_table_select,    CAT_CRUD },
-    { "String with quotes",         test_string_embedded_quotes,CAT_CRUD },
-    { "Large integer (32-bit max)", test_large_integer,         CAT_CRUD },
+    /* Read - SELECT operations */
+    { "SELECT rows",                test_select,                CAT_READ, PMASK_ALL },
+    { "SELECT rowid",               test_select_rowid,          CAT_READ, PMASK_ALL },
+    { "SELECT explicit INTEGER PK", test_select_explicit_id,    CAT_READ, PMASK_ALL },
+    { "Empty table SELECT",         test_empty_table_select,    CAT_READ, PMASK_ALL },
+    { "ORDER BY",                   test_order_by,              CAT_READ, PMASK_ALL },
+    { "ORDER BY multiple cols",     test_order_by_multiple,     CAT_READ, PMASK_ALL },
+    { "LIMIT and OFFSET",           test_limit_offset,          CAT_READ, PMASK_ALL },
     
-    /* Query Processing */
-    { "ORDER BY",                   test_order_by,              CAT_QUERY },
-    { "ORDER BY multiple cols",     test_order_by_multiple,     CAT_QUERY },
-    { "COUNT(*)",                   test_count,                 CAT_QUERY },
-    { "SUM aggregate",              test_sum,                   CAT_QUERY },
-    { "MIN/MAX aggregate",          test_min_max,               CAT_QUERY },
-    { "GROUP BY with HAVING",       test_group_by_having,       CAT_QUERY },
-    { "JOIN",                       test_join,                  CAT_QUERY },
-    { "VIEW with JOIN",             test_view_with_join,        CAT_QUERY },
-    { "SELECT from VIEW",           test_view_select,           CAT_QUERY },
-    { "LIKE pattern",               test_like,                  CAT_QUERY },
-    { "IS NULL",                    test_is_null,               CAT_QUERY },
-    { "NULL comparisons",           test_null_comparisons,      CAT_QUERY },
-    { "Subquery in WHERE",          test_subquery_where,        CAT_QUERY },
-    { "Subquery in FROM",           test_subquery_from,         CAT_QUERY },
-    { "UNION",                      test_union,                 CAT_QUERY },
-    { "UNION ALL",                  test_union_all,             CAT_QUERY },
-    { "LIMIT and OFFSET",           test_limit_offset,          CAT_QUERY },
-    { "Trigger fires on INSERT",    test_trigger_fires_insert,  CAT_QUERY },
-    { "Trigger fires on UPDATE",    test_trigger_fires_update,  CAT_QUERY },
-    { "Trigger fires on DELETE",    test_trigger_fires_delete,  CAT_QUERY },
-    { "Trigger NEW.column ref",     test_trigger_new_reference, CAT_QUERY },
-    { "UNIQUE INDEX constraint",    test_index_unique,          CAT_QUERY },
-    { "datetime('now')",            test_datetime_now,          CAT_QUERY },
-    { "date('now')",                test_date_now,              CAT_QUERY },
-    { "time('now')",                test_time_now,              CAT_QUERY },
+    /* Update - UPDATE/DELETE operations */
+    { "UPDATE",                     test_update,                CAT_UPDATE, PMASK_ALL },
+    { "DELETE",                     test_delete,                CAT_UPDATE, PMASK_ALL },
     
-    /* Error Handling */
-    { "Invalid SQL error",          test_invalid_sql,           CAT_ERROR },
-    { "Missing table error",        test_missing_table,         CAT_ERROR },
-    { "Constraint violation",       test_constraint_violation,  CAT_ERROR },
+    /* Query - Complex operations */
+    { "COUNT(*)",                   test_count,                 CAT_QUERY, PMASK_MEM },
+    { "SUM aggregate",              test_sum,                   CAT_QUERY, PMASK_MEM },
+    { "MIN/MAX aggregate",          test_min_max,               CAT_QUERY, PMASK_MEM },
+    { "GROUP BY with HAVING",       test_group_by_having,       CAT_QUERY, PMASK_MEM },
+    { "JOIN",                       test_join,                  CAT_QUERY, PMASK_MEM },
+    { "VIEW with JOIN",             test_view_with_join,        CAT_QUERY, PMASK_MEM },
+    { "SELECT from VIEW",           test_view_select,           CAT_QUERY, PMASK_MEM },
+    { "LIKE pattern",               test_like,                  CAT_QUERY, PMASK_MEM },
+    { "IS NULL",                    test_is_null,               CAT_QUERY, PMASK_MEM },
+    { "NULL comparisons",           test_null_comparisons,      CAT_QUERY, PMASK_MEM },
+    { "Subquery in WHERE",          test_subquery_where,        CAT_QUERY, PMASK_MEM },
+    { "Subquery in FROM",           test_subquery_from,         CAT_QUERY, PMASK_MEM },
+    { "UNION",                      test_union,                 CAT_QUERY, PMASK_MEM },
+    { "UNION ALL",                  test_union_all,             CAT_QUERY, PMASK_MEM },
+    { "Trigger fires on INSERT",    test_trigger_fires_insert,  CAT_QUERY, PMASK_MEM },
+    { "Trigger fires on UPDATE",    test_trigger_fires_update,  CAT_QUERY, PMASK_MEM },
+    { "Trigger fires on DELETE",    test_trigger_fires_delete,  CAT_QUERY, PMASK_MEM },
+    { "Trigger NEW.column ref",     test_trigger_new_reference, CAT_QUERY, PMASK_MEM },
+    { "UNIQUE INDEX constraint",    test_index_unique,          CAT_QUERY, PMASK_MEM },
+    { "datetime('now')",            test_datetime_now,          CAT_QUERY, PMASK_MEM },
+    { "date('now')",                test_date_now,              CAT_QUERY, PMASK_MEM },
+    { "time('now')",                test_time_now,              CAT_QUERY, PMASK_MEM },
+    /* Benchmark schema queries */
+    { "Bench: JOIN orders",         test_bench_join_orders,     CAT_QUERY, PMASK_MEM },
+    { "Bench: JOIN items",          test_bench_join_items,      CAT_QUERY, PMASK_MEM },
+    { "Bench: 3-way JOIN",          test_bench_three_way_join,  CAT_QUERY, PMASK_MEM },
+    { "Bench: SUM aggregate",       test_bench_aggregate_sum,   CAT_QUERY, PMASK_MEM },
+    { "Bench: COUNT aggregate",     test_bench_aggregate_count, CAT_QUERY, PMASK_MEM },
+    { "Bench: indexed lookup",      test_bench_indexed_lookup,  CAT_QUERY, PMASK_MEM },
+    { "Bench: subquery",            test_bench_subquery,        CAT_QUERY, PMASK_MEM },
     
-    { NULL, NULL, 0 }
+    /* Schema - DDL operations */
+    { "CREATE TABLE",               test_create_table,          CAT_SCHEMA, PMASK_MEM },
+    { "DROP TABLE",                 test_drop_table,            CAT_SCHEMA, PMASK_MEM },
+    { "CREATE TRIGGER",             test_trigger_create,        CAT_SCHEMA, PMASK_MEM },
+    { "DROP TRIGGER",               test_trigger_drop,          CAT_SCHEMA, PMASK_MEM },
+    { "CREATE VIEW",                test_view_create,           CAT_SCHEMA, PMASK_MEM },
+    { "DROP VIEW",                  test_view_drop,             CAT_SCHEMA, PMASK_MEM },
+    { "CREATE INDEX",               test_index_create,          CAT_SCHEMA, PMASK_MEM },
+    { "DROP INDEX",                 test_index_drop,            CAT_SCHEMA, PMASK_MEM },
+    { "sqlite_master tables",       test_sqlite_master_tables,  CAT_SCHEMA, PMASK_MEM },
+    { "sqlite_master indexes",      test_sqlite_master_indexes, CAT_SCHEMA, PMASK_MEM },
+    { "VIEW in sqlite_master",      test_view_in_sqlite_master, CAT_SCHEMA, PMASK_MEM },
+    { "INDEX in sqlite_master",     test_index_in_sqlite_master,CAT_SCHEMA, PMASK_MEM },
+    
+    /* Error - Error handling */
+    { "Invalid SQL error",          test_invalid_sql,           CAT_ERROR, PMASK_MEM },
+    { "Missing table error",        test_missing_table,         CAT_ERROR, PMASK_MEM },
+    { "Constraint violation",       test_constraint_violation,  CAT_ERROR, PMASK_MEM },
+    
+    { NULL, NULL, 0, 0 }
 };
 
 /*============================================================================
@@ -1343,36 +1645,56 @@ static void OutputDeviceInfo(void) {
 
 static void RunTests(void) {
     TestCase *t;
-    int result, iter, cat;
+    int result, iter, cat, path;
     DWORD totalStart, totalEnd;
     DWORD testStart, testEnd, testMs;
+    char ramDbPath[128], flashDbPath[128];
+    wchar_t ramDbPathW[128], flashDbPathW[128];
+    int hasFlash;
     
     ClearOutput();
     g_nTests = 0;
     g_nPassed = 0;
     g_cumulativeMs = 0;
+    g_benchSchemaLoaded = 0;  /* Reset for fresh run */
     
     /* Show immediate feedback before batch mode */
     OutputLine("Running benchmark...");
     FlushOutput();
     
+    /* Create test directories */
+    CreateDirectoryW(g_ramPathW, NULL);
+    hasFlash = (g_flashPath[0] != 0);
+    if (hasFlash) {
+        CreateDirectoryW(g_flashPathW, NULL);
+    }
+    
     ClearOutput();
     g_batchMode = 1;
     
-    /* Reset category stats */
+    /* Reset category and path stats */
     for (cat = 0; cat < CAT_COUNT; cat++) {
         g_catMs[cat] = 0;
         g_catTests[cat] = 0;
         g_catPassed[cat] = 0;
     }
+    for (path = 0; path < PATH_COUNT; path++) {
+        g_pathMs[path] = 0;
+        g_pathTests[path] = 0;
+    }
     
     OutputLine("=== SQLite/CEbench ===");
-    Output("Version: ");
-    Output("1.0.0");
-    Output("  SQLite: ");
+    Output("Version: " APP_VERSION "  SQLite: ");
     OutputLine(sqlite_libversion());
     OutputDeviceInfo();
     OutputMemoryInfo();
+    if (hasFlash) {
+        Output("Storage: RAM + ");
+        Output(g_flashPath);
+        OutputLine("");
+    } else {
+        OutputLine("Storage: RAM only (no card detected)");
+    }
     if (g_iterations > 1) {
         Output("Iterations: ");
         OutputInt("", g_iterations);
@@ -1382,18 +1704,77 @@ static void RunTests(void) {
     
     totalStart = GetTickCount();
     
+    /* Initialize databases */
+    OutputLine("--- Initializing ---");
+    
+    /* Memory database */
+    testStart = GetTickCount();
     g_db = sqlite_open(":memory:", 0, NULL);
     if (!g_db) {
-        OutputLine("Failed to open test database");
+        OutputLine("  [FAIL] Open :memory:");
         FlushOutput();
         return;
     }
+    LoadBenchSchema(g_db);
+    testEnd = GetTickCount();
+    Output("  [PASS] Memory database        ");
+    OutputInt("", (int)(testEnd - testStart));
+    OutputLine(" ms");
+    g_pathMs[PATH_MEM] += (testEnd - testStart);
     
-    /* Run tests grouped by category */
+    /* RAM filesystem database */
+    BuildTestPath(ramDbPath, "bench_ram.db");
+    BuildTestPathW(ramDbPathW, L"bench_ram.db");
+    lstrcpyW(g_testPathW, g_ramPathW);
+    WideCharToMultiByte(CP_ACP, 0, g_testPathW, -1, g_testPath, 128, NULL, NULL);
+    DeleteFileW(ramDbPathW);
+    testStart = GetTickCount();
+    g_ramDb = sqlite_open(ramDbPath, 0, NULL);
+    if (g_ramDb) {
+        LoadBenchSchema(g_ramDb);
+        testEnd = GetTickCount();
+        Output("  [PASS] RAM database           ");
+        OutputInt("", (int)(testEnd - testStart));
+        OutputLine(" ms");
+        g_pathMs[PATH_RAM] += (testEnd - testStart);
+    } else {
+        OutputLine("  [FAIL] RAM database");
+    }
+    
+    /* Flash database (if available) */
+    if (hasFlash) {
+        lstrcpyW(g_testPathW, g_flashPathW);
+        WideCharToMultiByte(CP_ACP, 0, g_testPathW, -1, g_testPath, 128, NULL, NULL);
+        BuildTestPath(flashDbPath, "bench_flash.db");
+        BuildTestPathW(flashDbPathW, L"bench_flash.db");
+        DeleteFileW(flashDbPathW);
+        testStart = GetTickCount();
+        g_flashDb = sqlite_open(flashDbPath, 0, NULL);
+        if (g_flashDb) {
+            LoadBenchSchema(g_flashDb);
+            testEnd = GetTickCount();
+            Output("  [PASS] Flash database         ");
+            OutputInt("", (int)(testEnd - testStart));
+            OutputLine(" ms");
+            g_pathMs[PATH_FLASH] += (testEnd - testStart);
+        } else {
+            OutputLine("  [FAIL] Flash database");
+        }
+    }
+    OutputLine("");
+    
+    /* Mark schema as loaded (for benchmark query tests) */
+    g_benchSchemaLoaded = 1;
+    
+    /* Run tests by path, then by category */
+    
+    /* Memory path */
+    g_curDb = g_db;
+    OutputLine("=== Memory Tests ===");
     for (cat = 0; cat < CAT_COUNT; cat++) {
         int hasTests = 0;
         for (t = g_tests; t->name; t++) {
-            if (t->category == cat) { hasTests = 1; break; }
+            if (t->category == cat && (t->pathMask & PMASK_MEM)) { hasTests = 1; break; }
         }
         if (!hasTests) continue;
         
@@ -1403,6 +1784,7 @@ static void RunTests(void) {
         
         for (t = g_tests; t->name; t++) {
             if (t->category != cat) continue;
+            if (!(t->pathMask & PMASK_MEM)) continue;
             testStart = GetTickCount();
             result = 1;
             for (iter = 0; iter < g_iterations && result; iter++) {
@@ -1411,13 +1793,99 @@ static void RunTests(void) {
             testEnd = GetTickCount();
             testMs = testEnd - testStart;
             t->lastMs = testMs;
-            RecordTest(t->name, result, testMs, cat);
+            RecordTest(t->name, result, testMs, cat, PATH_MEM);
+            g_pathMs[PATH_MEM] += testMs;
+            g_pathTests[PATH_MEM]++;
         }
         OutputLine("");
     }
     
-    sqlite_close(g_db);
-    g_db = NULL;
+    /* RAM filesystem path */
+    if (g_ramDb) {
+        sqlite *savedDb = g_db;
+        g_db = g_ramDb;
+        g_curDb = g_ramDb;
+        g_benchSchemaLoaded = 1;  /* Schema already loaded */
+        SetCurrentPath(PATH_RAM);
+        
+        OutputLine("=== Object Store Tests ===");
+        for (cat = 0; cat < CAT_COUNT; cat++) {
+            int hasTests = 0;
+            for (t = g_tests; t->name; t++) {
+                if (t->category == cat && (t->pathMask & PMASK_RAM)) { hasTests = 1; break; }
+            }
+            if (!hasTests) continue;
+            
+            Output("--- ");
+            Output(g_catNames[cat]);
+            OutputLine(" ---");
+            
+            for (t = g_tests; t->name; t++) {
+                if (t->category != cat) continue;
+                if (!(t->pathMask & PMASK_RAM)) continue;
+                testStart = GetTickCount();
+                result = 1;
+                for (iter = 0; iter < g_iterations && result; iter++) {
+                    result = t->func();
+                }
+                testEnd = GetTickCount();
+                testMs = testEnd - testStart;
+                RecordTest(t->name, result, testMs, cat, PATH_RAM);
+                g_pathMs[PATH_RAM] += testMs;
+                g_pathTests[PATH_RAM]++;
+            }
+            OutputLine("");
+        }
+        g_db = savedDb;
+    }
+    
+    /* Flash path */
+    if (g_flashDb) {
+        sqlite *savedDb = g_db;
+        g_db = g_flashDb;
+        g_curDb = g_flashDb;
+        g_benchSchemaLoaded = 1;
+        SetCurrentPath(PATH_FLASH);
+        
+        OutputLine("=== Flash Storage Tests ===");
+        for (cat = 0; cat < CAT_COUNT; cat++) {
+            int hasTests = 0;
+            for (t = g_tests; t->name; t++) {
+                if (t->category == cat && (t->pathMask & PMASK_FLASH)) { hasTests = 1; break; }
+            }
+            if (!hasTests) continue;
+            
+            Output("--- ");
+            Output(g_catNames[cat]);
+            OutputLine(" ---");
+            
+            for (t = g_tests; t->name; t++) {
+                if (t->category != cat) continue;
+                if (!(t->pathMask & PMASK_FLASH)) continue;
+                testStart = GetTickCount();
+                result = 1;
+                for (iter = 0; iter < g_iterations && result; iter++) {
+                    result = t->func();
+                }
+                testEnd = GetTickCount();
+                testMs = testEnd - testStart;
+                RecordTest(t->name, result, testMs, cat, PATH_FLASH);
+                g_pathMs[PATH_FLASH] += testMs;
+                g_pathTests[PATH_FLASH]++;
+            }
+            OutputLine("");
+        }
+        g_db = savedDb;
+    }
+    
+    /* Cleanup databases */
+    if (g_db) { sqlite_close(g_db); g_db = NULL; }
+    if (g_ramDb) { sqlite_close(g_ramDb); g_ramDb = NULL; DeleteFileW(ramDbPathW); }
+    if (g_flashDb) { sqlite_close(g_flashDb); g_flashDb = NULL; DeleteFileW(flashDbPathW); }
+    
+    /* Cleanup directories */
+    RemoveDirectoryW(g_ramPathW);
+    if (hasFlash) RemoveDirectoryW(g_flashPathW);
     
     totalEnd = GetTickCount();
     
@@ -1449,6 +1917,24 @@ static void RunTests(void) {
         Output(" (");
         OutputInt("", pct);
         OutputLine("%)");
+    }
+    OutputLine("");
+    
+    /* Path breakdown */
+    OutputLine("By storage path:");
+    for (path = 0; path < PATH_COUNT; path++) {
+        if (g_pathTests[path] == 0 && g_pathMs[path] == 0) continue;
+        Output("  ");
+        Output(g_pathNames[path]);
+        Output(":  ");
+        {
+            int len = 0;
+            const char *p = g_pathNames[path];
+            while (*p++) len++;
+            while (len++ < 10) Output(" ");
+        }
+        OutputInt("", (int)g_pathMs[path]);
+        OutputLine(" ms");
     }
     OutputLine("");
     
@@ -1491,6 +1977,7 @@ static void RunTests(void) {
 #define IDM_ITER10   207
 #define IDM_ITER100  208
 #define IDM_DIAG     209
+#define IDM_STORAGE  210
 
 static HMENU g_hMenu;
 static int g_useSyncFolder = 1;  /* Default: try Sync folder first */
@@ -1521,6 +2008,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             /* Create command bar */
             g_hwndCB = CommandBar_Create(g_hInst, hwnd, 1);
             
+            /* Detect storage card at startup */
+            FindStorageCard();
+            
             /* Add menu bar with Run (direct action) and Options (popup) */
             hMenuBar = CreateMenu();
             AppendMenuW(hMenuBar, MF_STRING, IDM_RUN, L"&Run");
@@ -1534,8 +2024,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             hMenuOpt = CreatePopupMenu();
             AppendMenuW(hMenuOpt, MF_POPUP, (UINT)hMenuIter, L"&Iterations");
             AppendMenuW(hMenuOpt, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(hMenuOpt, MF_STRING | (g_storageCardPath[0] ? 0 : MF_GRAYED), IDM_STORAGE, L"Use &Storage Card");
+            AppendMenuW(hMenuOpt, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hMenuOpt, MF_STRING, IDM_VERBOSE, L"&Verbose");
-            AppendMenuW(hMenuOpt, MF_STRING | MF_CHECKED, IDM_SYNCFOLD, L"Save to &Sync Folder");
+            AppendMenuW(hMenuOpt, MF_STRING | MF_CHECKED, IDM_SYNCFOLD, L"Save to S&ync Folder");
             AppendMenuW(hMenuOpt, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hMenuOpt, MF_STRING, IDM_DIAG, L"&Diagnostics");
             AppendMenuW(hMenuBar, MF_POPUP, (UINT)hMenuOpt, L"&Options");
@@ -1656,6 +2148,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     CheckMenuItem(g_hMenu, IDM_ITER1, MF_UNCHECKED);
                     CheckMenuItem(g_hMenu, IDM_ITER10, MF_UNCHECKED);
                     CheckMenuItem(g_hMenu, IDM_ITER100, MF_CHECKED);
+                    break;
+                case IDM_STORAGE:
+                    g_useStorageCard = !g_useStorageCard;
+                    CheckMenuItem(g_hMenu, IDM_STORAGE, g_useStorageCard ? MF_CHECKED : MF_UNCHECKED);
+                    UpdateTestPath();
                     break;
                 case IDM_DIAG:
                     ClearOutput();
