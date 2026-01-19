@@ -430,7 +430,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         DoOpenQuery();
                     return 0;
                 }
-                if (wParam == 'N') { DoFileNew(); return 0; }
+                if (wParam == 'N') {
+                    if ((GetWindowTextLengthW(g_hwndQuery) == 0 || g_showingHint) &&
+                        lstrcmpW(g_szDbPath, L":memory:") == 0)
+                        DoFileNew();
+                    else
+                        DoNewQuery();
+                    return 0;
+                }
                 if (wParam == 'C') { g_abortQuery = 1; return 0; }
                 if (wParam == 'F') { DoFind(); return 0; }
                 if (wParam == 'H') { DoReplace(); return 0; }

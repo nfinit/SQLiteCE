@@ -269,6 +269,23 @@ void DoSaveQuery(void) {
 }
 
 /*============================================================================
+** New Query - prompt save if dirty, then clear editor
+**============================================================================*/
+
+void DoNewQuery(void) {
+    if (g_queryDirty) {
+        int r = MessageBoxW(g_hwndMain, L"Save changes to query?", L"SQLite/CE",
+                            MB_YESNOCANCEL | MB_ICONQUESTION);
+        if (r == IDCANCEL) return;
+        if (r == IDYES) DoSaveQuery();
+    }
+    SetWindowTextW(g_hwndQuery, L"");
+    g_szQueryPath[0] = 0;
+    g_queryDirty = 0;
+    UpdateTitle();
+}
+
+/*============================================================================
 ** Export Results (CSV or Text based on filter selection)
 **============================================================================*/
 

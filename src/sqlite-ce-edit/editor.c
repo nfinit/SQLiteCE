@@ -334,9 +334,13 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
                 DoOpenQuery();
             return 0;
         }
-        /* Ctrl+N - New */
+        /* Ctrl+N - New Query (or New Database if editor empty and :memory:) */
         if (ctrl && wParam == 'N') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_NEW, 0);
+            if ((GetWindowTextLengthW(g_hwndQuery) == 0 || g_showingHint) &&
+                lstrcmpW(g_szDbPath, L":memory:") == 0)
+                SendMessage(g_hwndMain, WM_COMMAND, IDM_NEW, 0);
+            else
+                DoNewQuery();
             return 0;
         }
         /* Ctrl+S - Save Query */
@@ -479,9 +483,13 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 DoOpenQuery();
             return 0;
         }
-        /* Ctrl+N - New */
+        /* Ctrl+N - New Query (or New Database if editor empty and :memory:) */
         if (ctrl && wParam == 'N') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_NEW, 0);
+            if ((GetWindowTextLengthW(g_hwndQuery) == 0 || g_showingHint) &&
+                lstrcmpW(g_szDbPath, L":memory:") == 0)
+                SendMessage(g_hwndMain, WM_COMMAND, IDM_NEW, 0);
+            else
+                DoNewQuery();
             return 0;
         }
         /* Ctrl+S - Save Query */
