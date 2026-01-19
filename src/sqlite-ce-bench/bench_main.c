@@ -359,7 +359,6 @@ static const char *g_pathSuffix[PATH_COUNT] = {
 static void RecordTest(const char *name, int passed, DWORD ms, int category, int path) {
     int nameLen = 0;
     const char *p;
-    DWORD now;
     
     g_nTests++;
     g_cumulativeMs += ms;
@@ -1540,9 +1539,11 @@ static int test_math_divide(void) {
 }
 
 static int test_math_abs(void) {
-    /* Single ABS call only - multiple ABS in one expression hangs on CE 2.0 */
-    int result = GetInt("SELECT ABS(0 - 12345)");
-    return (result == 12345);
+    int ok;
+    ok = (GetInt("SELECT ABS(-12345)") == 12345);
+    ok = ok && (GetInt("SELECT ABS(42)") == 42);
+    ok = ok && (GetInt("SELECT ABS(-3) + ABS(6)") == 9);  /* Was broken pre-ce3 */
+    return ok;
 }
 
 static int test_math_minmax(void) {
@@ -1553,10 +1554,11 @@ static int test_math_minmax(void) {
 }
 
 static int test_math_round(void) {
-    /* SQLite 2.8.17 ROUND() just formats, doesn't actually round */
-    /* ROUND(3.7) returns "3.700000" not 4 - skip meaningful test */
-    int result = GetInt("SELECT 1");  /* Placeholder - ROUND broken in 2.8.17 */
-    return (result == 1);
+    int ok;
+    ok = (GetInt("SELECT ROUND(3.7)") == 4);
+    ok = ok && (GetInt("SELECT ROUND(3.2)") == 3);
+    ok = ok && (GetInt("SELECT ROUND(-2.5)") == -3);
+    return ok;
 }
 
 static int test_math_coalesce(void) {
@@ -1636,15 +1638,17 @@ static double g_floatResult;
 static int FloatCallback(void *arg, int argc, char **argv, char **cols) {
     (void)arg; (void)cols;
     if (argc > 0 && argv[0]) {
-        /* Simple string to double conversion */
+        /* String to double conversion with scientific notation support */
         double val = 0.0;
         double frac = 0.0;
         double div = 1.0;
         int neg = 0;
         int inFrac = 0;
+        int exp = 0;
+        int expNeg = 0;
         const char *s = argv[0];
         if (*s == '-') { neg = 1; s++; }
-        while (*s) {
+        while (*s && *s != 'e' && *s != 'E') {
             if (*s == '.') { inFrac = 1; s++; continue; }
             if (*s >= '0' && *s <= '9') {
                 if (inFrac) {
@@ -1656,7 +1660,19 @@ static int FloatCallback(void *arg, int argc, char **argv, char **cols) {
             }
             s++;
         }
-        g_floatResult = neg ? -(val + frac) : (val + frac);
+        val = val + frac;
+        /* Parse exponent if present */
+        if (*s == 'e' || *s == 'E') {
+            s++;
+            if (*s == '-') { expNeg = 1; s++; }
+            else if (*s == '+') { s++; }
+            while (*s >= '0' && *s <= '9') {
+                exp = exp * 10 + (*s - '0');
+                s++;
+            }
+            while (exp-- > 0) val = expNeg ? val / 10.0 : val * 10.0;
+        }
+        g_floatResult = neg ? -val : val;
     }
     return 0;
 }
@@ -1689,9 +1705,11 @@ static int test_fp_add_sub(void) {
 }
 
 static int test_fp_round(void) {
-    /* SQLite 2.8.17 ROUND() is broken - just verify it returns something */
-    double r1 = GetFloat("SELECT ROUND(3.14159, 2)");
-    return (r1 > 3.0 && r1 < 4.0);  /* Just check it's in range */
+    int ok;
+    ok = FloatClose(GetFloat("SELECT ROUND(3.14159, 2)"), 3.14, 0.001);
+    ok = ok && FloatClose(GetFloat("SELECT ROUND(2.5)"), 3.0, 0.001);
+    ok = ok && FloatClose(GetFloat("SELECT ROUND(9.999, 1)"), 10.0, 0.001);
+    return ok;
 }
 
 static int test_fp_abs(void) {
