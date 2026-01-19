@@ -241,6 +241,9 @@ void ExecuteSQL(const char *sql) {
     /* Clear edit mode - this is a read-only query path */
     ClearEditMode();
     
+    /* Clear previous results */
+    FreeLastResults();
+    
     /* Setup */
     g_abortQuery = 0;
     if (g_clearOnExec) ClearOutput();
@@ -281,7 +284,17 @@ void ExecuteSQL(const char *sql) {
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
-    if (g_gridView) PopulateGrid();
+    if (g_lastResultRows > 0) {
+        if (g_gridView) PopulateGrid();
+    } else {
+        /* No rowset - show text view, disable toggle */
+        if (g_gridView) {
+            ShowWindow(g_hwndGrid, SW_HIDE);
+            ShowWindow(g_hwndResult, SW_SHOW);
+            SetFocus(g_hwndResult);
+        }
+        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
+    }
     if (g_gridView && g_hwndGrid) {
         SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
         InvalidateRect(g_hwndGrid, NULL, TRUE);
@@ -303,6 +316,9 @@ void ExecuteQuery(void) {
     
     /* Clear edit mode - query editor results are read-only */
     ClearEditMode();
+    
+    /* Clear previous results */
+    FreeLastResults();
     
     /* Disable Execute while running, enable Stop */
     EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_GRAYED);
@@ -627,7 +643,17 @@ void ExecuteQuery(void) {
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
-        if (g_gridView) PopulateGrid();
+        if (g_lastResultRows > 0) {
+            if (g_gridView) PopulateGrid();
+        } else {
+            /* No rowset - show text view, disable toggle */
+            if (g_gridView) {
+                ShowWindow(g_hwndGrid, SW_HIDE);
+                ShowWindow(g_hwndResult, SW_SHOW);
+                SetFocus(g_hwndResult);
+            }
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
+        }
         if (g_gridView && g_hwndGrid) {
             SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
             InvalidateRect(g_hwndGrid, NULL, TRUE);
