@@ -531,7 +531,7 @@ void OpenTableForEditing(const char *tablename) {
             /* Populate grid and switch to grid view */
             g_gridView = 1;
             PopulateGrid();
-            SwitchView(1);
+            SwitchView(VIEW_RESULT);
             SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
             SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
             SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);

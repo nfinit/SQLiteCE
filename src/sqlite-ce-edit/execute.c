@@ -280,7 +280,7 @@ void ExecuteSQL(const char *sql) {
     /* Switch to results */
     if (g_gridView && g_hwndGrid)
         SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
-    SwitchView(1);
+    SwitchView(VIEW_RESULT);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
@@ -648,7 +648,7 @@ void ExecuteQuery(void) {
         /* Suppress redraw during view switch to avoid flicker */
         if (g_gridView && g_hwndGrid)
             SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
-        SwitchView(1);
+        SwitchView(VIEW_RESULT);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
