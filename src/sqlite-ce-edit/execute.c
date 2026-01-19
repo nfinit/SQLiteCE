@@ -366,8 +366,10 @@ void ExecuteQuery(void) {
         int i, inStr = 0, inCmt = 0;
         
         if (fullLen == 0) {
+            SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Nothing to execute");
             EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
             SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, FALSE);
             return;
         }
         
@@ -375,6 +377,7 @@ void ExecuteQuery(void) {
         if (!full) {
             EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
             SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, FALSE);
             return;
         }
         GetWindowTextW(g_hwndQuery, full, fullLen + 1);
@@ -410,6 +413,9 @@ void ExecuteQuery(void) {
             LocalFree(full);
             if (wsql) LocalFree(wsql);
             if (sql) LocalFree(sql);
+            EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, FALSE);
             return;
         }
         for (i = 0; i < len; i++) wsql[i] = full[stmtStart + i];
@@ -421,6 +427,9 @@ void ExecuteQuery(void) {
         len = GetWindowTextLengthW(g_hwndQuery);
         if (len == 0 || g_showingHint) {
             SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Nothing to execute");
+            EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
+            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, FALSE);
             return;
         }
         
