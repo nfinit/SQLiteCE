@@ -159,6 +159,9 @@ static void UpdateContextMenu(int mode) {
     /* Insert new menu */
     CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hNewMenu, 0);
     
+    /* Force CommandBar to recalculate layout */
+    CommandBar_DrawMenuBar(g_hwndCB, 0);
+    
     /* Now safe to destroy old shell (submenus already detached) */
     if (hOldMenu) DestroyMenu(hOldMenu);
     
