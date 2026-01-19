@@ -38,6 +38,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 AppendMenuW(hDatabase, MF_POPUP, (UINT)g_hRecentDbMenu, L"&Recent");
                 AppendMenuW(hDatabase, MF_STRING, IDM_CLOSE, L"&Close");
                 AppendMenuW(hDatabase, MF_STRING, IDM_BACKUP, L"&Backup...");
+                AppendMenuW(hDatabase, MF_STRING, IDM_RESTORE, L"&Restore...");
                 AppendMenuW(hFile, MF_POPUP, (UINT)hDatabase, L"&Database");
                 hQueryFile = CreatePopupMenu();
                 AppendMenuW(hQueryFile, MF_STRING, IDM_NEWQUERY, L"&New\tCtrl+N");
@@ -280,6 +281,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_OPEN:    DoFileOpen(); break;
                 case IDM_CLOSE:   CloseDatabase(); break;
                 case IDM_BACKUP:  DoBackupDatabase(); break;
+                case IDM_RESTORE: DoRestoreDatabase(); break;
                 case IDM_OPENQUERY: DoOpenQuery(); break;
                 case IDM_SAVEQUERY: DoSaveQuery(); break;
                 case IDM_NEWQUERY:  DoNewQuery(); break;

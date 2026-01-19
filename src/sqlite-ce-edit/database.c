@@ -71,6 +71,7 @@ void UpdateDbSize(void) {
     canClose = (g_szDbPath[0] && g_szDbPath[0] != ':');
     EnableMenuItem(g_hMenu, IDM_CLOSE, canClose ? MF_ENABLED : MF_GRAYED);
     EnableMenuItem(g_hMenu, IDM_BACKUP, canClose ? MF_ENABLED : MF_GRAYED);
+    EnableMenuItem(g_hMenu, IDM_RESTORE, canClose ? MF_ENABLED : MF_GRAYED);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_CLOSE, canClose);
 }
 
@@ -117,6 +118,7 @@ void CloseDatabase(void) {
     /* Disable Close and Backup for in-memory database */
     EnableMenuItem(g_hMenu, IDM_CLOSE, MF_GRAYED);
     EnableMenuItem(g_hMenu, IDM_BACKUP, MF_GRAYED);
+    EnableMenuItem(g_hMenu, IDM_RESTORE, MF_GRAYED);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_CLOSE, FALSE);
 }
 

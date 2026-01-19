@@ -1506,3 +1506,83 @@ void DoBackupDatabase(void) {
     
     RefreshSchema();
 }
+
+void DoRestoreDatabase(void) {
+    CE_OPENFILENAME ofn;
+    wchar_t szFile[MAX_PATH];
+    wchar_t szInitDir[MAX_PATH];
+    wchar_t szCardPath[MAX_PATH];
+    wchar_t szMsg[MAX_PATH + 64];
+    const wchar_t *fn;
+    HANDLE hSrc, hDst;
+    BYTE buf[4096];
+    DWORD dwRead, dwWritten;
+    int ok = 0;
+    
+    /* Build initial directory (backup path) */
+    if (g_useStorageCard && FindStorageCard(szCardPath, MAX_PATH)) {
+        wsprintfW(szInitDir, L"%s%s%s\\Backups", szCardPath, g_szCardBasePath, g_szDataRelPath);
+    } else {
+        wsprintfW(szInitDir, L"%s%s\\Backups", g_szLocalBasePath, g_szDataRelPath);
+    }
+    
+    /* File picker */
+    szFile[0] = 0;
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_hwndMain;
+    ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrInitialDir = szInitDir;
+    ofn.lpstrTitle = L"Restore Database";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+    
+    if (!GetOpenFileNameW(&ofn)) return;
+    
+    /* Confirmation */
+    fn = GetFilename(szFile);
+    wsprintfW(szMsg, L"Replace current database with:\n%s?", fn);
+    if (MessageBoxW(g_hwndMain, szMsg, L"Restore Database", 
+                    MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Restoring...");
+    UpdateWindow(g_hwndStatus);
+    
+    /* Close database */
+    sqlite_close(g_db);
+    g_db = NULL;
+    
+    /* Copy backup over current database */
+    hSrc = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (hSrc != INVALID_HANDLE_VALUE) {
+        hDst = CreateFileW(g_szDbPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hDst != INVALID_HANDLE_VALUE) {
+            ok = 1;
+            while (ReadFile(hSrc, buf, sizeof(buf), &dwRead, NULL) && dwRead > 0) {
+                if (!WriteFile(hDst, buf, dwRead, &dwWritten, NULL) || dwWritten != dwRead) {
+                    ok = 0;
+                    break;
+                }
+            }
+            CloseHandle(hDst);
+        }
+        CloseHandle(hSrc);
+    }
+    
+    /* Reopen database */
+    {
+        char szPath[MAX_PATH * 2];
+        WideCharToMultiByte(CP_ACP, 0, g_szDbPath, -1, szPath, sizeof(szPath), NULL, NULL);
+        g_db = sqlite_open(szPath, 0, NULL);
+    }
+    
+    if (ok) {
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Database restored");
+    } else {
+        MessageBoxW(g_hwndMain, L"Restore failed", L"Error", MB_OK | MB_ICONERROR);
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Restore failed");
+    }
+    
+    RefreshSchema();
+}
