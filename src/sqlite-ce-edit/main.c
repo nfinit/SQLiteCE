@@ -18,7 +18,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_CREATE: {
             RECT rc;
             int cbHeight;
-            HMENU hMenu, hFile, hQuery, hView;
+            HMENU hMenu, hFile, hView;
             TBBUTTON tbButtons[15];
             
             g_hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
@@ -65,14 +65,42 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 AppendMenuW(hFile, MF_STRING, IDM_EXIT, L"E&xit\tAlt+X");
             }
             AppendMenuW(hMenu, MF_POPUP, (UINT)hFile, L"&File");
+            g_hFileMenu = hFile;
             
-            hQuery = CreatePopupMenu();
-            AppendMenuW(hQuery, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
-            AppendMenuW(hQuery, MF_SEPARATOR, 0, NULL);
-            AppendMenuW(hQuery, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
-            AppendMenuW(hQuery, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
-            AppendMenuW(hQuery, MF_STRING, IDM_REPLACE, L"&Replace...\tCtrl+H");
-            AppendMenuW(hMenu, MF_POPUP, (UINT)hQuery, L"&Query");
+            /* Create all three context menus upfront */
+            g_hQueryCtx = CreatePopupMenu();
+            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
+            AppendMenuW(g_hQueryCtx, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
+            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
+            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_REPLACE, L"&Replace...\tCtrl+H");
+            
+            g_hResultCtx = CreatePopupMenu();
+            AppendMenuW(g_hResultCtx, MF_STRING, IDM_VIEWGRID, L"&Grid View\tCtrl+G");
+            AppendMenuW(g_hResultCtx, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hResultCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
+            AppendMenuW(g_hResultCtx, MF_STRING, IDM_EXPORTHTMLRES, L"Export &HTML...");
+            AppendMenuW(g_hResultCtx, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hResultCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
+            AppendMenuW(g_hResultCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
+            
+            {
+                HMENU hSelObj = CreatePopupMenu();
+                AppendMenuW(hSelObj, MF_STRING, IDM_SCHEMA_SELECT, L"&Select");
+                AppendMenuW(hSelObj, MF_STRING, IDM_EXPORTDDL, L"Export &DDL...");
+                AppendMenuW(hSelObj, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hSelObj, MF_STRING, IDM_SCHEMA_DROP, L"&Drop");
+                g_hSchemaCtx = CreatePopupMenu();
+                AppendMenuW(g_hSchemaCtx, MF_POPUP, (UINT)hSelObj, L"Selected &Object");
+                AppendMenuW(g_hSchemaCtx, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(g_hSchemaCtx, MF_STRING, IDM_REFRESH, L"&Refresh");
+                AppendMenuW(g_hSchemaCtx, MF_STRING, IDM_EXPORTALLDDL, L"Export &All DDL...");
+                AppendMenuW(g_hSchemaCtx, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(g_hSchemaCtx, MF_STRING, IDM_SHOWSIZES, L"Show &Details");
+            }
+            
+            /* Add only Query context menu initially - others added on view switch */
+            AppendMenuW(hMenu, MF_POPUP, (UINT)g_hQueryCtx, L"&Query");
             
             hView = CreatePopupMenu();
             AppendMenuW(hView, MF_STRING, IDM_VIEWQUERY, L"&Query\tCtrl+1, Esc");

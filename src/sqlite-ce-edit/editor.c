@@ -116,69 +116,54 @@ void SyncLineNumScroll(void) {
 static int g_lastMenuMode = 0;  /* Start with Query menu (mode 0) */
 
 static void UpdateContextMenu(int mode) {
-    HMENU hCBMenu, hCtx;
+    HMENU hNewMenu, hCtx, hOldMenu;
     
-    /* Only rebuild if mode changed */
+    /* Only update if mode changed */
     if (mode == g_lastMenuMode) return;
     
-    /* Get the actual menu from CommandBar */
-    hCBMenu = CommandBar_GetMenu(g_hwndCB, 0);
-    if (!hCBMenu) return;
+    /* Get old menu - we'll detach submenus before destroying */
+    hOldMenu = CommandBar_GetMenu(g_hwndCB, 0);
     
-    /* Remove old context menu at position 1 */
-    RemoveMenu(hCBMenu, 1, MF_BYPOSITION);
-    
-    /* Create and insert new context menu */
-    hCtx = CreatePopupMenu();
-    if (mode == 0) {
-        AppendMenuW(hCtx, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
-        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
-        AppendMenuW(hCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
-        AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
-        AppendMenuW(hCtx, MF_STRING, IDM_REPLACE, L"&Replace...\tCtrl+H");
-        InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Query");
-    } else if (mode == 1) {
-        wchar_t gridLabel[64];
-        if (g_lastResultRows > 0)
-            wsprintfW(gridLabel, L"&Grid View (%d rows)\tCtrl+G", g_lastResultRows);
-        else
-            lstrcpyW(gridLabel, L"&Grid View\tCtrl+G");
-        AppendMenuW(hCtx, g_gridView ? MF_STRING | MF_CHECKED : MF_STRING, IDM_VIEWGRID, gridLabel);
-        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
-        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
-        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTHTMLRES, L"Export &HTML...");
-        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
-        AppendMenuW(hCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
-        AppendMenuW(hCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
-        InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Results");
-    } else {
-        HMENU hSelObj = CreatePopupMenu();
-        AppendMenuW(hSelObj, MF_STRING, IDM_SCHEMA_SELECT, L"&Select");
-        AppendMenuW(hSelObj, MF_STRING, IDM_EXPORTDDL, L"Export &DDL...");
-        AppendMenuW(hSelObj, MF_SEPARATOR, 0, NULL);
-        AppendMenuW(hSelObj, MF_STRING, IDM_SCHEMA_DROP, L"&Drop");
-        AppendMenuW(hCtx, MF_POPUP, (UINT)hSelObj, L"Selected &Object");
-        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
-        AppendMenuW(hCtx, MF_STRING, IDM_REFRESH, L"&Refresh");
-        AppendMenuW(hCtx, MF_STRING, IDM_EXPORTALLDDL, L"Export &All DDL...");
-        AppendMenuW(hCtx, MF_SEPARATOR, 0, NULL);
-        AppendMenuW(hCtx, g_showSizes ? MF_STRING | MF_CHECKED : MF_STRING, IDM_SHOWSIZES, L"Show &Details");
-        InsertMenuW(hCBMenu, 1, MF_BYPOSITION | MF_POPUP, (UINT)hCtx, L"&Schema");
+    /* Detach reusable submenus from old menu so DestroyMenu won't kill them */
+    if (hOldMenu) {
+        RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* File */
+        RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* Context (Query/Results/Schema) */
+        RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* View */
     }
+    
+    /* Build a fresh menu bar */
+    hNewMenu = CreateMenu();
+    AppendMenuW(hNewMenu, MF_POPUP, (UINT)g_hFileMenu, L"&File");
+    
+    /* Add only the active context menu */
+    if (mode == 0) {
+        hCtx = g_hQueryCtx;
+        AppendMenuW(hNewMenu, MF_POPUP, (UINT)hCtx, L"&Query");
+    } else if (mode == 1) {
+        hCtx = g_hResultCtx;
+        CheckMenuItem(hCtx, IDM_VIEWGRID, g_gridView ? MF_CHECKED : MF_UNCHECKED);
+        AppendMenuW(hNewMenu, MF_POPUP, (UINT)hCtx, L"&Results");
+    } else {
+        hCtx = g_hSchemaCtx;
+        CheckMenuItem(hCtx, IDM_SHOWSIZES, g_showSizes ? MF_CHECKED : MF_UNCHECKED);
+        AppendMenuW(hNewMenu, MF_POPUP, (UINT)hCtx, L"&Schema");
+    }
+    
+    AppendMenuW(hNewMenu, MF_POPUP, (UINT)g_hViewMenu, L"&View");
+    CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA,
+        mode == 0 ? IDM_VIEWQUERY : (mode == 1 ? IDM_VIEWRESULT : IDM_VIEWSCHEMA), MF_BYCOMMAND);
+    
+    /* Remove old menu from CommandBar (index 0) */
+    SendMessage(g_hwndCB, TB_DELETEBUTTON, 0, 0);
+    
+    /* Insert new menu */
+    CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hNewMenu, 0);
+    
+    /* Now safe to destroy old shell (submenus already detached) */
+    if (hOldMenu) DestroyMenu(hOldMenu);
     
     g_lastMenuMode = mode;
-    
-    /* Update View menu radio check - get from CommandBar's menu */
-    {
-        HMENU hViewSub = GetSubMenu(hCBMenu, 2);  /* View is at position 2 */
-        if (hViewSub) {
-            CheckMenuRadioItem(hViewSub, IDM_VIEWQUERY, IDM_VIEWSCHEMA,
-                mode == 0 ? IDM_VIEWQUERY : (mode == 1 ? IDM_VIEWRESULT : IDM_VIEWSCHEMA), MF_BYCOMMAND);
-        }
-    }
-    
-    /* Force CommandBar to redraw */
-    CommandBar_DrawMenuBar(g_hwndCB, 0);
+    g_hMenu = hNewMenu;
 }
 
 void ForceMenuRebuild(void) {
@@ -193,6 +178,9 @@ void SwitchView(int mode) {
     ShowWindow(g_hwndResult, mode == 1 && !g_gridView ? SW_SHOW : SW_HIDE);
     if (g_hwndGrid) ShowWindow(g_hwndGrid, mode == 1 && g_gridView ? SW_SHOW : SW_HIDE);
     if (g_hwndSchema) ShowWindow(g_hwndSchema, mode == 2 ? SW_SHOW : SW_HIDE);
+    
+    /* Update context menu first, before toolbar changes */
+    UpdateContextMenu(mode);
     
     /* Swap button bitmap/state based on view mode */
     if (mode == 0) {
@@ -212,8 +200,6 @@ void SwitchView(int mode) {
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_showSizes);
     }
     
-    /* Update context menu */
-    UpdateContextMenu(mode);
     if (mode == 0) {
         SetFocus(g_hwndQuery);
         UpdateLineCount();

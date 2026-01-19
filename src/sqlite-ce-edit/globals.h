@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.9.0.5"
+#define SQLITECEDIT_VERSION L"0.9.0.20"
 
 /*============================================================================
 ** Menu IDs
@@ -178,6 +178,10 @@ extern HMENU g_hMenu;
 extern HMENU g_hViewMenu;
 extern HMENU g_hRecentDbMenu;
 extern HMENU g_hRecentQueryMenu;
+extern HMENU g_hQueryCtx;
+extern HMENU g_hResultCtx;
+extern HMENU g_hSchemaCtx;
+extern HMENU g_hFileMenu;
 extern HACCEL g_hAccel;
 extern HBRUSH g_hBrushWhite;
 extern HWND g_hwndQuery;
