@@ -1511,19 +1511,37 @@ void DoRestoreDatabase(void) {
     wchar_t szFile[MAX_PATH];
     wchar_t szInitDir[MAX_PATH];
     wchar_t szCardPath[MAX_PATH];
+    wchar_t szDbName[64];
     wchar_t szMsg[MAX_PATH + 64];
     const wchar_t *fn;
-    HANDLE hSrc, hDst;
+    wchar_t *d;
+    HANDLE hSrc, hDst, hFind;
+    WIN32_FIND_DATAW fd;
     BYTE buf[4096];
     DWORD dwRead, dwWritten;
     int ok = 0;
     
-    /* Build initial directory (backup path) */
+    /* Extract database name (without extension) */
+    fn = GetFilename(g_szDbPath);
+    d = szDbName;
+    while (*fn && *fn != '.' && d < szDbName + 60) *d++ = *fn++;
+    *d = 0;
+    
+    /* Build initial directory: Backups\<dbname>\ if exists, else Backups\ */
     if (g_useStorageCard && FindStorageCard(szCardPath, MAX_PATH)) {
-        wsprintfW(szInitDir, L"%s%s%s\\Backups", szCardPath, g_szCardBasePath, g_szDataRelPath);
+        wsprintfW(szInitDir, L"%s%s%s\\Backups\\%s", szCardPath, g_szCardBasePath, g_szDataRelPath, szDbName);
     } else {
-        wsprintfW(szInitDir, L"%s%s\\Backups", g_szLocalBasePath, g_szDataRelPath);
+        wsprintfW(szInitDir, L"%s%s\\Backups\\%s", g_szLocalBasePath, g_szDataRelPath, szDbName);
     }
+    /* Check if db-specific backup dir exists, fall back to Backups\ */
+    hFind = FindFirstFileW(szInitDir, &fd);
+    if (hFind == INVALID_HANDLE_VALUE || !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        /* Strip dbname, use parent Backups dir */
+        d = szInitDir + lstrlenW(szInitDir);
+        while (d > szInitDir && *(d-1) != '\\') d--;
+        if (d > szInitDir) *(d-1) = 0;
+    }
+    if (hFind != INVALID_HANDLE_VALUE) FindClose(hFind);
     
     /* File picker */
     szFile[0] = 0;
