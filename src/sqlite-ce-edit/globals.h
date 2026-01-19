@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.9.0.37"
+#define SQLITECEDIT_VERSION L"0.9.0.40"
 
 /*============================================================================
 ** Menu IDs
@@ -211,6 +211,9 @@ extern int g_showLineNumbers;
 extern int g_lineNumWidth;
 extern int g_showStatusBar;
 extern int g_fullScreen;
+
+/* Centralized keyboard handler - returns 1 if handled */
+int HandleGlobalKeys(UINT msg, WPARAM wParam);
 extern WNDPROC g_pfnQueryProc;
 extern WNDPROC g_pfnResultProc;
 extern WNDPROC g_pfnGridProc;

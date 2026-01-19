@@ -437,18 +437,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             break;
         
         case WM_SYSKEYDOWN:
-            if (wParam == 'X' && GetKeyState(VK_MENU) < 0) {
-                SendMessage(hwnd, WM_CLOSE, 0, 0);
-                return 0;
-            }
-            if (wParam == VK_RETURN && GetKeyState(VK_MENU) < 0) {
-                SendMessage(hwnd, WM_COMMAND, IDM_FULLSCREEN, 0);
-                return 0;
-            }
-            break;
-        
+        case WM_SYSCHAR:
         case WM_KEYDOWN:
-            if (GetKeyState(VK_CONTROL) < 0) {
+            if (HandleGlobalKeys(msg, wParam))
+                return 0;
+            if (msg == WM_KEYDOWN && GetKeyState(VK_CONTROL) < 0) {
                 if (wParam == 'O') {
                     if ((GetWindowTextLengthW(g_hwndQuery) == 0 || g_showingHint) &&
                         lstrcmpW(g_szDbPath, L":memory:") == 0)
@@ -468,13 +461,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (wParam == 'C') { g_abortQuery = 1; return 0; }
                 if (wParam == 'F') { DoFind(); return 0; }
                 if (wParam == 'H') { DoReplace(); return 0; }
-                if (wParam == '1') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0); return 0; }
-                if (wParam == '2') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0); return 0; }
-                if (wParam == '3') { SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0); return 0; }
             }
-            if (wParam == VK_F5) { ExecuteQuery(); return 0; }
-            if (wParam == VK_F6) { SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0); return 0; }
-            if (wParam == VK_F7) { SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0); return 0; }
             if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT) {
                 if (g_viewMode == 0) SetFocus(g_hwndQuery);
                 else if (g_viewMode == 1) SetFocus(g_gridView ? g_hwndGrid : g_hwndResult);
@@ -527,6 +514,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     OnSchemaDoubleClick();
                 } else if (pnm->code == TVN_KEYDOWN) {
                     TV_KEYDOWN *pKey = (TV_KEYDOWN*)lParam;
+                    /* Try global handler first */
+                    if (HandleGlobalKeys(WM_KEYDOWN, pKey->wVKey))
+                        return TRUE;
                     if (pKey->wVKey == VK_DELETE) {
                         OnSchemaDelete();
                         return TRUE;
@@ -534,25 +524,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         OnSchemaDoubleClick();
                         return TRUE;
                     } else if (pKey->wVKey == VK_ESCAPE) {
-                        if (g_fullScreen) {
-                            SendMessage(hwnd, WM_COMMAND, IDM_FULLSCREEN, 0);
-                        } else {
-                            SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
-                        }
-                        return TRUE;
-                    } else if (GetKeyState(VK_CONTROL) < 0) {
-                        if (pKey->wVKey == '1') SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
-                        else if (pKey->wVKey == '2') SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0);
-                        else if (pKey->wVKey == '3') SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0);
-                        return TRUE;
-                    } else if (pKey->wVKey == VK_F5) {
-                        ExecuteQuery();
-                        return TRUE;
-                    } else if (pKey->wVKey == VK_F6) {
-                        SendMessage(hwnd, WM_COMMAND, IDM_VIEWRESULT, 0);
-                        return TRUE;
-                    } else if (pKey->wVKey == VK_F7) {
-                        SendMessage(hwnd, WM_COMMAND, IDM_VIEWSCHEMA, 0);
+                        SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
                         return TRUE;
                     }
                 }

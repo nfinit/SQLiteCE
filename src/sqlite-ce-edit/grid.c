@@ -95,13 +95,9 @@ static void CopySelectedRow(void) {
 }
 
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_SYSKEYDOWN) {
-        /* Alt+X - Exit */
-        if (wParam == 'X') {
-            SendMessage(g_hwndMain, WM_CLOSE, 0, 0);
-            return 0;
-        }
-    }
+    /* Global shortcuts first */
+    if (HandleGlobalKeys(msg, wParam))
+        return 0;
     if (msg == WM_KEYDOWN) {
         int ctrl = GetKeyState(VK_CONTROL) < 0;
         
@@ -127,33 +123,13 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 SendMessage(g_hwndMain, WM_COMMAND, IDM_EXECATCURSOR, 0);
             return 0;
         }
-        /* F6/Escape/Backspace - back to query */
-        if (wParam == VK_F6 || wParam == VK_ESCAPE || wParam == VK_BACK) {
-            if (wParam == VK_ESCAPE && g_fullScreen)
-                SendMessage(g_hwndMain, WM_COMMAND, IDM_FULLSCREEN, 0);
-            else
-                SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
-            return 0;
-        }
-        if (wParam == VK_F7) {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
-            return 0;
-        }
-        /* Ctrl+1/2/3 - View switching */
-        if (ctrl && wParam == '1') {
+        /* Escape/Backspace - back to query */
+        if (wParam == VK_ESCAPE || wParam == VK_BACK) {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
             return 0;
         }
-        if (ctrl && wParam == '2') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
-            return 0;
-        }
-        if (ctrl && wParam == '3') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
-            return 0;
-        }
-        /* F5 or Ctrl+E - Execute */
-        if (wParam == VK_F5 || (ctrl && wParam == 'E')) {
+        /* Ctrl+E - Execute */
+        if (ctrl && wParam == 'E') {
             ExecuteQuery();
             return 0;
         }

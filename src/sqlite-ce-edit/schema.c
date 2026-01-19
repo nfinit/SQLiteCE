@@ -100,11 +100,9 @@ void GetSchemaStatus(wchar_t *buf, int bufLen) {
 static WNDPROC g_pfnSchemaProc;
 
 static LRESULT CALLBACK SchemaSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    /* Alt+X - Exit */
-    if (msg == WM_SYSKEYDOWN && wParam == 'X') {
-        SendMessage(g_hwndMain, WM_CLOSE, 0, 0);
+    /* Global shortcuts first */
+    if (HandleGlobalKeys(msg, wParam))
         return 0;
-    }
     /* Suppress beep on Enter - only eat WM_CHAR, let WM_KEYDOWN through for TVN_KEYDOWN */
     if (msg == WM_CHAR && wParam == '\r')
         return 0;

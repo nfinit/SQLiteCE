@@ -4,6 +4,43 @@
 
 #include "globals.h"
 
+/*
+** Centralized keyboard handler for app-wide shortcuts.
+** Call from each subclass proc; returns 1 if key was handled.
+*/
+int HandleGlobalKeys(UINT msg, WPARAM wParam) {
+    int ctrl = GetKeyState(VK_CONTROL) < 0;
+    int alt = GetKeyState(VK_MENU) < 0;
+    
+    if (msg == WM_SYSKEYDOWN || msg == WM_SYSCHAR) {
+        if ((wParam == 'X' || wParam == 'x') && alt) {
+            if (msg == WM_SYSKEYDOWN)
+                SendMessage(g_hwndMain, WM_CLOSE, 0, 0);
+            return 1;
+        }
+        if ((wParam == VK_RETURN || wParam == '\r') && alt) {
+            if (msg == WM_SYSKEYDOWN)
+                SendMessage(g_hwndMain, WM_COMMAND, IDM_FULLSCREEN, 0);
+            return 1;
+        }
+    }
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_ESCAPE && g_fullScreen) {
+            SendMessage(g_hwndMain, WM_COMMAND, IDM_FULLSCREEN, 0);
+            return 1;
+        }
+        if (ctrl) {
+            if (wParam == '1') { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0); return 1; }
+            if (wParam == '2') { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0); return 1; }
+            if (wParam == '3') { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0); return 1; }
+        }
+        if (wParam == VK_F5) { ExecuteQuery(); return 1; }
+        if (wParam == VK_F6) { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0); return 1; }
+        if (wParam == VK_F7) { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0); return 1; }
+    }
+    return 0;
+}
+
 void UpdateLineCount(void) {
     wchar_t buf[32];
     DWORD sel;
@@ -296,11 +333,9 @@ LRESULT CALLBACK LineNumProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 
 /* Subclass proc for query edit - catches Ctrl+Enter */
 LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    /* Alt+X - Exit (must handle here when edit has focus) */
-    if (msg == WM_SYSKEYDOWN && (wParam == 'X' || wParam == 'x')) {
-        SendMessage(g_hwndMain, WM_CLOSE, 0, 0);
+    /* Global shortcuts first */
+    if (HandleGlobalKeys(msg, wParam))
         return 0;
-    }
     /* Clear hint on focus */
     if (msg == WM_SETFOCUS && g_showingHint) {
         SetWindowTextW(hwnd, L"");
@@ -359,27 +394,6 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         }
         if (wParam == VK_F3) {
             DoFindNext();
-            return 0;
-        }
-        /* F6 - Toggle view, Ctrl+1 - Query, Ctrl+2 - Results, Ctrl+3 - Schema */
-        if (wParam == VK_F6) {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
-            return 0;
-        }
-        if (wParam == VK_F7) {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
-            return 0;
-        }
-        if (ctrl && wParam == '1') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
-            return 0;
-        }
-        if (ctrl && wParam == '2') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
-            return 0;
-        }
-        if (ctrl && wParam == '3') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
             return 0;
         }
         /* Ctrl+A - Select all (CE edit control may not support natively) */
@@ -455,6 +469,9 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 /* Subclass proc for result edit - blocks input but allows copy */
 LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    /* Global shortcuts first */
+    if (HandleGlobalKeys(msg, wParam))
+        return 0;
     if (msg == WM_KEYDOWN) {
         int ctrl = GetKeyState(VK_CONTROL) < 0;
         /* Allow navigation keys through */
@@ -469,8 +486,8 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         /* Ctrl+C - Copy (pass through) */
         if (ctrl && wParam == 'C')
             return CallWindowProc(g_pfnResultProc, hwnd, msg, wParam, lParam);
-        /* F5 or Ctrl+E - Execute */
-        if (wParam == VK_F5 || (ctrl && wParam == 'E')) {
+        /* Ctrl+E - Execute */
+        if (ctrl && wParam == 'E') {
             ExecuteQuery();
             return 0;
         }
@@ -506,28 +523,9 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             DoFindNext();
             return 0;
         }
-        /* F6/Escape - back to query, Ctrl+1 - Query, Ctrl+2 - Results, Ctrl+3 - Schema */
-        if (wParam == VK_F6 || wParam == VK_ESCAPE || wParam == VK_BACK) {
-            if (wParam == VK_ESCAPE && g_fullScreen)
-                SendMessage(g_hwndMain, WM_COMMAND, IDM_FULLSCREEN, 0);
-            else
-                SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
-            return 0;
-        }
-        if (wParam == VK_F7) {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
-            return 0;
-        }
-        if (ctrl && wParam == '1') {
+        /* Escape/Backspace - back to query */
+        if (wParam == VK_ESCAPE || wParam == VK_BACK) {
             SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
-            return 0;
-        }
-        if (ctrl && wParam == '2') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);
-            return 0;
-        }
-        if (ctrl && wParam == '3') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0);
             return 0;
         }
         /* Ctrl+G - Toggle grid view */
