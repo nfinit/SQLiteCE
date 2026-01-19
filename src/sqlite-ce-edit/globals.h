@@ -78,11 +78,16 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define VIEW_DETAILS 3
 #endif
 
+/* Application view modes for SwitchView() */
+#define VIEW_QUERY   0
+#define VIEW_RESULT  1
+#define VIEW_SCHEMA  2
+
 /*============================================================================
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.9.0.42"
+#define SQLITECEDIT_VERSION L"0.9.0.46"
 
 /*============================================================================
 ** Menu IDs
@@ -260,6 +265,7 @@ void ClearOutput(void);
 void Output(const char *sz);
 void OutputLine(const char *sz);
 void FlushOutput(void);
+void ShowResultMessage(LPCWSTR msg, int clear);
 
 /*============================================================================
 ** Function Declarations - Editor (editor.c)

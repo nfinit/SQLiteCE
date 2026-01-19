@@ -1588,19 +1588,11 @@ void DoRestoreDatabase(void) {
     
     /* Reset UI to clean state */
     ClearEditMode();
-    g_lastResultRows = 0;  /* No rowset - prevents grid toggle until next query */
-    SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);  /* Switch to results view */
-    /* Show text view without changing grid preference (like no-rowset queries) */
-    if (g_gridView && g_hwndGrid) {
-        ShowWindow(g_hwndGrid, SW_HIDE);
-        ShowWindow(g_hwndResult, SW_SHOW);
-    }
-    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
     if (ok) {
-        SetWindowTextW(g_hwndResult, L"Database restored successfully.");
+        ShowResultMessage(L"Database restored successfully.", 1);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Database restored");
     } else {
-        SetWindowTextW(g_hwndResult, L"Restore failed.");
+        ShowResultMessage(L"Restore failed.", 1);
         MessageBoxW(g_hwndMain, L"Restore failed", L"Error", MB_OK | MB_ICONERROR);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Restore failed");
     }

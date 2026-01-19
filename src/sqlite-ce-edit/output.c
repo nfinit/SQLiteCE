@@ -29,3 +29,35 @@ void FlushOutput(void) {
         LocalFree(wz);
     }
 }
+
+void ShowResultMessage(LPCWSTR msg, int clear) {
+    if (clear) {
+        g_lastResultRows = 0;
+        SetWindowTextW(g_hwndResult, msg);
+    } else {
+        /* Append to existing text */
+        int existingLen = GetWindowTextLengthW(g_hwndResult);
+        int msgLen = lstrlenW(msg);
+        wchar_t *buf = (wchar_t *)LocalAlloc(LMEM_FIXED, (existingLen + msgLen + 3) * sizeof(wchar_t));
+        if (buf) {
+            GetWindowTextW(g_hwndResult, buf, existingLen + 1);
+            if (existingLen > 0) {
+                buf[existingLen++] = '\r';
+                buf[existingLen++] = '\n';
+            }
+            lstrcpyW(buf + existingLen, msg);
+            SetWindowTextW(g_hwndResult, buf);
+            LocalFree(buf);
+        }
+    }
+    /* Switch to text results view */
+    SwitchView(VIEW_RESULT);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
+    if (g_gridView && g_hwndGrid) {
+        ShowWindow(g_hwndGrid, SW_HIDE);
+        ShowWindow(g_hwndResult, SW_SHOW);
+    }
+    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
+}
