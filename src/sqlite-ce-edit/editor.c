@@ -213,22 +213,27 @@ void ForceMenuRebuild(void) {
 
 void SwitchView(int mode) {
     g_viewMode = mode;
-    ShowWindow(g_hwndQuery, mode == 0 ? SW_SHOW : SW_HIDE);
-    if (g_hwndLineNum) ShowWindow(g_hwndLineNum, (mode == 0 && g_showLineNumbers) ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndResult, mode == 1 && !g_gridView ? SW_SHOW : SW_HIDE);
-    if (g_hwndGrid) ShowWindow(g_hwndGrid, mode == 1 && g_gridView ? SW_SHOW : SW_HIDE);
-    if (g_hwndSchema) ShowWindow(g_hwndSchema, mode == 2 ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndQuery, mode == VIEW_QUERY ? SW_SHOW : SW_HIDE);
+    if (g_hwndLineNum) ShowWindow(g_hwndLineNum, (mode == VIEW_QUERY && g_showLineNumbers) ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndResult, mode == VIEW_RESULT && !g_gridView ? SW_SHOW : SW_HIDE);
+    if (g_hwndGrid) ShowWindow(g_hwndGrid, mode == VIEW_RESULT && g_gridView ? SW_SHOW : SW_HIDE);
+    if (g_hwndSchema) ShowWindow(g_hwndSchema, mode == VIEW_SCHEMA ? SW_SHOW : SW_HIDE);
     
     /* Update context menu first, before toolbar changes */
     UpdateContextMenu(mode);
     
+    /* Update view toggle buttons */
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, mode == VIEW_QUERY);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, mode == VIEW_RESULT);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, mode == VIEW_SCHEMA);
+    
     /* Swap button bitmap/state based on view mode */
-    if (mode == 0) {
+    if (mode == VIEW_QUERY) {
         /* Query view: exec-at-cursor toggle */
         SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_EXECAT);
         SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
-    } else if (mode == 1) {
+    } else if (mode == VIEW_RESULT) {
         /* Results view: grid toggle - checked = grid mode */
         SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_GRID);
         SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, g_lastResultRows > 0);
@@ -240,14 +245,14 @@ void SwitchView(int mode) {
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_showSizes);
     }
     
-    if (mode == 0) {
+    if (mode == VIEW_QUERY) {
         SetFocus(g_hwndQuery);
         UpdateLineCount();
         UpdateLineNumbers();
-    } else if (mode == 1) {
+    } else if (mode == VIEW_RESULT) {
         SetFocus(g_gridView ? g_hwndGrid : g_hwndResult);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)g_lastResultStatus);
-    } else if (mode == 2) {
+    } else if (mode == VIEW_SCHEMA) {
         wchar_t statusBuf[64];
         SetFocus(g_hwndSchema);
         RefreshSchema();

@@ -532,9 +532,6 @@ void OpenTableForEditing(const char *tablename) {
             g_gridView = 1;
             PopulateGrid();
             SwitchView(VIEW_RESULT);
-            SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
-            SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
-            SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
             
             /* Disable grid/text toggle button while in edit mode */
             SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);

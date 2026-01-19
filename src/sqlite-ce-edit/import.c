@@ -556,9 +556,6 @@ void DoImportCEDB(void) {
     ClearEditMode();
     g_lastResultRows = 0;
     SwitchView(VIEW_RESULT);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
     
 cleanup:

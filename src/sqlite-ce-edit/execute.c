@@ -281,9 +281,6 @@ void ExecuteSQL(const char *sql) {
     if (g_gridView && g_hwndGrid)
         SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
     SwitchView(VIEW_RESULT);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
     if (g_lastResultRows > 0) {
         if (g_gridView) PopulateGrid();
     } else {
@@ -649,9 +646,6 @@ void ExecuteQuery(void) {
         if (g_gridView && g_hwndGrid)
             SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
         SwitchView(VIEW_RESULT);
-        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
-        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
-        SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
         if (g_lastResultRows > 0) {
             if (g_gridView) PopulateGrid();
         } else {

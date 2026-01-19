@@ -52,9 +52,6 @@ void ShowResultMessage(LPCWSTR msg, int clear) {
     }
     /* Switch to text results view */
     SwitchView(VIEW_RESULT);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, FALSE);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, TRUE);
-    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, FALSE);
     if (g_gridView && g_hwndGrid) {
         ShowWindow(g_hwndGrid, SW_HIDE);
         ShowWindow(g_hwndResult, SW_SHOW);
