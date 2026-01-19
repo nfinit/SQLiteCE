@@ -194,7 +194,7 @@ void SwitchView(int mode) {
     } else if (mode == 1) {
         /* Results view: grid toggle - checked = grid mode */
         SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_GRID);
-        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
+        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, g_lastResultRows > 0);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
     } else {
         /* Schema view: show details toggle - checked = details shown */

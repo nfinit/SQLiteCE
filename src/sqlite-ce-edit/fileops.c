@@ -1508,7 +1508,6 @@ void DoBackupDatabase(void) {
 }
 
 void DoRestoreDatabase(void) {
-    CE_OPENFILENAME ofn;
     wchar_t szFile[MAX_PATH];
     wchar_t szInitDir[MAX_PATH];
     wchar_t szCardPath[MAX_PATH];
@@ -1528,17 +1527,9 @@ void DoRestoreDatabase(void) {
     
     /* File picker */
     szFile[0] = 0;
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = g_hwndMain;
-    ofn.lpstrFilter = L"Database Files (*.db)\0*.db\0All Files (*.*)\0*.*\0";
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrInitialDir = szInitDir;
-    ofn.lpstrTitle = L"Restore Database";
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
-    
-    if (!GetOpenFileNameW(&ofn)) return;
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+                          L"Restore Database", L"*.db", L"db",
+                          szInitDir, 0)) return;
     
     /* Confirmation */
     fn = GetFilename(szFile);
@@ -1577,9 +1568,21 @@ void DoRestoreDatabase(void) {
         g_db = sqlite_open(szPath, 0, NULL);
     }
     
+    /* Reset UI to clean state */
+    ClearEditMode();
+    g_lastResultRows = 0;  /* No rowset - prevents grid toggle until next query */
+    SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0);  /* Switch to results view */
+    /* Show text view without changing grid preference (like no-rowset queries) */
+    if (g_gridView && g_hwndGrid) {
+        ShowWindow(g_hwndGrid, SW_HIDE);
+        ShowWindow(g_hwndResult, SW_SHOW);
+    }
+    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
     if (ok) {
+        SetWindowTextW(g_hwndResult, L"Database restored successfully.");
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Database restored");
     } else {
+        SetWindowTextW(g_hwndResult, L"Restore failed.");
         MessageBoxW(g_hwndMain, L"Restore failed", L"Error", MB_OK | MB_ICONERROR);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Restore failed");
     }
