@@ -110,6 +110,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hView, MF_STRING, IDM_VIEWSCHEMA, L"&Schema\tCtrl+3, F7");
             AppendMenuW(hView, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hView, MF_STRING | MF_CHECKED, IDM_STATUSBAR, L"Status &Bar");
+            AppendMenuW(hView, MF_STRING, IDM_FULLSCREEN, L"&Full Screen\tAlt+Enter");
             g_hViewMenu = hView;
             AppendMenuW(hMenu, MF_POPUP, (UINT)hView, L"&View");
             
@@ -261,9 +262,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             SendMessage(g_hwndStatus, WM_SIZE, 0, 0);
             GetWindowRect(g_hwndStatus, &rcStatus);
-            sbHeight = g_showStatusBar ? (rcStatus.bottom - rcStatus.top) : 0;
+            sbHeight = (g_showStatusBar && !g_fullScreen) ? (rcStatus.bottom - rcStatus.top) : 0;
             
-            cbHeight = CommandBar_Height(g_hwndCB);
+            cbHeight = g_fullScreen ? 0 : CommandBar_Height(g_hwndCB);
             GetClientRect(hwnd, &rc);
             editHeight = rc.bottom - cbHeight - sbHeight;
             queryLeft = g_showLineNumbers ? g_lineNumWidth : 0;
@@ -381,6 +382,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     CheckMenuItem(g_hViewMenu, IDM_STATUSBAR, g_showStatusBar ? MF_CHECKED : MF_UNCHECKED);
                     SendMessage(hwnd, WM_SIZE, 0, 0);
                     break;
+                case IDM_FULLSCREEN:
+                    g_fullScreen = !g_fullScreen;
+                    ShowWindow(g_hwndStatus, g_fullScreen ? SW_HIDE : (g_showStatusBar ? SW_SHOW : SW_HIDE));
+                    ShowWindow(g_hwndCB, g_fullScreen ? SW_HIDE : SW_SHOW);
+                    CheckMenuItem(g_hViewMenu, IDM_FULLSCREEN, g_fullScreen ? MF_CHECKED : MF_UNCHECKED);
+                    SendMessage(hwnd, WM_SIZE, 0, 0);
+                    break;
                 case IDM_SCHEMA_SELECT:
                     OnSchemaDoubleClick();
                     break;
@@ -431,6 +439,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_SYSKEYDOWN:
             if (wParam == 'X' && GetKeyState(VK_MENU) < 0) {
                 SendMessage(hwnd, WM_CLOSE, 0, 0);
+                return 0;
+            }
+            if (wParam == VK_RETURN && GetKeyState(VK_MENU) < 0) {
+                SendMessage(hwnd, WM_COMMAND, IDM_FULLSCREEN, 0);
                 return 0;
             }
             break;
@@ -522,7 +534,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         OnSchemaDoubleClick();
                         return TRUE;
                     } else if (pKey->wVKey == VK_ESCAPE) {
-                        SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
+                        if (g_fullScreen) {
+                            SendMessage(hwnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+                        } else {
+                            SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);
+                        }
                         return TRUE;
                     } else if (GetKeyState(VK_CONTROL) < 0) {
                         if (pKey->wVKey == '1') SendMessage(hwnd, WM_COMMAND, IDM_VIEWQUERY, 0);

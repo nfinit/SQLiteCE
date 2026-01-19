@@ -129,7 +129,10 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         /* F6/Escape/Backspace - back to query */
         if (wParam == VK_F6 || wParam == VK_ESCAPE || wParam == VK_BACK) {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+            if (wParam == VK_ESCAPE && g_fullScreen)
+                SendMessage(g_hwndMain, WM_COMMAND, IDM_FULLSCREEN, 0);
+            else
+                SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
             return 0;
         }
         if (wParam == VK_F7) {

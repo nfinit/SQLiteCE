@@ -508,7 +508,10 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
         /* F6/Escape - back to query, Ctrl+1 - Query, Ctrl+2 - Results, Ctrl+3 - Schema */
         if (wParam == VK_F6 || wParam == VK_ESCAPE || wParam == VK_BACK) {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
+            if (wParam == VK_ESCAPE && g_fullScreen)
+                SendMessage(g_hwndMain, WM_COMMAND, IDM_FULLSCREEN, 0);
+            else
+                SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
             return 0;
         }
         if (wParam == VK_F7) {
