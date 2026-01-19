@@ -40,6 +40,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
     char *p = buf;
     const char *f = fmt;
     char tmp[32];
+    int precision;
     
     while (*f) {
         if (*f != '%') {
@@ -57,16 +58,23 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
         } else {
             while (*f >= '0' && *f <= '9') f++;
         }
+        
+        /* Parse precision */
+        precision = -1;  /* -1 means use default */
         if (*f == '.') {
             f++;
-            /* Handle * precision specifier */
             if (*f == '*') {
-                (void)va_arg(ap, int);
+                precision = va_arg(ap, int);
                 f++;
             } else {
-                while (*f >= '0' && *f <= '9') f++;
+                precision = 0;
+                while (*f >= '0' && *f <= '9') {
+                    precision = precision * 10 + (*f - '0');
+                    f++;
+                }
             }
         }
+        
         /* Handle length modifiers */
         if (*f == 'l') f++;
         if (*f == 'l') f++;  /* ll */
@@ -130,26 +138,41 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 *p++ = '%';
                 break;
             case 'g': case 'f': {
-                /* Floating point - very simplified */
                 double val = va_arg(ap, double);
-                int intpart = (int)val;
                 int neg = 0;
+                int prec = (precision < 0) ? 6 : precision;
+                int intpart;
                 char *t;
-                if (val < 0) { neg = 1; intpart = -intpart; val = -val; }
+                double rounder;
+                int i;
+                
+                if (val < 0) { neg = 1; val = -val; }
+                
+                /* Apply rounding */
+                rounder = 0.5;
+                for (i = 0; i < prec; i++) rounder *= 0.1;
+                val += rounder;
+                
+                intpart = (int)val;
+                
+                /* Output sign and integer part */
                 t = tmp + sizeof(tmp) - 1;
                 *t = '\0';
                 if (intpart == 0) *--t = '0';
                 while (intpart > 0) { *--t = '0' + (intpart % 10); intpart /= 10; }
                 if (neg) *--t = '-';
                 while (*t) *p++ = *t++;
-                /* Fractional part - 6 digits */
-                *p++ = '.';
-                val = val - (int)val;
-                { int i; for (i = 0; i < 6; i++) {
-                    val *= 10;
-                    *p++ = '0' + (int)val;
-                    val -= (int)val;
-                }}
+                
+                /* Output fractional part if precision > 0 */
+                if (prec > 0) {
+                    *p++ = '.';
+                    val = val - (int)val;
+                    for (i = 0; i < prec; i++) {
+                        val *= 10;
+                        *p++ = '0' + (int)val;
+                        val -= (int)val;
+                    }
+                }
                 break;
             }
             default:

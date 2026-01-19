@@ -27,12 +27,15 @@ extern "C" {
 
 /*
 ** The version of the SQLite library.
+** SQLite/CE versioning: "2.8.17ceX" where X is our port revision.
+** ce1 = Initial CE 2.0 port with reimplemented os.c
+** ce2 = ROUND() fix (ce_vsprintf precision/rounding)
 */
+#define SQLITE_CE_VERSION 2
 #ifdef SQLITE_VERSION
 # undef SQLITE_VERSION
-#else
-# define SQLITE_VERSION         "2.8.17"
 #endif
+#define SQLITE_VERSION "2.8.17ce2"
 
 /*
 ** The version string is also compiled into the library so that a program
