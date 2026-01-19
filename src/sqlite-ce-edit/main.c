@@ -108,6 +108,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hView, MF_STRING, IDM_VIEWQUERY, L"&Query\tCtrl+1, Esc");
             AppendMenuW(hView, MF_STRING, IDM_VIEWRESULT, L"&Results\tCtrl+2, F6");
             AppendMenuW(hView, MF_STRING, IDM_VIEWSCHEMA, L"&Schema\tCtrl+3, F7");
+            AppendMenuW(hView, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(hView, MF_STRING | MF_CHECKED, IDM_STATUSBAR, L"Status &Bar");
             g_hViewMenu = hView;
             AppendMenuW(hMenu, MF_POPUP, (UINT)hView, L"&View");
             
@@ -193,6 +195,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             g_hwndStatus = CreateWindowW(STATUSCLASSNAMEW, NULL,
                 WS_CHILD | WS_VISIBLE,
                 0, 0, 0, 0, hwnd, (HMENU)1003, g_hInst, NULL);
+            if (!g_showStatusBar)
+                ShowWindow(g_hwndStatus, SW_HIDE);
             {
                 int parts[2] = {120, -1};
                 RECT rcStatus;
@@ -244,6 +248,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             g_viewMode = 0;
             CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA, IDM_VIEWQUERY, MF_BYCOMMAND);
+            CheckMenuItem(g_hViewMenu, IDM_STATUSBAR, g_showStatusBar ? MF_CHECKED : MF_UNCHECKED);
             UpdateLineNumbers();
             SendMessage(hwnd, WM_SIZE, 0, 0);
             
@@ -256,7 +261,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             
             SendMessage(g_hwndStatus, WM_SIZE, 0, 0);
             GetWindowRect(g_hwndStatus, &rcStatus);
-            sbHeight = rcStatus.bottom - rcStatus.top;
+            sbHeight = g_showStatusBar ? (rcStatus.bottom - rcStatus.top) : 0;
             
             cbHeight = CommandBar_Height(g_hwndCB);
             GetClientRect(hwnd, &rc);
@@ -369,6 +374,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     g_showSizes = !g_showSizes;
                     ForceMenuRebuild();
                     RefreshSchema();
+                    break;
+                case IDM_STATUSBAR:
+                    g_showStatusBar = !g_showStatusBar;
+                    ShowWindow(g_hwndStatus, g_showStatusBar ? SW_SHOW : SW_HIDE);
+                    CheckMenuItem(g_hViewMenu, IDM_STATUSBAR, g_showStatusBar ? MF_CHECKED : MF_UNCHECKED);
+                    SendMessage(hwnd, WM_SIZE, 0, 0);
                     break;
                 case IDM_SCHEMA_SELECT:
                     OnSchemaDoubleClick();

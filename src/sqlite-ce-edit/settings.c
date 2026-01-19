@@ -32,6 +32,7 @@ static SettingDef g_intSettings[] = {
     { L"ClearOnExec",    SET_INT, &g_clearOnExec,      1, NULL },
     { L"ExecAtCursor",   SET_INT, &g_execAtCursor,     0, NULL },
     { L"ShowLineNumbers",SET_INT, &g_showLineNumbers,  1, NULL },
+    { L"ShowStatusBar",  SET_INT, &g_showStatusBar,    1, NULL },
     { L"ShowErrorMsgBox",SET_INT, &g_showErrorMsgBox,  0, NULL },
     { L"ShowSizes",      SET_INT, &g_showSizes,        0, NULL },
     { L"GridAutoSize",   SET_INT, &g_gridAutoSize,     1, NULL },

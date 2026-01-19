@@ -82,7 +82,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.9.0.35"
+#define SQLITECEDIT_VERSION L"0.9.0.36"
 
 /*============================================================================
 ** Menu IDs
@@ -134,6 +134,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_SHOWSIZES     703
 #define IDM_EXPORTDDL     704
 #define IDM_EXPORTALLDDL  705
+#define IDM_STATUSBAR     706
 
 /* Timer IDs */
 #define IDT_TAPHOLD 1
@@ -207,6 +208,7 @@ extern int g_fontSizeResult;
 extern int g_fontSizeSchema;
 extern int g_showLineNumbers;
 extern int g_lineNumWidth;
+extern int g_showStatusBar;
 extern WNDPROC g_pfnQueryProc;
 extern WNDPROC g_pfnResultProc;
 extern WNDPROC g_pfnGridProc;

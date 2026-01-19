@@ -42,6 +42,7 @@ int g_fontSizeResult = 2;
 int g_fontSizeSchema = 2;
 int g_showLineNumbers = 1;
 int g_lineNumWidth = 0;
+int g_showStatusBar = 1;
 WNDPROC g_pfnQueryProc;
 WNDPROC g_pfnResultProc;
 WNDPROC g_pfnGridProc;
