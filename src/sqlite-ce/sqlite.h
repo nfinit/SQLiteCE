@@ -35,7 +35,7 @@ extern "C" {
 #ifdef SQLITE_VERSION
 # undef SQLITE_VERSION
 #endif
-#define SQLITE_VERSION "2.8.17ce2"
+#define SQLITE_VERSION "2.8.17ce3"
 
 /*
 ** The version string is also compiled into the library so that a program

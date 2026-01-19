@@ -125,8 +125,15 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
             }
             case 's': {
                 const char *s = va_arg(ap, const char*);
+                int len;
                 if (!s) s = "(null)";
-                while (*s) *p++ = *s++;
+                if (precision >= 0) {
+                    /* Copy at most 'precision' characters */
+                    for (len = 0; len < precision && s[len]; len++)
+                        *p++ = s[len];
+                } else {
+                    while (*s) *p++ = *s++;
+                }
                 break;
             }
             case 'c': {
