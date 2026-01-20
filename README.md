@@ -7,11 +7,11 @@ SQLite/CE: A transactional relational database for Windows CE
 
 # Distribution
 
-SQLite/CE consists of three core binaries: `SQLiteCE.dll`, the ported SQLite library; `SQLiteCEdit.exe`, the native query editor; and `SQLiteCETest.exe`, the optional test harness that can be used to validate SQLite/CE functionality on your platform.
+SQLite/CE consists of three core binaries: `SQLiteCE.dll`, the ported SQLite library; `SQLiteCEdit.exe`, the native query editor; and `SQLiteCEbench.exe`, the optional benchmarking and validation tool that can be used to test SQLite/CE functionality and performance on your platform.
 
 ## Library
 
-The core SQLite/CE library `SQLiteCE.dll` is a fully functional port of SQLite 2.8 to the Windows CE operating system, implementing a serverless, self-contained database engine that supports ACID-compliant transactions and advanced constructs like temporary tables, views, constraints, triggers and indexes. SQLite/CE's SQL interpreter is mostly compliant with the SQL-92 standard and provides most essential features, including support for compound queries and subqueries. For application developers, SQLite/CE carries over SQLite's straightforward C API that can be easily integrated with other applications and redistributed alongside them.
+The core SQLite/CE library `SQLiteCE.dll` is a fully functional port of SQLite 2.8 to the Windows CE operating system, implementing a serverless, self-contained database engine that supports ACID-compliant transactions and advanced constructs like temporary tables, views, constraints, triggers and indexes. SQLite/CE's SQL interpreter is mostly compliant with the SQL-92 standard and provides most essential features, including support for compound queries and subqueries. For application developers, SQLite/CE carries over SQLite's straightforward C API that can be easily integrated with other applications and redistributed alongside them. 
 
 ## SQLite/CEdit
 
@@ -56,9 +56,9 @@ SQLite/CEdit includes tools to migrate data in and out of SQLite databases in a 
 - In-memory database instantiation to file
 - Import from .CSV and Windows CE database formats with type inference 
 
-## SQLite/CE Test
+## SQLite/CEbench
 
-SQLite/CE includes a simple "test harness" application that exercises various features of the SQLite library. This application is tailored to the needs of the project's development and is not rigorously complete, but is nonetheless provided as something potentially useful to those who wish to validate or test the performance of the ported library on their device.
+SQLite/CE includes **SQLite/CEbench**, a benchmarking and validation tool that exercises various features of the SQLite library with detailed timing and categorization. SQLite/CEbench tests across multiple storage paths (memory, object store, storage card) and provides per-category timing breakdowns, device identification, and configurable iteration counts. This application is tailored to the needs of the project's development but is nonetheless provided as something potentially useful to those who wish to validate or benchmark the ported library on their device.
 
 # Installation
 
@@ -66,7 +66,7 @@ SQLite/CE is currently distributed as loose binaries, which can be found in the 
 
 To install the full SQLite/CE distribution:
 - Place `SQLiteCE.dll` in the `\Windows` directory of your device
-- Place the binaries `SQLiteCEdit.exe` and `SQLiteCETest.exe` in a location of your choosing, such as a directory in `\Program Files` or on your storage card.
+- Place the binaries `SQLiteCEdit.exe` and `SQLiteCEbench.exe` in a location of your choosing, such as a directory in `\Program Files` or on your storage card.
 - Create shortcuts on the desktop and Start menu (`\Windows\Programs`) as desired
 
 # Limitations
