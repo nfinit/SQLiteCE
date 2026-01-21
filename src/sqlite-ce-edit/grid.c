@@ -319,6 +319,24 @@ void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
     dataCol = g_editMode ? col + 1 : col;
     numDisplayCols = g_editMode ? g_lastResultCols - 1 : g_lastResultCols;
     
+    /* Handle placeholder row (last row in edit mode) */
+    if (g_editMode && row == g_lastResultRows) {
+        /* Show column hints based on metadata */
+        if (col < g_colMetaCount) {
+            ColumnMeta *cm = &g_colMeta[col];
+            if (cm->isAutoInc) {
+                pdi->item.pszText = L"(auto)";
+            } else if (cm->notNull && !cm->hasDefault) {
+                pdi->item.pszText = L"";  /* Required - leave blank, user must fill */
+            } else {
+                pdi->item.pszText = L"";  /* Optional */
+            }
+        } else {
+            pdi->item.pszText = L"";
+        }
+        return;
+    }
+    
     if (row >= g_lastResultRows || col >= numDisplayCols) {
         pdi->item.pszText = L"";
         return;
@@ -404,7 +422,8 @@ void PopulateGrid(void) {
     }
     
     /* Set item count - virtual ListView fetches data on demand */
-    ListView_SetItemCount(g_hwndGrid, g_lastResultRows);
+    /* In edit mode, add one extra row for the placeholder (new row) */
+    ListView_SetItemCount(g_hwndGrid, g_lastResultRows + (g_editMode ? 1 : 0));
     
     /* Auto-fit columns (optional - sample first 20 rows for speed) */
     if (g_gridAutoSize) {
@@ -419,7 +438,7 @@ void PopulateGrid(void) {
             if (contentWidth > headerWidth)
                 ListView_SetColumnWidth(g_hwndGrid, j, contentWidth);
         }
-        ListView_SetItemCount(g_hwndGrid, g_lastResultRows);
+        ListView_SetItemCount(g_hwndGrid, g_lastResultRows + (g_editMode ? 1 : 0));
     }
     
     /* Re-enable repainting and refresh */
@@ -482,6 +501,12 @@ static void StartCellEdit(int row, int col) {
     
     if (!g_editMode || !g_hwndGrid || row < 0) return;
     if (g_hwndEditOverlay) CancelCellEdit();  /* Close any existing edit */
+    
+    /* Placeholder row (new row) - not yet implemented */
+    if (row == g_lastResultRows) {
+        /* TODO: implement insert mode editing */
+        return;
+    }
     
     /* Get cell rectangle - need to calculate from column positions */
     GetClientRect(g_hwndGrid, &rcGrid);
