@@ -99,6 +99,10 @@ static void CopySelectedRow(void) {
 }
 
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    /* Tell Windows we want Enter key */
+    if (msg == WM_GETDLGCODE) {
+        return DLGC_WANTALLKEYS;
+    }
     /* Global shortcuts first */
     if (HandleGlobalKeys(msg, wParam))
         return 0;
@@ -143,17 +147,38 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (sel >= 0) StartCellEdit(sel, 0);
             return 0;
         }
+        /* Enter - Start editing selected row, or commit if in insert mode with data */
+        if (wParam == VK_RETURN && g_editMode && !g_hwndEditOverlay) {
+            int sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
+            if (sel >= 0) {
+                /* If on placeholder row with no pending data, start editing */
+                if (sel == g_lastResultRows) {
+                    int hasData = 0, i, startCol = 0;
+                    if (g_pendingValues) {
+                        for (i = 0; i < g_colMetaCount && !hasData; i++)
+                            if (g_pendingValues[i]) hasData = 1;
+                    }
+                    if (hasData) {
+                        CommitInsert();
+                    } else {
+                        /* Find first non-autoincrement column */
+                        for (i = 0; i < g_colMetaCount; i++) {
+                            if (!g_colMeta[i].isAutoInc) { startCol = i; break; }
+                        }
+                        StartCellEdit(sel, startCol);
+                    }
+                } else {
+                    StartCellEdit(sel, 0);
+                }
+            }
+            return 0;
+        }
         /* Delete - Delete selected row (only in edit mode, not placeholder) */
         if (wParam == VK_DELETE && g_editMode) {
             int sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
             if (sel >= 0 && sel < g_lastResultRows) {
                 DeleteSelectedRow();
             }
-            return 0;
-        }
-        /* Enter - Commit new row (only in insert mode, when not in cell edit) */
-        if (wParam == VK_RETURN && g_insertMode && !g_hwndEditOverlay) {
-            CommitInsert();
             return 0;
         }
         /* Escape - Cancel insert mode if active (when not in cell edit) */
