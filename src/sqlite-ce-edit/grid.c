@@ -493,85 +493,80 @@ static int NextEditableColumn(int col, int direction) {
     return -1;  /* No more editable columns */
 }
 
-static LRESULT CALLBACK EditOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+/*
+** Centralized edit overlay keyboard handler.
+** Returns 1 if key was handled, 0 otherwise.
+*/
+static int HandleEditKey(UINT msg, WPARAM wParam) {
     int ctrl = GetKeyState(VK_CONTROL) < 0;
     int shift = GetKeyState(VK_SHIFT) < 0;
+    int nextCol, row, wasInsertMode;
     
-    if (msg == WM_KEYDOWN) {
-        /* Ctrl+Delete - set NULL and advance to next cell */
-        if (ctrl && wParam == VK_DELETE) {
-            int nextCol = NextEditableColumn(g_editCol, 1);
-            int row = g_editRow;
-            g_commitNull = 1;
-            CommitCellEdit();
-            if (nextCol >= 0) {
-                StartCellEdit(row, nextCol);
-            }
-            return 0;
-        }
-        
-        /* Tab - move to next/prev column */
-        if (wParam == VK_TAB) {
-            int nextCol = NextEditableColumn(g_editCol, shift ? -1 : 1);
-            int row = g_editRow;
-            
-            /* Commit current cell first */
-            CommitCellEdit();
-            
-            if (nextCol >= 0) {
-                /* Move to next/prev column */
-                StartCellEdit(row, nextCol);
-            } else if (!shift && g_insertMode) {
-                /* Tab from last column in insert mode - commit row */
-                CommitInsert();
-            }
-            return 0;
-        }
-        
-        /* Enter - commit cell (and row if in insert mode) */
-        if (wParam == VK_RETURN) {
-            int wasInsertMode = g_insertMode;
-            int row = g_editRow;
-            CommitCellEdit();
-            if (wasInsertMode && row == g_lastResultRows) {
-                CommitInsert();
-            }
-            return 0;
-        }
-        if (wParam == VK_ESCAPE) {
-            CancelCellEdit();
-            return 0;
-        }
-    }
-    /* Ctrl+0 - set NULL and advance to next cell */
-    if (msg == WM_CHAR && ctrl && wParam == '0') {
-        int nextCol = NextEditableColumn(g_editCol, 1);
-        int row = g_editRow;
+    /* Ctrl+Delete - set NULL and advance */
+    if (msg == WM_KEYDOWN && ctrl && wParam == VK_DELETE) {
+        nextCol = NextEditableColumn(g_editCol, 1);
+        row = g_editRow;
         g_commitNull = 1;
+        CommitCellEdit();
+        if (nextCol >= 0) StartCellEdit(row, nextCol);
+        return 1;
+    }
+    
+    /* Ctrl+0 - set NULL and advance (WM_KEYDOWN or WM_CHAR) */
+    if (ctrl && wParam == '0' && (msg == WM_KEYDOWN || msg == WM_CHAR)) {
+        nextCol = NextEditableColumn(g_editCol, 1);
+        row = g_editRow;
+        g_commitNull = 1;
+        CommitCellEdit();
+        if (nextCol >= 0) StartCellEdit(row, nextCol);
+        return 1;
+    }
+    
+    /* Tab / Shift+Tab - move between columns */
+    if (msg == WM_KEYDOWN && wParam == VK_TAB) {
+        nextCol = NextEditableColumn(g_editCol, shift ? -1 : 1);
+        row = g_editRow;
         CommitCellEdit();
         if (nextCol >= 0) {
             StartCellEdit(row, nextCol);
+        } else if (!shift && g_insertMode) {
+            CommitInsert();
         }
-        return 0;
+        return 1;
     }
-    /* Also handle Ctrl+0 via WM_KEYDOWN */
-    if (msg == WM_KEYDOWN && ctrl && wParam == '0') {
-        int nextCol = NextEditableColumn(g_editCol, 1);
-        int row = g_editRow;
-        g_commitNull = 1;
+    
+    /* Enter - commit cell (and row if in insert mode) */
+    if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
+        wasInsertMode = g_insertMode;
+        row = g_editRow;
         CommitCellEdit();
-        if (nextCol >= 0) {
-            StartCellEdit(row, nextCol);
+        if (wasInsertMode && row == g_lastResultRows) {
+            CommitInsert();
         }
+        return 1;
+    }
+    
+    /* Escape - cancel edit */
+    if (msg == WM_KEYDOWN && wParam == VK_ESCAPE) {
+        CancelCellEdit();
+        return 1;
+    }
+    
+    return 0;
+}
+
+static LRESULT CALLBACK EditOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    /* Handle edit shortcuts */
+    if (msg == WM_KEYDOWN || msg == WM_CHAR) {
+        if (HandleEditKey(msg, wParam)) return 0;
+    }
+    
+    /* Commit on focus loss */
+    if (msg == WM_KILLFOCUS && g_hwndEditOverlay) {
+        CommitCellEdit();
         return 0;
     }
-    if (msg == WM_KILLFOCUS) {
-        /* Commit on focus loss - but not if we're already closing */
-        if (g_hwndEditOverlay) {
-            CommitCellEdit();
-        }
-        return 0;
-    }
+    
     return CallWindowProc(g_pfnEditOverlayProc, hwnd, msg, wParam, lParam);
 }
 
@@ -691,12 +686,14 @@ static void StartCellEdit(int row, int col) {
 }
 
 static void CancelCellEdit(void) {
-    if (g_hwndEditOverlay) {
-        DestroyWindow(g_hwndEditOverlay);
-        g_hwndEditOverlay = NULL;
-    }
+    HWND hwnd = g_hwndEditOverlay;
+    /* Clear handle first to prevent WM_KILLFOCUS from committing */
+    g_hwndEditOverlay = NULL;
     g_editRow = -1;
     g_editCol = -1;
+    if (hwnd) {
+        DestroyWindow(hwnd);
+    }
     SetFocus(g_hwndGrid);
 }
 
