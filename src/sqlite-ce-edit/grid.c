@@ -351,6 +351,9 @@ void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
             ColumnMeta *cm = &g_colMeta[col];
             if (cm->isAutoInc) {
                 pdi->item.pszText = L"(auto)";
+            } else if (!cm->notNull && !cm->hasDefault) {
+                /* Nullable without default - will be NULL if not filled */
+                pdi->item.pszText = L"(null)";
             } else {
                 pdi->item.pszText = L"";
             }
@@ -482,6 +485,7 @@ void PopulateGrid(void) {
 
 static int g_commitNull = 0;  /* Flag to commit NULL instead of text value */
 static int g_inCommit = 0;    /* Guard against re-entry */
+static int g_cellDirty = 0;   /* Track if user typed anything in cell */
 
 /* Find next editable column (skips autoincrement) */
 static int NextEditableColumn(int col, int direction) {
@@ -561,6 +565,15 @@ static LRESULT CALLBACK EditOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
         if (HandleEditKey(msg, wParam)) return 0;
     }
     
+    /* Track dirty state - user typed something */
+    if (msg == WM_CHAR && wParam >= 32) {
+        g_cellDirty = 1;
+    }
+    /* Also mark dirty on backspace/delete (user is modifying) */
+    if (msg == WM_KEYDOWN && (wParam == VK_BACK || wParam == VK_DELETE)) {
+        g_cellDirty = 1;
+    }
+    
     /* Commit on focus loss */
     if (msg == WM_KILLFOCUS && g_hwndEditOverlay) {
         CommitCellEdit();
@@ -579,6 +592,9 @@ static void StartCellEdit(int row, int col) {
     
     if (!g_editMode || !g_hwndGrid || row < 0) return;
     if (g_hwndEditOverlay) CancelCellEdit();  /* Close any existing edit */
+    
+    /* Reset dirty flag for new edit */
+    g_cellDirty = 0;
     
     /* Placeholder row (new row) - enter insert mode */
     if (row == g_lastResultRows) {
@@ -953,8 +969,11 @@ static void CommitCellEdit(void) {
         if (setNull) {
             /* Explicit NULL - use marker */
             StorePendingValue(g_editCol, "\x01");
+        } else if (!g_cellDirty && newVal[0] == '\0') {
+            /* Cell untouched and empty - don't store anything (will be NULL) */
+            /* StorePendingValue not called - leaves as NULL */
         } else {
-            /* Store value (including empty string) */
+            /* Store value (including empty string if user typed then deleted) */
             StorePendingValue(g_editCol, newVal);
         }
         
