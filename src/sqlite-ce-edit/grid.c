@@ -406,7 +406,13 @@ void PopulateGrid(void) {
     ListView_SetItemCount(g_hwndGrid, 0);
     while (ListView_DeleteColumn(g_hwndGrid, 0)) ;
     
-    if (!g_lastResult || g_lastResultCols < 1 || g_lastResultRows < 1) {
+    if (!g_lastResult || g_lastResultCols < 1) {
+        SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
+        return;
+    }
+    
+    /* Allow 0 data rows in edit mode (placeholder row still shown) */
+    if (g_lastResultRows < 1 && !g_editMode) {
         SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
         return;
     }
@@ -453,7 +459,8 @@ void PopulateGrid(void) {
     
     /* Auto-fit columns (optional - sample first 20 rows for speed) */
     if (g_gridAutoSize) {
-        int sampleRows = g_lastResultRows < 20 ? g_lastResultRows : 20;
+        int totalRows = g_lastResultRows + (g_editMode ? 1 : 0);
+        int sampleRows = totalRows < 20 ? totalRows : 20;
         ListView_SetItemCount(g_hwndGrid, sampleRows);
         for (j = 0; j < numDisplayCols; j++) {
             int contentWidth, headerWidth;
@@ -464,7 +471,7 @@ void PopulateGrid(void) {
             if (contentWidth > headerWidth)
                 ListView_SetColumnWidth(g_hwndGrid, j, contentWidth);
         }
-        ListView_SetItemCount(g_hwndGrid, g_lastResultRows + (g_editMode ? 1 : 0));
+        ListView_SetItemCount(g_hwndGrid, totalRows);
     }
     
     /* Re-enable repainting and refresh */

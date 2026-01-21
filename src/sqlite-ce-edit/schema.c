@@ -590,11 +590,21 @@ void OpenTableForEditing(const char *tablename) {
     char *errmsg = NULL;
     wchar_t wbuf[64];
     DWORD startTick, elapsed;
+    char **results = NULL;
+    int nRows = 0, nCols = 0;
+    int i, total;
     
     if (!g_db || !tablename) return;
     
     /* Clear any previous edit state */
     ClearEditMode();
+    
+    /* Load column metadata first - needed for empty tables */
+    LoadColumnMetadata(tablename);
+    if (g_colMetaCount < 1) {
+        SetStatusResult(L"Error: no columns found");
+        return;
+    }
     
     /* Build SELECT rowid, * FROM tablename */
     s = "SELECT rowid, * FROM ";
@@ -609,83 +619,100 @@ void OpenTableForEditing(const char *tablename) {
     
     startTick = GetTickCount();
     
-    /* Use sqlite_get_table for simplicity */
-    {
-        char **results = NULL;
-        int nRows = 0, nCols = 0;
-        
-        rc = sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
-        
-        elapsed = GetTickCount() - startTick;
-        g_lastQueryTime = elapsed;
-        
-        if (rc == SQLITE_OK && results) {
-            int i, total;
-            
-            /* Free previous results */
-            FreeLastResults();
-            
-            /* Store results - includes rowid as column 0 */
-            g_lastResultRows = nRows;
-            g_lastResultCols = nCols;
-            total = (nRows + 1) * nCols;
-            
-            g_lastResult = (char **)LocalAlloc(LMEM_FIXED, total * sizeof(char *));
-            if (g_lastResult) {
-                for (i = 0; i < total; i++) {
-                    if (results[i]) {
-                        int len = 0;
-                        const char *src = results[i];
-                        while (src[len]) len++;
-                        g_lastResult[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
-                        if (g_lastResult[i]) {
-                            int j;
-                            for (j = 0; j <= len; j++) g_lastResult[i][j] = results[i][j];
-                        }
-                    } else {
-                        g_lastResult[i] = NULL;
+    rc = sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
+    
+    elapsed = GetTickCount() - startTick;
+    g_lastQueryTime = elapsed;
+    
+    if (rc != SQLITE_OK) {
+        if (errmsg) {
+            OutputLine(errmsg);
+            sqlite_freemem(errmsg);
+        }
+        FreeColumnMetadata();
+        SetStatusResult(L"Error opening table");
+        return;
+    }
+    
+    /* Free previous results */
+    FreeLastResults();
+    
+    /* Handle empty table: nCols=0 from sqlite_get_table, use metadata */
+    if (nCols == 0) {
+        nCols = g_colMetaCount + 1;  /* +1 for rowid */
+    }
+    
+    /* Store results - includes rowid as column 0 */
+    g_lastResultRows = nRows;
+    g_lastResultCols = nCols;
+    total = (nRows + 1) * nCols;
+    
+    g_lastResult = (char **)LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT, total * sizeof(char *));
+    if (g_lastResult) {
+        /* Build header row from column metadata if no results */
+        if (!results || nRows == 0) {
+            /* First column is rowid */
+            g_lastResult[0] = (char *)LocalAlloc(LMEM_FIXED, 6);
+            if (g_lastResult[0]) {
+                g_lastResult[0][0] = 'r'; g_lastResult[0][1] = 'o';
+                g_lastResult[0][2] = 'w'; g_lastResult[0][3] = 'i';
+                g_lastResult[0][4] = 'd'; g_lastResult[0][5] = '\0';
+            }
+            /* Remaining columns from metadata */
+            for (i = 0; i < g_colMetaCount; i++) {
+                int len = 0;
+                const char *src = g_colMeta[i].name;
+                while (src[len]) len++;
+                g_lastResult[i + 1] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+                if (g_lastResult[i + 1]) {
+                    int j;
+                    for (j = 0; j <= len; j++) g_lastResult[i + 1][j] = src[j];
+                }
+            }
+        } else {
+            /* Copy from results */
+            for (i = 0; i < total; i++) {
+                if (results[i]) {
+                    int len = 0;
+                    const char *src = results[i];
+                    while (src[len]) len++;
+                    g_lastResult[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+                    if (g_lastResult[i]) {
+                        int j;
+                        for (j = 0; j <= len; j++) g_lastResult[i][j] = results[i][j];
                     }
                 }
             }
-            sqlite_free_table(results);
-            
-            /* Save current grid view state before entering edit mode */
-            g_gridViewBeforeEdit = g_gridView;
-            
-            /* Load column metadata for edit mode */
-            LoadColumnMetadata(tablename);
-            
-            /* Set edit mode */
-            g_editMode = 1;
-            s = tablename;
-            p = g_editTableName;
-            while (*s && (p - g_editTableName) < 127) *p++ = *s++;
-            *p = '\0';
-            
-            /* Update status */
-            {
-                wchar_t wtbl[128];
-                MultiByteToWideChar(CP_ACP, 0, g_editTableName, -1, wtbl, 128);
-                wsprintfW(wbuf, L"Editing: %s (%d rows)", wtbl, nRows);
-            }
-            SetStatusResult(wbuf);
-            
-            /* Populate grid and switch to grid view */
-            g_gridView = 1;
-            PopulateGrid();
-            SwitchView(VIEW_RESULT);
-            
-            /* Disable grid/text toggle button while in edit mode */
-            SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
-            SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, TRUE);
-        } else {
-            if (errmsg) {
-                OutputLine(errmsg);
-                sqlite_freemem(errmsg);
-            }
-            SetStatusResult(L"Error opening table");
         }
     }
+    if (results) sqlite_free_table(results);
+    
+    /* Save current grid view state before entering edit mode */
+    g_gridViewBeforeEdit = g_gridView;
+    
+    /* Set edit mode */
+    g_editMode = 1;
+    s = tablename;
+    p = g_editTableName;
+    while (*s && (p - g_editTableName) < 127) *p++ = *s++;
+    *p = '\0';
+    
+    /* Update status */
+    {
+        wchar_t wtbl[128];
+        MultiByteToWideChar(CP_ACP, 0, g_editTableName, -1, wtbl, 128);
+        wsprintfW(wbuf, L"Editing: %s (%d rows)", wtbl, nRows);
+    }
+    SetStatusResult(wbuf);
+    
+    /* Populate grid and switch to grid view */
+    g_gridView = 1;
+    PopulateGrid();
+    SwitchView(VIEW_RESULT);
+    
+    /* Disable grid/text toggle button while in edit mode */
+    SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
+    SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, TRUE);
 }
 
 /*============================================================================
