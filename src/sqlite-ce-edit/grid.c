@@ -108,6 +108,14 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return 0;
     if (msg == WM_KEYDOWN) {
         int ctrl = GetKeyState(VK_CONTROL) < 0;
+        int sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
+        
+        /* Arrow/Enter with no selection - select first row and focus */
+        if (sel < 0 && (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_RETURN)) {
+            ListView_SetItemState(g_hwndGrid, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+            SetFocus(g_hwndGrid);
+            return 0;
+        }
         
         /* Ctrl+C - Copy selected row */
         if (ctrl && wParam == 'C') {
