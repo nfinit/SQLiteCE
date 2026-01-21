@@ -314,18 +314,23 @@ static int ColumnCallback(void *pArg, int argc, char **argv, char **cols) {
     wchar_t wtext[256];
     const char *name = argv[1] ? argv[1] : "?";
     const char *type = argv[2] ? argv[2] : "";
-    int isPK = (argv[5] && argv[5][0] == '1');
+    int notNull = (argv[3] && argv[3][0] != '0' && argv[3][0] != '\0');
+    int isPK = (argv[5] && argv[5][0] != '0' && argv[5][0] != '\0');
     int i = 0;
     (void)argc; (void)cols;
     
-    /* Build display string: "name (TYPE) PK" */
+    /* Build display string: "name (TYPE) PK" or "name (TYPE) NN" */
     while (*name && i < 200) wtext[i++] = (wchar_t)(unsigned char)*name++;
     if (type[0]) {
         wtext[i++] = ' '; wtext[i++] = '(';
-        while (*type && i < 230) wtext[i++] = (wchar_t)(unsigned char)*type++;
+        while (*type && i < 220) wtext[i++] = (wchar_t)(unsigned char)*type++;
         wtext[i++] = ')';
     }
-    if (isPK) { wtext[i++] = ' '; wtext[i++] = 'P'; wtext[i++] = 'K'; }
+    if (isPK) { 
+        wtext[i++] = ' '; wtext[i++] = 'P'; wtext[i++] = 'K'; 
+    } else if (notNull) { 
+        wtext[i++] = ' '; wtext[i++] = 'N'; wtext[i++] = 'N'; 
+    }
     wtext[i] = 0;
     
     AddTreeItem(ctx->hParent, wtext, isPK ? IMG_KEY : IMG_COLUMN);
@@ -429,6 +434,9 @@ void ClearEditMode(void) {
     g_editMode = 0;
     g_editTableName[0] = '\0';
     
+    /* Free column metadata */
+    FreeColumnMetadata();
+    
     /* Restore previous grid/text view state */
     g_gridView = g_gridViewBeforeEdit;
     ShowWindow(g_hwndResult, g_gridView ? SW_HIDE : SW_SHOW);
@@ -437,6 +445,125 @@ void ClearEditMode(void) {
     /* Re-enable the grid toggle button */
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
+}
+
+/*============================================================================
+** Column metadata management
+**============================================================================*/
+
+void FreeColumnMetadata(void) {
+    if (g_colMeta) {
+        LocalFree(g_colMeta);
+        g_colMeta = NULL;
+    }
+    g_colMetaCount = 0;
+}
+
+/* Callback context for LoadColumnMetadata */
+typedef struct {
+    int capacity;
+    int count;
+} ColMetaCtx;
+
+static int ColMetaCallback(void *pArg, int argc, char **argv, char **cols) {
+    ColMetaCtx *ctx = (ColMetaCtx *)pArg;
+    ColumnMeta *col;
+    const char *s;
+    char *d;
+    int i;
+    (void)argc; (void)cols;
+    
+    if (ctx->count >= ctx->capacity) return 0;
+    
+    col = &g_colMeta[ctx->count];
+    
+    /* name (argv[1]) */
+    col->name[0] = '\0';
+    if (argv[1]) {
+        s = argv[1]; d = col->name; i = 0;
+        while (*s && i < 63) { *d++ = *s++; i++; }
+        *d = '\0';
+    }
+    
+    /* type (argv[2]) */
+    col->type[0] = '\0';
+    if (argv[2]) {
+        s = argv[2]; d = col->type; i = 0;
+        while (*s && i < 31) { *d++ = *s++; i++; }
+        *d = '\0';
+    }
+    
+    /* notnull (argv[3]) - non-zero means NOT NULL */
+    col->notNull = (argv[3] && argv[3][0] != '0' && argv[3][0] != '\0') ? 1 : 0;
+    
+    /* dflt_value (argv[4]) - hasDefault if non-NULL */
+    col->hasDefault = (argv[4] != NULL) ? 1 : 0;
+    
+    /* pk (argv[5]) - non-zero means PRIMARY KEY */
+    col->isPK = (argv[5] && argv[5][0] != '0' && argv[5][0] != '\0') ? 1 : 0;
+    
+    /* isAutoInc: INTEGER PRIMARY KEY is alias for rowid in SQLite 2.x */
+    col->isAutoInc = 0;
+    if (col->isPK && col->type[0]) {
+        /* Case-insensitive check for "INTEGER" */
+        const char *t = col->type;
+        if ((t[0]=='I'||t[0]=='i') && (t[1]=='N'||t[1]=='n') &&
+            (t[2]=='T'||t[2]=='t') && (t[3]=='E'||t[3]=='e') &&
+            (t[4]=='G'||t[4]=='g') && (t[5]=='E'||t[5]=='e') &&
+            (t[6]=='R'||t[6]=='r') && t[7]=='\0') {
+            col->isAutoInc = 1;
+        }
+    }
+    
+    ctx->count++;
+    return 0;
+}
+
+int LoadColumnMetadata(const char *tablename) {
+    char sql[256];
+    char *p;
+    const char *s;
+    char *errmsg = NULL;
+    ColMetaCtx ctx;
+    
+    /* Free any existing metadata */
+    FreeColumnMetadata();
+    
+    if (!g_db || !tablename) return 0;
+    
+    /* First pass: count columns */
+    {
+        char **results = NULL;
+        int nRows = 0, nCols = 0;
+        
+        p = sql;
+        s = "PRAGMA table_info('";
+        while (*s) *p++ = *s++;
+        s = tablename;
+        while (*s) *p++ = *s++;
+        *p++ = '\''; *p++ = ')'; *p = '\0';
+        
+        sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
+        if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
+        if (results) sqlite_free_table(results);
+        
+        if (nRows < 1) return 0;
+        
+        /* Allocate array */
+        g_colMeta = (ColumnMeta *)LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT, 
+            nRows * sizeof(ColumnMeta));
+        if (!g_colMeta) return 0;
+        
+        ctx.capacity = nRows;
+        ctx.count = 0;
+    }
+    
+    /* Second pass: populate metadata */
+    sqlite_exec(g_db, sql, ColMetaCallback, &ctx, &errmsg);
+    if (errmsg) sqlite_freemem(errmsg);
+    
+    g_colMetaCount = ctx.count;
+    return g_colMetaCount;
 }
 
 /*============================================================================
@@ -512,6 +639,9 @@ void OpenTableForEditing(const char *tablename) {
             
             /* Save current grid view state before entering edit mode */
             g_gridViewBeforeEdit = g_gridView;
+            
+            /* Load column metadata for edit mode */
+            LoadColumnMetadata(tablename);
             
             /* Set edit mode */
             g_editMode = 1;

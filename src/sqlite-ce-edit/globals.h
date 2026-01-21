@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.9.0"
+#define SQLITECEDIT_VERSION L"0.9.0.2"
 
 /*============================================================================
 ** Menu IDs
@@ -257,6 +257,19 @@ extern int g_editMode;
 extern char g_editTableName[128];
 extern int g_gridViewBeforeEdit;
 
+/* Column metadata for edit mode */
+typedef struct {
+    char name[64];
+    char type[32];
+    int notNull;
+    int hasDefault;
+    int isPK;
+    int isAutoInc;
+} ColumnMeta;
+
+extern ColumnMeta *g_colMeta;
+extern int g_colMetaCount;
+
 /*============================================================================
 ** Function Declarations - Output (output.c)
 **============================================================================*/
@@ -294,6 +307,8 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm);
 void OnSchemaDoubleClick(void);
 void OpenTableForEditing(const char *tablename);
 void ClearEditMode(void);
+int LoadColumnMetadata(const char *tablename);
+void FreeColumnMetadata(void);
 
 /* Grid view (grid.c) */
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy);
