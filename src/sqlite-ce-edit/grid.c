@@ -24,6 +24,10 @@ static void StartCellEdit(int row, int col);
 static void CommitCellEdit(void);
 static void CancelCellEdit(void);
 static void DeleteSelectedRow(void);
+static void InitInsertMode(void);
+static void ClearInsertMode(void);
+static void CommitInsert(void);
+static int NextEditableColumn(int col, int direction);
 
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     HIMAGELIST hIml;
@@ -139,9 +143,22 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (sel >= 0) StartCellEdit(sel, 0);
             return 0;
         }
-        /* Delete - Delete selected row (only in edit mode) */
+        /* Delete - Delete selected row (only in edit mode, not placeholder) */
         if (wParam == VK_DELETE && g_editMode) {
-            DeleteSelectedRow();
+            int sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
+            if (sel >= 0 && sel < g_lastResultRows) {
+                DeleteSelectedRow();
+            }
+            return 0;
+        }
+        /* Enter - Commit new row (only in insert mode, when not in cell edit) */
+        if (wParam == VK_RETURN && g_insertMode && !g_hwndEditOverlay) {
+            CommitInsert();
+            return 0;
+        }
+        /* Escape - Cancel insert mode if active (when not in cell edit) */
+        if (wParam == VK_ESCAPE && g_insertMode && !g_hwndEditOverlay) {
+            ClearInsertMode();
             return 0;
         }
     }
@@ -321,15 +338,21 @@ void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
     
     /* Handle placeholder row (last row in edit mode) */
     if (g_editMode && row == g_lastResultRows) {
-        /* Show column hints based on metadata */
-        if (col < g_colMetaCount) {
+        /* Show pending value if in insert mode, otherwise show hints */
+        if (g_insertMode && g_pendingValues && g_pendingValues[col]) {
+            /* Check for explicit NULL marker */
+            if (g_pendingValues[col][0] == '\x01' && g_pendingValues[col][1] == '\0') {
+                pdi->item.pszText = L"(null)";
+            } else {
+                MultiByteToWideChar(CP_ACP, 0, g_pendingValues[col], -1, wbuf, 256);
+                pdi->item.pszText = wbuf;
+            }
+        } else if (col < g_colMetaCount) {
             ColumnMeta *cm = &g_colMeta[col];
             if (cm->isAutoInc) {
                 pdi->item.pszText = L"(auto)";
-            } else if (cm->notNull && !cm->hasDefault) {
-                pdi->item.pszText = L"";  /* Required - leave blank, user must fill */
             } else {
-                pdi->item.pszText = L"";  /* Optional */
+                pdi->item.pszText = L"";
             }
         } else {
             pdi->item.pszText = L"";
@@ -458,35 +481,95 @@ void PopulateGrid(void) {
 **============================================================================*/
 
 static int g_commitNull = 0;  /* Flag to commit NULL instead of text value */
+static int g_inCommit = 0;    /* Guard against re-entry */
+
+/* Find next editable column (skips autoincrement) */
+static int NextEditableColumn(int col, int direction) {
+    int next = col + direction;
+    while (next >= 0 && next < g_colMetaCount) {
+        if (!g_colMeta[next].isAutoInc) return next;
+        next += direction;
+    }
+    return -1;  /* No more editable columns */
+}
 
 static LRESULT CALLBACK EditOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     int ctrl = GetKeyState(VK_CONTROL) < 0;
+    int shift = GetKeyState(VK_SHIFT) < 0;
     
     if (msg == WM_KEYDOWN) {
-        if (wParam == VK_RETURN) {
+        /* Ctrl+Delete - set NULL and advance to next cell */
+        if (ctrl && wParam == VK_DELETE) {
+            int nextCol = NextEditableColumn(g_editCol, 1);
+            int row = g_editRow;
+            g_commitNull = 1;
             CommitCellEdit();
+            if (nextCol >= 0) {
+                StartCellEdit(row, nextCol);
+            }
+            return 0;
+        }
+        
+        /* Tab - move to next/prev column */
+        if (wParam == VK_TAB) {
+            int nextCol = NextEditableColumn(g_editCol, shift ? -1 : 1);
+            int row = g_editRow;
+            
+            /* Commit current cell first */
+            CommitCellEdit();
+            
+            if (nextCol >= 0) {
+                /* Move to next/prev column */
+                StartCellEdit(row, nextCol);
+            } else if (!shift && g_insertMode) {
+                /* Tab from last column in insert mode - commit row */
+                CommitInsert();
+            }
+            return 0;
+        }
+        
+        /* Enter - commit cell (and row if in insert mode) */
+        if (wParam == VK_RETURN) {
+            int wasInsertMode = g_insertMode;
+            int row = g_editRow;
+            CommitCellEdit();
+            if (wasInsertMode && row == g_lastResultRows) {
+                CommitInsert();
+            }
             return 0;
         }
         if (wParam == VK_ESCAPE) {
             CancelCellEdit();
             return 0;
         }
-        /* Ctrl+Delete - set NULL */
-        if (ctrl && wParam == VK_DELETE) {
-            g_commitNull = 1;
-            CommitCellEdit();
-            return 0;
-        }
     }
-    /* Ctrl+0 comes through as WM_CHAR with value 0x30 or as null char */
-    if (msg == WM_CHAR && ctrl && (wParam == '0' || wParam == 0)) {
+    /* Ctrl+0 - set NULL and advance to next cell */
+    if (msg == WM_CHAR && ctrl && wParam == '0') {
+        int nextCol = NextEditableColumn(g_editCol, 1);
+        int row = g_editRow;
         g_commitNull = 1;
         CommitCellEdit();
+        if (nextCol >= 0) {
+            StartCellEdit(row, nextCol);
+        }
+        return 0;
+    }
+    /* Also handle Ctrl+0 via WM_KEYDOWN */
+    if (msg == WM_KEYDOWN && ctrl && wParam == '0') {
+        int nextCol = NextEditableColumn(g_editCol, 1);
+        int row = g_editRow;
+        g_commitNull = 1;
+        CommitCellEdit();
+        if (nextCol >= 0) {
+            StartCellEdit(row, nextCol);
+        }
         return 0;
     }
     if (msg == WM_KILLFOCUS) {
-        /* Commit on focus loss */
-        CommitCellEdit();
+        /* Commit on focus loss - but not if we're already closing */
+        if (g_hwndEditOverlay) {
+            CommitCellEdit();
+        }
         return 0;
     }
     return CallWindowProc(g_pfnEditOverlayProc, hwnd, msg, wParam, lParam);
@@ -502,9 +585,57 @@ static void StartCellEdit(int row, int col) {
     if (!g_editMode || !g_hwndGrid || row < 0) return;
     if (g_hwndEditOverlay) CancelCellEdit();  /* Close any existing edit */
     
-    /* Placeholder row (new row) - not yet implemented */
+    /* Placeholder row (new row) - enter insert mode */
     if (row == g_lastResultRows) {
-        /* TODO: implement insert mode editing */
+        /* Don't allow editing autoincrement columns */
+        if (col < g_colMetaCount && g_colMeta[col].isAutoInc) {
+            return;
+        }
+        
+        /* Initialize insert mode if not already */
+        if (!g_insertMode) {
+            InitInsertMode();
+            if (!g_insertMode) return;  /* Allocation failed */
+        }
+        
+        /* Get cell rectangle */
+        GetClientRect(g_hwndGrid, &rcGrid);
+        rcItem.top = row;
+        rcItem.left = LVIR_BOUNDS;
+        ListView_GetItemRect(g_hwndGrid, row, &rcItem, LVIR_BOUNDS);
+        
+        x = rcItem.left;
+        for (i = 0; i < col; i++) {
+            x += ListView_GetColumnWidth(g_hwndGrid, i);
+        }
+        width = ListView_GetColumnWidth(g_hwndGrid, col);
+        rcItem.left = x;
+        rcItem.right = x + width;
+        
+        /* Get pending value if any (show empty for NULL marker) */
+        wval[0] = 0;
+        if (g_pendingValues && g_pendingValues[col]) {
+            if (!(g_pendingValues[col][0] == '\x01' && g_pendingValues[col][1] == '\0')) {
+                MultiByteToWideChar(CP_ACP, 0, g_pendingValues[col], -1, wval, 256);
+            }
+        }
+        
+        /* Create edit control */
+        g_hwndEditOverlay = CreateWindowExW(0, L"EDIT", wval,
+            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+            rcItem.left, rcItem.top, rcItem.right - rcItem.left, rcItem.bottom - rcItem.top,
+            g_hwndGrid, NULL, g_hInst, NULL);
+        
+        if (!g_hwndEditOverlay) return;
+        
+        if (g_hFontGrid)
+            SendMessage(g_hwndEditOverlay, WM_SETFONT, (WPARAM)g_hFontGrid, TRUE);
+        SendMessage(g_hwndEditOverlay, EM_SETSEL, 0, -1);
+        g_pfnEditOverlayProc = (WNDPROC)SetWindowLong(g_hwndEditOverlay, GWL_WNDPROC, (LONG)EditOverlayProc);
+        
+        g_editRow = row;
+        g_editCol = col;
+        SetFocus(g_hwndEditOverlay);
         return;
     }
     
@@ -628,6 +759,166 @@ static void DeleteSelectedRow(void) {
     OpenTableForEditing(tableName);
 }
 
+/*============================================================================
+** Insert Mode - editing the placeholder row
+**============================================================================*/
+
+static void ClearInsertMode(void) {
+    int i;
+    if (g_pendingValues) {
+        for (i = 0; i < g_colMetaCount; i++) {
+            if (g_pendingValues[i]) {
+                LocalFree(g_pendingValues[i]);
+            }
+        }
+        LocalFree(g_pendingValues);
+        g_pendingValues = NULL;
+    }
+    g_insertMode = 0;
+    
+    /* Refresh placeholder row display */
+    if (g_hwndGrid && g_editMode) {
+        ListView_RedrawItems(g_hwndGrid, g_lastResultRows, g_lastResultRows);
+    }
+}
+
+static void InitInsertMode(void) {
+    if (g_insertMode) return;  /* Already in insert mode */
+    if (g_colMetaCount < 1) return;
+    
+    /* Allocate pending values array */
+    g_pendingValues = (char **)LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT,
+        g_colMetaCount * sizeof(char *));
+    if (!g_pendingValues) return;
+    
+    g_insertMode = 1;
+}
+
+static void StorePendingValue(int col, const char *value) {
+    int len;
+    const char *s;
+    char *d;
+    
+    if (!g_pendingValues || col < 0 || col >= g_colMetaCount) return;
+    
+    /* Free old value */
+    if (g_pendingValues[col]) {
+        LocalFree(g_pendingValues[col]);
+        g_pendingValues[col] = NULL;
+    }
+    
+    /* Store new value */
+    /* NULL pointer = not set, "\x01" = explicit NULL, "" = empty string, else = value */
+    if (value) {
+        len = 0;
+        s = value;
+        while (*s++) len++;
+        g_pendingValues[col] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+        if (g_pendingValues[col]) {
+            s = value;
+            d = g_pendingValues[col];
+            while (*s) *d++ = *s++;
+            *d = '\0';
+        }
+    }
+}
+
+static void CommitInsert(void) {
+    char sql[2048];
+    char *p;
+    const char *s;
+    char *errmsg = NULL;
+    int rc, i, first;
+    char tableName[128];
+    
+    if (!g_insertMode || !g_pendingValues) return;
+    
+    /* Save table name */
+    s = g_editTableName;
+    p = tableName;
+    while (*s) *p++ = *s++;
+    *p = '\0';
+    
+    /* Build INSERT statement */
+    p = sql;
+    s = "INSERT INTO \"";
+    while (*s) *p++ = *s++;
+    s = tableName;
+    while (*s) *p++ = *s++;
+    s = "\" (";
+    while (*s) *p++ = *s++;
+    
+    /* Column list - skip autoincrement, only include columns with values */
+    first = 1;
+    for (i = 0; i < g_colMetaCount; i++) {
+        if (g_colMeta[i].isAutoInc) continue;
+        if (!g_pendingValues[i]) continue;
+        
+        if (!first) *p++ = ',';
+        first = 0;
+        *p++ = '"';
+        s = g_colMeta[i].name;
+        while (*s) *p++ = *s++;
+        *p++ = '"';
+    }
+    
+    /* If no columns have values, can't insert */
+    if (first) {
+        MessageBoxW(g_hwndMain, L"No values entered.", L"Insert", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    
+    s = ") VALUES (";
+    while (*s) *p++ = *s++;
+    
+    /* Values list */
+    first = 1;
+    for (i = 0; i < g_colMetaCount; i++) {
+        if (g_colMeta[i].isAutoInc) continue;
+        if (!g_pendingValues[i]) continue;
+        
+        if (!first) *p++ = ',';
+        first = 0;
+        
+        /* Check for explicit NULL marker */
+        if (g_pendingValues[i][0] == '\x01' && g_pendingValues[i][1] == '\0') {
+            s = "NULL";
+            while (*s) *p++ = *s++;
+        } else {
+            *p++ = '\'';
+            /* Escape single quotes */
+            s = g_pendingValues[i];
+            while (*s) {
+                if (*s == '\'') *p++ = '\'';
+                *p++ = *s++;
+            }
+            *p++ = '\'';
+        }
+    }
+    
+    s = ");";
+    while (*s) *p++ = *s++;
+    *p = '\0';
+    
+    /* Execute INSERT */
+    rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
+    
+    if (rc != SQLITE_OK) {
+        wchar_t wmsg[256];
+        MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
+        MessageBoxW(g_hwndMain, wmsg, L"Insert Failed", MB_OK | MB_ICONERROR);
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)wmsg);
+        if (errmsg) sqlite_freemem(errmsg);
+        return;
+    }
+    
+    /* Clear insert mode and refresh */
+    ClearInsertMode();
+    OpenTableForEditing(tableName);
+    
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Row inserted");
+}
+
 static void CommitCellEdit(void) {
     wchar_t wval[256];
     char newVal[512];
@@ -642,7 +933,12 @@ static void CommitCellEdit(void) {
     int setNull;
     int clearedToEmpty = 0;  /* Track NULL->empty fallback */
     
+    /* Guard against re-entry from WM_KILLFOCUS */
+    if (g_inCommit) return;
+    g_inCommit = 1;
+    
     if (!g_hwndEditOverlay || g_editRow < 0 || g_editCol < 0) {
+        g_inCommit = 0;
         CancelCellEdit();
         return;
     }
@@ -655,8 +951,31 @@ static void CommitCellEdit(void) {
     GetWindowTextW(g_hwndEditOverlay, wval, 256);
     WideCharToMultiByte(CP_ACP, 0, wval, -1, newVal, 512, NULL, NULL);
     
-    /* Empty string = NULL (user can clear field to set NULL) */
-    if (newVal[0] == '\0') {
+    /* Insert mode - store to pending values, don't execute UPDATE */
+    if (g_insertMode && g_editRow == g_lastResultRows) {
+        if (setNull) {
+            /* Explicit NULL - use marker */
+            StorePendingValue(g_editCol, "\x01");
+        } else {
+            /* Store value (including empty string) */
+            StorePendingValue(g_editCol, newVal);
+        }
+        
+        /* Refresh the cell display */
+        ListView_RedrawItems(g_hwndGrid, g_editRow, g_editRow);
+        
+        /* Close edit overlay */
+        DestroyWindow(g_hwndEditOverlay);
+        g_hwndEditOverlay = NULL;
+        g_editRow = -1;
+        g_editCol = -1;
+        g_inCommit = 0;
+        SetFocus(g_hwndGrid);
+        return;
+    }
+    
+    /* For existing rows: empty string = NULL unless explicit */
+    if (newVal[0] == '\0' && !setNull) {
         setNull = 1;
     }
     
@@ -791,6 +1110,7 @@ static void CommitCellEdit(void) {
     g_hwndEditOverlay = NULL;
     g_editRow = -1;
     g_editCol = -1;
+    g_inCommit = 0;
     SetFocus(g_hwndGrid);
 }
 

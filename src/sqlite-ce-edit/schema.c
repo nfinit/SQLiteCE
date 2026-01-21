@@ -429,10 +429,22 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
 **============================================================================*/
 
 void ClearEditMode(void) {
+    int i;
+    
     if (!g_editMode) return;
     
     g_editMode = 0;
     g_editTableName[0] = '\0';
+    
+    /* Free insert mode state */
+    if (g_pendingValues) {
+        for (i = 0; i < g_colMetaCount; i++) {
+            if (g_pendingValues[i]) LocalFree(g_pendingValues[i]);
+        }
+        LocalFree(g_pendingValues);
+        g_pendingValues = NULL;
+    }
+    g_insertMode = 0;
     
     /* Free column metadata */
     FreeColumnMetadata();

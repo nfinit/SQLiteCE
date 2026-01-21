@@ -83,3 +83,7 @@ int g_gridViewBeforeEdit = 0;            /* Saved g_gridView state before edit m
 /* Column metadata for edit mode */
 ColumnMeta *g_colMeta = NULL;            /* Array of column info */
 int g_colMetaCount = 0;                  /* Number of columns */
+
+/* Insert mode state (editing placeholder row) */
+int g_insertMode = 0;                    /* 1 = editing the placeholder row */
+char **g_pendingValues = NULL;           /* Pending values for new row, one per column */

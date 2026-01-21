@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.10.0.4"
+#define SQLITECEDIT_VERSION L"0.10.0.13"
 
 /*============================================================================
 ** Menu IDs
@@ -269,6 +269,10 @@ typedef struct {
 
 extern ColumnMeta *g_colMeta;
 extern int g_colMetaCount;
+
+/* Insert mode state (editing placeholder row) */
+extern int g_insertMode;
+extern char **g_pendingValues;
 
 /*============================================================================
 ** Function Declarations - Output (output.c)
