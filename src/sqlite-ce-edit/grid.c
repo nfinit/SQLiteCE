@@ -470,6 +470,22 @@ void PopulateGrid(void) {
             headerWidth = ListView_GetColumnWidth(g_hwndGrid, j);
             if (contentWidth > headerWidth)
                 ListView_SetColumnWidth(g_hwndGrid, j, contentWidth);
+            /* In edit mode, ensure column fits placeholder hints */
+            if (g_editMode && j < g_colMetaCount) {
+                HDC hdc = GetDC(g_hwndGrid);
+                if (hdc) {
+                    SIZE sz;
+                    int hintWidth, curWidth;
+                    const wchar_t *hint = g_colMeta[j].isAutoInc ? L"(auto)" : 
+                                          (!g_colMeta[j].notNull ? L"(null)" : L"");
+                    GetTextExtentPoint32W(hdc, hint, lstrlenW(hint), &sz);
+                    hintWidth = sz.cx + 12;  /* padding */
+                    curWidth = ListView_GetColumnWidth(g_hwndGrid, j);
+                    if (hintWidth > curWidth)
+                        ListView_SetColumnWidth(g_hwndGrid, j, hintWidth);
+                    ReleaseDC(g_hwndGrid, hdc);
+                }
+            }
         }
         ListView_SetItemCount(g_hwndGrid, totalRows);
     }
