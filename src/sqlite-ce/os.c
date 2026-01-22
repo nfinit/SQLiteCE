@@ -39,8 +39,9 @@
 int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
     char *p = buf;
     const char *f = fmt;
-    char tmp[32];
-    int precision;
+    char tmp[64];
+    int flag_minus, flag_plus, flag_space, flag_hash, flag_zero;
+    int width, precision, is_long;
     
     while (*f) {
         if (*f != '%') {
@@ -49,22 +50,39 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
         }
         f++; /* skip '%' */
         
-        /* Handle flags and width (simplified - just skip them) */
-        while (*f == '-' || *f == '+' || *f == ' ' || *f == '#' || *f == '0') f++;
-        /* Handle * width specifier - consume the argument */
+        /* Parse flags */
+        flag_minus = flag_plus = flag_space = flag_hash = flag_zero = 0;
+        while (1) {
+            if (*f == '-') { flag_minus = 1; f++; }
+            else if (*f == '+') { flag_plus = 1; f++; }
+            else if (*f == ' ') { flag_space = 1; f++; }
+            else if (*f == '#') { flag_hash = 1; f++; }
+            else if (*f == '0') { flag_zero = 1; f++; }
+            else break;
+        }
+        if (flag_minus) flag_zero = 0;  /* - overrides 0 */
+        if (flag_plus) flag_space = 0;  /* + overrides space */
+        
+        /* Parse width */
+        width = 0;
         if (*f == '*') {
-            (void)va_arg(ap, int);
+            width = va_arg(ap, int);
+            if (width < 0) { flag_minus = 1; width = -width; }
             f++;
         } else {
-            while (*f >= '0' && *f <= '9') f++;
+            while (*f >= '0' && *f <= '9') {
+                width = width * 10 + (*f - '0');
+                f++;
+            }
         }
         
         /* Parse precision */
-        precision = -1;  /* -1 means use default */
+        precision = -1;
         if (*f == '.') {
             f++;
             if (*f == '*') {
                 precision = va_arg(ap, int);
+                if (precision < 0) precision = -1;
                 f++;
             } else {
                 precision = 0;
@@ -75,83 +93,245 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
             }
         }
         
-        /* Handle length modifiers */
-        if (*f == 'l') f++;
-        if (*f == 'l') f++;  /* ll */
+        /* Parse length modifier */
+        is_long = 0;
+        if (*f == 'l') { is_long = 1; f++; }
+        if (*f == 'l') { f++; }  /* ll treated as l on 32-bit */
         
+        /* Format specifier */
         switch (*f) {
             case 'd': case 'i': {
-                int val = va_arg(ap, int);
+                long val = is_long ? va_arg(ap, long) : (long)va_arg(ap, int);
                 int neg = 0;
                 char *t = tmp + sizeof(tmp) - 1;
-                unsigned int uval;
+                unsigned long uval;
+                int len, pad;
+                char sign = 0;
+                
                 *t = '\0';
-                if (val < 0) { neg = 1; uval = (unsigned int)(-(val + 1)) + 1; }
-                else { uval = (unsigned int)val; }
+                if (val < 0) { neg = 1; uval = (unsigned long)(-(val + 1)) + 1; }
+                else { uval = (unsigned long)val; }
                 if (uval == 0) *--t = '0';
                 while (uval > 0) { *--t = '0' + (uval % 10); uval /= 10; }
-                if (neg) *--t = '-';
+                
+                /* Apply precision (minimum digits) */
+                len = (int)((tmp + sizeof(tmp) - 1) - t);
+                if (precision > 0) {
+                    while (len < precision) { *--t = '0'; len++; }
+                }
+                
+                /* Determine sign character */
+                if (neg) sign = '-';
+                else if (flag_plus) sign = '+';
+                else if (flag_space) sign = ' ';
+                
+                len = (int)((tmp + sizeof(tmp) - 1) - t);
+                if (sign) len++;
+                pad = (width > len) ? width - len : 0;
+                
+                if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
+                if (sign) *p++ = sign;
+                if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
                 while (*t) *p++ = *t++;
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
             case 'u': {
-                unsigned val = va_arg(ap, unsigned);
+                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned);
                 char *t = tmp + sizeof(tmp) - 1;
+                int len, pad;
+                
                 *t = '\0';
                 if (val == 0) *--t = '0';
                 while (val > 0) { *--t = '0' + (val % 10); val /= 10; }
+                
+                if (precision > 0) {
+                    len = (int)((tmp + sizeof(tmp) - 1) - t);
+                    while (len < precision) { *--t = '0'; len++; }
+                }
+                
+                len = (int)((tmp + sizeof(tmp) - 1) - t);
+                pad = (width > len) ? width - len : 0;
+                
+                if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
+                if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
                 while (*t) *p++ = *t++;
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
+                break;
+            }
+            case 'o': {
+                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned);
+                char *t = tmp + sizeof(tmp) - 1;
+                int len, pad, need_prefix;
+                
+                *t = '\0';
+                need_prefix = (flag_hash && val != 0);
+                if (val == 0) *--t = '0';
+                while (val > 0) { *--t = '0' + (val & 7); val >>= 3; }
+                
+                if (precision > 0) {
+                    len = (int)((tmp + sizeof(tmp) - 1) - t);
+                    while (len < precision) { *--t = '0'; len++; }
+                }
+                if (need_prefix && *t != '0') *--t = '0';
+                
+                len = (int)((tmp + sizeof(tmp) - 1) - t);
+                pad = (width > len) ? width - len : 0;
+                
+                if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
+                if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
+                while (*t) *p++ = *t++;
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
             case 'x': case 'X': {
-                unsigned val = va_arg(ap, unsigned);
+                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned);
                 char *t = tmp + sizeof(tmp) - 1;
                 const char *hex = (*f == 'X') ? "0123456789ABCDEF" : "0123456789abcdef";
+                int len, pad, need_prefix;
+                
                 *t = '\0';
+                need_prefix = (flag_hash && val != 0);
                 if (val == 0) *--t = '0';
                 while (val > 0) { *--t = hex[val & 0xF]; val >>= 4; }
+                
+                if (precision > 0) {
+                    len = (int)((tmp + sizeof(tmp) - 1) - t);
+                    while (len < precision) { *--t = '0'; len++; }
+                }
+                
+                len = (int)((tmp + sizeof(tmp) - 1) - t);
+                if (need_prefix) len += 2;
+                pad = (width > len) ? width - len : 0;
+                
+                if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
+                if (need_prefix) { *p++ = '0'; *p++ = (*f == 'X') ? 'X' : 'x'; }
+                if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
                 while (*t) *p++ = *t++;
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
             case 'p': {
                 unsigned long val = (unsigned long)va_arg(ap, void*);
                 char *t = tmp + sizeof(tmp) - 1;
+                int len, pad;
+                
                 *t = '\0';
                 if (val == 0) *--t = '0';
                 while (val > 0) { *--t = "0123456789abcdef"[val & 0xF]; val >>= 4; }
-                *--t = 'x'; *--t = '0';
+                
+                len = (int)((tmp + sizeof(tmp) - 1) - t) + 2;
+                pad = (width > len) ? width - len : 0;
+                
+                if (!flag_minus) while (pad-- > 0) *p++ = ' ';
+                *p++ = '0'; *p++ = 'x';
                 while (*t) *p++ = *t++;
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
             case 's': {
                 const char *s = va_arg(ap, const char*);
-                int len;
+                int len = 0, pad;
+                const char *t;
+                
                 if (!s) s = "(null)";
-                if (precision >= 0) {
-                    /* Copy at most 'precision' characters */
-                    for (len = 0; len < precision && s[len]; len++)
-                        *p++ = s[len];
-                } else {
-                    while (*s) *p++ = *s++;
-                }
+                t = s;
+                while (*t) { len++; t++; }
+                if (precision >= 0 && len > precision) len = precision;
+                pad = (width > len) ? width - len : 0;
+                
+                if (!flag_minus) while (pad-- > 0) *p++ = ' ';
+                while (len-- > 0) *p++ = *s++;
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
             case 'c': {
                 char c = (char)va_arg(ap, int);
+                int pad = (width > 1) ? width - 1 : 0;
+                
+                if (!flag_minus) while (pad-- > 0) *p++ = ' ';
                 *p++ = c;
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
             case '%':
                 *p++ = '%';
                 break;
+            case 'e': case 'E': {
+                double val = va_arg(ap, double);
+                int neg = 0, exp = 0, i;
+                int prec = (precision < 0) ? 6 : precision;
+                char *t;
+                double rounder;
+                int len, pad;
+                char sign = 0;
+                char expchar = *f;
+                
+                if (val < 0) { neg = 1; val = -val; }
+                
+                /* Normalize to 1.xxx * 10^exp */
+                if (val != 0) {
+                    while (val >= 10) { val /= 10; exp++; }
+                    while (val < 1) { val *= 10; exp--; }
+                }
+                
+                /* Apply rounding */
+                rounder = 0.5;
+                for (i = 0; i < prec; i++) rounder *= 0.1;
+                val += rounder;
+                if (val >= 10) { val /= 10; exp++; }
+                
+                /* Build number in tmp */
+                t = tmp;
+                if (neg) sign = '-';
+                else if (flag_plus) sign = '+';
+                else if (flag_space) sign = ' ';
+                
+                /* Integer part (single digit) */
+                *t++ = '0' + (int)val;
+                val -= (int)val;
+                
+                /* Fractional part */
+                if (prec > 0 || flag_hash) {
+                    *t++ = '.';
+                    for (i = 0; i < prec; i++) {
+                        val *= 10;
+                        *t++ = '0' + (int)val;
+                        val -= (int)val;
+                    }
+                }
+                
+                /* Exponent */
+                *t++ = expchar;
+                *t++ = (exp < 0) ? '-' : '+';
+                if (exp < 0) exp = -exp;
+                if (exp < 10) *t++ = '0';
+                if (exp >= 100) { *t++ = '0' + (exp / 100); exp %= 100; }
+                if (exp >= 10) { *t++ = '0' + (exp / 10); exp %= 10; }
+                *t++ = '0' + exp;
+                *t = '\0';
+                
+                len = (int)(t - tmp);
+                if (sign) len++;
+                pad = (width > len) ? width - len : 0;
+                
+                if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
+                if (sign) *p++ = sign;
+                if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
+                t = tmp;
+                while (*t) *p++ = *t++;
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
+                break;
+            }
             case 'g': case 'f': {
                 double val = va_arg(ap, double);
                 int neg = 0;
                 int prec = (precision < 0) ? 6 : precision;
-                int intpart;
+                int intpart, i;
                 char *t;
                 double rounder;
-                int i;
+                int len, pad;
+                char sign = 0;
                 
                 if (val < 0) { neg = 1; val = -val; }
                 
@@ -162,24 +342,38 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 
                 intpart = (int)val;
                 
-                /* Output sign and integer part */
-                t = tmp + sizeof(tmp) - 1;
+                /* Build number in tmp */
+                t = tmp + 30;  /* Start in middle, build int part backwards */
                 *t = '\0';
                 if (intpart == 0) *--t = '0';
                 while (intpart > 0) { *--t = '0' + (intpart % 10); intpart /= 10; }
-                if (neg) *--t = '-';
+                
+                if (neg) sign = '-';
+                else if (flag_plus) sign = '+';
+                else if (flag_space) sign = ' ';
+                
+                /* Calculate length */
+                len = (int)((tmp + 30) - t);
+                if (prec > 0 || flag_hash) len += 1 + prec;
+                if (sign) len++;
+                pad = (width > len) ? width - len : 0;
+                
+                /* Output */
+                if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
+                if (sign) *p++ = sign;
+                if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
                 while (*t) *p++ = *t++;
                 
-                /* Output fractional part if precision > 0 */
-                if (prec > 0) {
+                if (prec > 0 || flag_hash) {
                     *p++ = '.';
-                    val = val - (int)val;
+                    val = val - (int)(val + rounder);
                     for (i = 0; i < prec; i++) {
                         val *= 10;
                         *p++ = '0' + (int)val;
                         val -= (int)val;
                     }
                 }
+                if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
             default:
