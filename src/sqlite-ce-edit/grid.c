@@ -353,10 +353,43 @@ void GridFindNext(void) {
     MessageBoxW(g_hwndMain, L"Text not found.", L"Find", MB_OK);
 }
 
+/* Build placeholder hint for column: (auto), (TYPE null), (TYPE req), (TYPE) */
+static void GetPlaceholderHint(int col, wchar_t *buf, int buflen) {
+    ColumnMeta *cm;
+    const char *t;
+    wchar_t *p = buf;
+    wchar_t *end = buf + buflen - 1;
+    
+    if (col >= g_colMetaCount) { buf[0] = '\0'; return; }
+    cm = &g_colMeta[col];
+    
+    if (cm->isAutoInc) {
+        lstrcpyW(buf, L"(auto)");
+        return;
+    }
+    
+    *p++ = '(';
+    t = cm->type;
+    /* Shorten INTEGER to INT */
+    if (t[0]=='I' && t[1]=='N' && t[2]=='T' && t[3]=='E' && t[4]=='G' && t[5]=='E' && t[6]=='R' && t[7]=='\0') {
+        *p++ = 'I'; *p++ = 'N'; *p++ = 'T';
+    } else {
+        while (*t && p < end - 6) *p++ = (wchar_t)*t++;
+    }
+    /* Add null/req suffix */
+    if (!cm->notNull) {
+        *p++ = ' '; *p++ = 'n'; *p++ = 'u'; *p++ = 'l'; *p++ = 'l';
+    } else if (!cm->hasDefault) {
+        *p++ = ' '; *p++ = 'r'; *p++ = 'e'; *p++ = 'q';
+    }
+    *p++ = ')'; *p = '\0';
+}
+
 void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
     int row, dataRow, col, dataCol;
     char *val;
     static wchar_t wbuf[256];
+    static wchar_t hintbuf[32];
     int numDisplayCols;
     
     if (!(pdi->item.mask & LVIF_TEXT)) return;
@@ -380,18 +413,9 @@ void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
                 MultiByteToWideChar(CP_ACP, 0, g_pendingValues[col], -1, wbuf, 256);
                 pdi->item.pszText = wbuf;
             }
-        } else if (col < g_colMetaCount) {
-            ColumnMeta *cm = &g_colMeta[col];
-            if (cm->isAutoInc) {
-                pdi->item.pszText = L"(auto)";
-            } else if (!cm->notNull && !cm->hasDefault) {
-                /* Nullable without default - will be NULL if not filled */
-                pdi->item.pszText = L"(null)";
-            } else {
-                pdi->item.pszText = L"";
-            }
         } else {
-            pdi->item.pszText = L"";
+            GetPlaceholderHint(col, hintbuf, 32);
+            pdi->item.pszText = hintbuf;
         }
         return;
     }
@@ -509,8 +533,8 @@ void PopulateGrid(void) {
                 if (hdc) {
                     SIZE sz;
                     int hintWidth, curWidth;
-                    const wchar_t *hint = g_colMeta[j].isAutoInc ? L"(auto)" : 
-                                          (!g_colMeta[j].notNull ? L"(null)" : L"");
+                    wchar_t hint[32];
+                    GetPlaceholderHint(j, hint, 32);
                     GetTextExtentPoint32W(hdc, hint, lstrlenW(hint), &sz);
                     hintWidth = sz.cx + 12;  /* padding */
                     curWidth = ListView_GetColumnWidth(g_hwndGrid, j);

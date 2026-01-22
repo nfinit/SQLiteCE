@@ -483,6 +483,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 OnGridDoubleClick(pnmlv->iItem, pnmlv->iSubItem);
                 return 0;
             }
+            /* Custom draw for placeholder row grey text */
+            if (pnm->hwndFrom == g_hwndGrid && pnm->code == NM_CUSTOMDRAW) {
+                NMLVCUSTOMDRAW *pcd = (NMLVCUSTOMDRAW*)lParam;
+                switch (pcd->nmcd.dwDrawStage) {
+                case CDDS_PREPAINT:
+                    return CDRF_NOTIFYITEMDRAW;
+                case CDDS_ITEMPREPAINT:
+                    /* Grey text for placeholder row */
+                    if (g_editMode && (int)pcd->nmcd.dwItemSpec == g_lastResultRows) {
+                        pcd->clrText = GetSysColor(COLOR_GRAYTEXT);
+                    }
+                    return CDRF_DODEFAULT;
+                }
+                return CDRF_DODEFAULT;
+            }
             /* Header double-click to auto-size column */
             if (pnm->code == HDN_ITEMDBLCLICKW || pnm->code == HDN_ITEMDBLCLICKA) {
                 NMHEADERW *phdr = (NMHEADERW*)lParam;
