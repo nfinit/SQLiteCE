@@ -436,6 +436,9 @@ void ClearEditMode(void) {
     g_editMode = 0;
     g_editTableName[0] = '\0';
     
+    /* Clear undo stack */
+    ClearUndoStack();
+    
     /* Free insert mode state */
     if (g_pendingValues) {
         for (i = 0; i < g_colMetaCount; i++) {
@@ -593,11 +596,36 @@ void OpenTableForEditing(const char *tablename) {
     char **results = NULL;
     int nRows = 0, nCols = 0;
     int i, total;
+    int sameTable = 0;
     
     if (!g_db || !tablename) return;
     
-    /* Clear any previous edit state */
-    ClearEditMode();
+    /* Check if re-opening same table (preserve undo stack) */
+    if (g_editMode && g_editTableName[0]) {
+        const char *a = tablename;
+        const char *b = g_editTableName;
+        sameTable = 1;
+        while (*a && *b) {
+            if (*a++ != *b++) { sameTable = 0; break; }
+        }
+        if (*a || *b) sameTable = 0;
+    }
+    
+    /* Clear previous edit state (but preserve undo if same table) */
+    if (!sameTable) {
+        ClearEditMode();
+    } else {
+        /* Just clear insert mode, keep undo stack */
+        if (g_pendingValues) {
+            for (i = 0; i < g_colMetaCount; i++) {
+                if (g_pendingValues[i]) LocalFree(g_pendingValues[i]);
+            }
+            LocalFree(g_pendingValues);
+            g_pendingValues = NULL;
+        }
+        g_insertMode = 0;
+        FreeColumnMetadata();
+    }
     
     /* Load column metadata first - needed for empty tables */
     LoadColumnMetadata(tablename);

@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.10.0.35"
+#define SQLITECEDIT_VERSION L"0.10.0.47"
 
 /*============================================================================
 ** Menu IDs
@@ -322,6 +322,7 @@ void OnGridColumnClick(int col);
 void GridFindNext(void);
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void OnGridDoubleClick(int row, int col);
+void ClearUndoStack(void);
 void OnSchemaDelete(void);
 int GetSelectedObjectType(void);  /* Returns IMG_TABLE, IMG_VIEW, IMG_TRIGGER, or -1 */
 void GetSchemaStatus(wchar_t *buf, int bufLen);

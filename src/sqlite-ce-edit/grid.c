@@ -19,6 +19,17 @@ static WNDPROC g_pfnEditOverlayProc = NULL;
 static int g_editRow = -1;         /* Display row being edited */
 static int g_editCol = -1;         /* Display column being edited */
 
+/* Undo state for deleted rows */
+#define UNDO_MAX_BYTES 65536  /* 64KB limit for undo cache */
+typedef struct {
+    char **values;   /* Column values (NULL-terminated strings) */
+    int numCols;
+} UndoRow;
+static UndoRow *g_undoStack = NULL;
+static int g_undoCount = 0;
+static int g_undoCapacity = 0;
+static int g_undoBytes = 0;  /* Current memory usage */
+
 /* Forward declarations */
 static void StartCellEdit(int row, int col);
 static void CommitCellEdit(void);
@@ -28,6 +39,8 @@ static void InitInsertMode(void);
 static void ClearInsertMode(void);
 static void CommitInsert(void);
 static int NextEditableColumn(int col, int direction);
+static void PushUndo(char **values, int numCols);
+static void UndoDelete(void);
 
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     HIMAGELIST hIml;
@@ -120,6 +133,11 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         /* Ctrl+C - Copy selected row */
         if (ctrl && wParam == 'C') {
             CopySelectedRow();
+            return 0;
+        }
+        /* Ctrl+Z - Undo last delete (only in edit mode) */
+        if (ctrl && wParam == 'Z' && g_editMode) {
+            if (g_undoCount > 0) UndoDelete();
             return 0;
         }
         /* Ctrl+F - Find */
@@ -790,6 +808,180 @@ static void CancelCellEdit(void) {
     SetFocus(g_hwndGrid);
 }
 
+/*============================================================================
+** Undo Support for Row Deletion
+**============================================================================*/
+
+static void FreeUndoRow(UndoRow *row) {
+    int i;
+    if (row->values) {
+        for (i = 0; i < row->numCols; i++) {
+            if (row->values[i]) LocalFree(row->values[i]);
+        }
+        LocalFree(row->values);
+    }
+}
+
+void ClearUndoStack(void) {
+    int i;
+    for (i = 0; i < g_undoCount; i++) {
+        FreeUndoRow(&g_undoStack[i]);
+    }
+    if (g_undoStack) LocalFree(g_undoStack);
+    g_undoStack = NULL;
+    g_undoCount = 0;
+    g_undoCapacity = 0;
+    g_undoBytes = 0;
+}
+
+/* Check available memory before caching */
+static int CanCacheUndo(int bytesNeeded) {
+    /* Drop oldest entries if over limit */
+    while (g_undoCount > 0 && g_undoBytes + bytesNeeded > UNDO_MAX_BYTES) {
+        int oldBytes = g_undoStack[0].numCols * 32;
+        int j;
+        FreeUndoRow(&g_undoStack[0]);
+        g_undoBytes -= oldBytes;
+        if (g_undoBytes < 0) g_undoBytes = 0;
+        g_undoCount--;
+        for (j = 0; j < g_undoCount; j++)
+            g_undoStack[j] = g_undoStack[j + 1];
+    }
+    return 1;
+}
+
+static void PushUndo(char **values, int numCols) {
+    int i, rowBytes = 0;
+    UndoRow *row;
+    
+    if (!values || numCols < 1) return;
+    
+    /* Estimate memory needed */
+    for (i = 0; i < numCols; i++) {
+        if (values[i]) {
+            int len = 0;
+            while (values[i][len]) len++;
+            rowBytes += len + 1;
+        }
+    }
+    rowBytes += numCols * sizeof(char *);
+    
+    if (!CanCacheUndo(rowBytes)) return;
+    
+    /* Grow stack if needed */
+    if (g_undoCount >= g_undoCapacity) {
+        int newCap = g_undoCapacity ? g_undoCapacity * 2 : 8;
+        UndoRow *newStack = (UndoRow *)LocalAlloc(LMEM_FIXED, newCap * sizeof(UndoRow));
+        if (!newStack) return;
+        if (g_undoStack) {
+            for (i = 0; i < g_undoCount; i++) newStack[i] = g_undoStack[i];
+            LocalFree(g_undoStack);
+        }
+        g_undoStack = newStack;
+        g_undoCapacity = newCap;
+    }
+    
+    /* Copy row data */
+    row = &g_undoStack[g_undoCount];
+    row->numCols = numCols;
+    row->values = (char **)LocalAlloc(LMEM_FIXED, numCols * sizeof(char *));
+    if (!row->values) return;
+    
+    for (i = 0; i < numCols; i++) {
+        if (values[i]) {
+            int len = 0, j;
+            while (values[i][len]) len++;
+            row->values[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+            if (row->values[i]) {
+                for (j = 0; j <= len; j++) row->values[i][j] = values[i][j];
+            }
+        } else {
+            row->values[i] = NULL;
+        }
+    }
+    
+    g_undoCount++;
+    g_undoBytes += rowBytes;
+}
+
+static void UndoDelete(void) {
+    UndoRow *row;
+    char sql[2048];
+    char *p;
+    const char *s;
+    int i, rc;
+    char *errmsg = NULL;
+    char tableName[128];
+    
+    if (g_undoCount < 1 || !g_editMode) return;
+    
+    /* Save table name */
+    s = g_editTableName;
+    p = tableName;
+    while (*s) *p++ = *s++;
+    *p = '\0';
+    
+    row = &g_undoStack[g_undoCount - 1];
+    
+    /* Build INSERT - skip column 0 (rowid) */
+    p = sql;
+    s = "INSERT INTO \"";
+    while (*s) *p++ = *s++;
+    s = tableName;
+    while (*s) *p++ = *s++;
+    s = "\" (";
+    while (*s) *p++ = *s++;
+    
+    /* Column names from metadata (skip rowid) */
+    for (i = 1; i < row->numCols && i < g_colMetaCount + 1; i++) {
+        if (i > 1) *p++ = ',';
+        *p++ = '"';
+        s = g_colMeta[i - 1].name;
+        while (*s) *p++ = *s++;
+        *p++ = '"';
+    }
+    
+    s = ") VALUES (";
+    while (*s) *p++ = *s++;
+    
+    /* Values (skip rowid at index 0) */
+    for (i = 1; i < row->numCols; i++) {
+        if (i > 1) *p++ = ',';
+        if (row->values[i]) {
+            *p++ = '\'';
+            s = row->values[i];
+            while (*s) {
+                if (*s == '\'') *p++ = '\'';  /* Escape quotes */
+                *p++ = *s++;
+            }
+            *p++ = '\'';
+        } else {
+            s = "NULL";
+            while (*s) *p++ = *s++;
+        }
+    }
+    *p++ = ')';
+    *p++ = ';';
+    *p = '\0';
+    
+    rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
+    if (rc != SQLITE_OK) {
+        wchar_t wmsg[256];
+        MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
+        MessageBoxW(g_hwndMain, wmsg, L"Undo Failed", MB_OK | MB_ICONERROR);
+        if (errmsg) sqlite_freemem(errmsg);
+        return;
+    }
+    
+    /* Remove from undo stack */
+    FreeUndoRow(row);
+    g_undoCount--;
+    
+    /* Refresh grid */
+    OpenTableForEditing(tableName);
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Row restored");
+}
+
 static void DeleteSelectedRow(void) {
     int sel, count, dataRow, rowidIdx, deleted, i;
     char *rowid;
@@ -801,6 +993,7 @@ static void DeleteSelectedRow(void) {
     int rc;
     wchar_t msg[64];
     char **rowids;
+    int *selRows;
     
     /* Count selected rows (excluding placeholder) */
     count = 0;
@@ -809,6 +1002,16 @@ static void DeleteSelectedRow(void) {
         if (sel < g_lastResultRows) count++;
     }
     if (count < 1) return;
+    
+    /* Collect selection indices BEFORE dialog (dialog may clear selection) */
+    selRows = (int *)LocalAlloc(LMEM_FIXED, count * sizeof(int));
+    if (!selRows) return;
+    i = 0;
+    sel = -1;
+    while ((sel = ListView_GetNextItem(g_hwndGrid, sel, LVNI_SELECTED)) >= 0) {
+        if (sel < g_lastResultRows && i < count) selRows[i++] = sel;
+    }
+    count = i;
     
     /* Save table name before it gets cleared */
     s = g_editTableName;
@@ -822,36 +1025,41 @@ static void DeleteSelectedRow(void) {
     else
         wsprintfW(msg, L"Delete %d rows?", count);
     if (MessageBoxW(g_hwndMain, msg, L"Confirm Delete",
-                    MB_YESNO | MB_ICONQUESTION) != IDYES)
+                    MB_YESNO | MB_ICONQUESTION) != IDYES) {
+        LocalFree(selRows);
         return;
+    }
     
-    /* Collect rowids first (data will be freed on re-query) */
+    /* Collect rowids and save row data for undo */
     rowids = (char **)LocalAlloc(LMEM_FIXED, count * sizeof(char *));
-    if (!rowids) return;
+    if (!rowids) { LocalFree(selRows); return; }
     
-    i = 0;
-    sel = -1;
-    while ((sel = ListView_GetNextItem(g_hwndGrid, sel, LVNI_SELECTED)) >= 0) {
+    for (i = 0; i < count; i++) {
         int j, len;
-        if (sel >= g_lastResultRows) continue;
+        sel = selRows[i];
         dataRow = g_sortIndex ? g_sortIndex[sel] : sel;
         rowidIdx = (dataRow + 1) * g_lastResultCols;
         rowid = g_lastResult[rowidIdx];
-        if (rowid && i < count) {
+        if (rowid) {
+            /* Save row data for undo (entire row including rowid) */
+            PushUndo(&g_lastResult[rowidIdx], g_lastResultCols);
+            
             len = 0;
             while (rowid[len]) len++;
             rowids[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
             if (rowids[i]) {
                 for (j = 0; j <= len; j++) rowids[i][j] = rowid[j];
-                i++;
             }
+        } else {
+            rowids[i] = NULL;
         }
     }
-    count = i;  /* Actual count collected */
+    LocalFree(selRows);
     
     /* Delete by rowid */
     deleted = 0;
     for (i = 0; i < count; i++) {
+        if (!rowids[i]) continue;
         p = sql;
         s = "DELETE FROM \"";
         while (*s) *p++ = *s++;
@@ -890,10 +1098,6 @@ static void DeleteSelectedRow(void) {
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)msg);
     }
 }
-
-/*============================================================================
-** Insert Mode - editing the placeholder row
-**============================================================================*/
 
 static void ClearInsertMode(void) {
     int i;
