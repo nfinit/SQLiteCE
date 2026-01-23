@@ -33,7 +33,7 @@ void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     HIMAGELIST hIml;
     
     g_hwndGrid = CreateWindowExW(0, WC_LISTVIEWW, NULL,
-        WS_CHILD | WS_BORDER | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_OWNERDATA,
+        WS_CHILD | WS_BORDER | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA,
         x, y, cx, cy, hwndParent, (HMENU)IDC_GRID, g_hInst, NULL);
     
     /* Enable full row select and grid lines */
@@ -181,12 +181,9 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             return 0;
         }
-        /* Delete - Delete selected row (only in edit mode, not placeholder) */
+        /* Delete - Delete selected rows (only in edit mode) */
         if (wParam == VK_DELETE && g_editMode) {
-            int sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
-            if (sel >= 0 && sel < g_lastResultRows) {
-                DeleteSelectedRow();
-            }
+            DeleteSelectedRow();
             return 0;
         }
         /* Escape - Cancel insert mode if active (when not in cell edit) */
@@ -794,7 +791,7 @@ static void CancelCellEdit(void) {
 }
 
 static void DeleteSelectedRow(void) {
-    int sel, dataRow, rowidIdx;
+    int sel, count, dataRow, rowidIdx, deleted, i;
     char *rowid;
     char sql[256];
     char tableName[128];
@@ -802,9 +799,16 @@ static void DeleteSelectedRow(void) {
     const char *s;
     char *errmsg = NULL;
     int rc;
+    wchar_t msg[64];
+    char **rowids;
     
-    sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
-    if (sel < 0) return;
+    /* Count selected rows (excluding placeholder) */
+    count = 0;
+    sel = -1;
+    while ((sel = ListView_GetNextItem(g_hwndGrid, sel, LVNI_SELECTED)) >= 0) {
+        if (sel < g_lastResultRows) count++;
+    }
+    if (count < 1) return;
     
     /* Save table name before it gets cleared */
     s = g_editTableName;
@@ -813,43 +817,78 @@ static void DeleteSelectedRow(void) {
     *p = '\0';
     
     /* Confirm deletion */
-    if (MessageBoxW(g_hwndMain, L"Delete this row?", L"Confirm Delete",
+    if (count == 1)
+        lstrcpyW(msg, L"Delete this row?");
+    else
+        wsprintfW(msg, L"Delete %d rows?", count);
+    if (MessageBoxW(g_hwndMain, msg, L"Confirm Delete",
                     MB_YESNO | MB_ICONQUESTION) != IDYES)
         return;
     
-    /* Get rowid */
-    dataRow = g_sortIndex ? g_sortIndex[sel] : sel;
-    rowidIdx = (dataRow + 1) * g_lastResultCols;
-    rowid = g_lastResult[rowidIdx];
+    /* Collect rowids first (data will be freed on re-query) */
+    rowids = (char **)LocalAlloc(LMEM_FIXED, count * sizeof(char *));
+    if (!rowids) return;
     
-    if (!rowid) return;
-    
-    /* Build DELETE statement */
-    p = sql;
-    s = "DELETE FROM \"";
-    while (*s) *p++ = *s++;
-    s = tableName;
-    while (*s) *p++ = *s++;
-    s = "\" WHERE rowid = ";
-    while (*s) *p++ = *s++;
-    s = rowid;
-    while (*s) *p++ = *s++;
-    *p++ = ';';
-    *p = '\0';
-    
-    /* Execute DELETE */
-    rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
-    
-    if (rc != SQLITE_OK) {
-        wchar_t wmsg[256];
-        MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
-        MessageBoxW(g_hwndMain, wmsg, L"Delete Failed", MB_OK | MB_ICONERROR);
-        if (errmsg) sqlite_freemem(errmsg);
-        return;
+    i = 0;
+    sel = -1;
+    while ((sel = ListView_GetNextItem(g_hwndGrid, sel, LVNI_SELECTED)) >= 0) {
+        int j, len;
+        if (sel >= g_lastResultRows) continue;
+        dataRow = g_sortIndex ? g_sortIndex[sel] : sel;
+        rowidIdx = (dataRow + 1) * g_lastResultCols;
+        rowid = g_lastResult[rowidIdx];
+        if (rowid && i < count) {
+            len = 0;
+            while (rowid[len]) len++;
+            rowids[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+            if (rowids[i]) {
+                for (j = 0; j <= len; j++) rowids[i][j] = rowid[j];
+                i++;
+            }
+        }
     }
+    count = i;  /* Actual count collected */
+    
+    /* Delete by rowid */
+    deleted = 0;
+    for (i = 0; i < count; i++) {
+        p = sql;
+        s = "DELETE FROM \"";
+        while (*s) *p++ = *s++;
+        s = tableName;
+        while (*s) *p++ = *s++;
+        s = "\" WHERE rowid = ";
+        while (*s) *p++ = *s++;
+        s = rowids[i];
+        while (*s) *p++ = *s++;
+        *p++ = ';';
+        *p = '\0';
+        
+        rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
+        if (rc != SQLITE_OK) {
+            wchar_t wmsg[256];
+            MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
+            MessageBoxW(g_hwndMain, wmsg, L"Delete Failed", MB_OK | MB_ICONERROR);
+            if (errmsg) sqlite_freemem(errmsg);
+            break;
+        }
+        deleted++;
+    }
+    
+    /* Free rowid copies */
+    for (i = 0; i < count; i++) {
+        if (rowids[i]) LocalFree(rowids[i]);
+    }
+    LocalFree(rowids);
     
     /* Re-query to refresh grid */
     OpenTableForEditing(tableName);
+    
+    /* Status feedback */
+    if (deleted > 0) {
+        wsprintfW(msg, L"%d row%s deleted", deleted, deleted == 1 ? L"" : L"s");
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)msg);
+    }
 }
 
 /*============================================================================
