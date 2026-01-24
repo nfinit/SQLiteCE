@@ -407,9 +407,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
                 /* Edit menu */
                 case IDM_UNDO:
-                    if (g_viewMode == VIEW_QUERY)
-                        SendMessage(g_hwndQuery, EM_UNDO, 0, 0);
-                    else if (g_editMode && CanUndo())
+                    /* Query editor undo disabled - CE Edit control is unreliable */
+                    if (g_editMode && CanUndo())
                         DoUndo();
                     break;
                 case IDM_CUT:
@@ -591,9 +590,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 int canUndo = 0;
                 int hasSelection = 0;
                 int canCut = (g_viewMode == VIEW_QUERY);
-                if (g_viewMode == VIEW_QUERY)
-                    canUndo = SendMessage(g_hwndQuery, EM_CANUNDO, 0, 0);
-                else if (g_editMode)
+                /* Query editor undo disabled - only grid row delete undo */
+                if (g_editMode)
                     canUndo = CanUndo();
                 if (g_viewMode == VIEW_RESULT && g_gridView && g_hwndGrid)
                     hasSelection = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED) >= 0;

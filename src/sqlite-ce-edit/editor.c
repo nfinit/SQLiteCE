@@ -433,8 +433,8 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             SendMessage(hwnd, EM_SCROLLCARET, 0, 0);
             return 0;
         }
-        /* Ctrl+C/V/X/Z - pass through for edit operations */
-        if (ctrl && (wParam == 'C' || wParam == 'V' || wParam == 'X' || wParam == 'Z'))
+        /* Ctrl+C/V/X - pass through for edit operations */
+        if (ctrl && (wParam == 'C' || wParam == 'V' || wParam == 'X'))
             return CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
     }
     /* Update line count on keyup and scroll caret into view for navigation keys */
@@ -464,8 +464,8 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
                 UpdateLineNumbers();
                 return r;
             }
-            /* Ctrl+C=3, Ctrl+X=24, Ctrl+Z=26 - pass through */
-            if (wParam == 3 || wParam == 24 || wParam == 26)
+            /* Ctrl+C=3, Ctrl+X=24 - pass through */
+            if (wParam == 3 || wParam == 24)
                 return CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
             return 0;
         }
