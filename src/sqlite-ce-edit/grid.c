@@ -135,6 +135,11 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             CopySelectedRow();
             return 0;
         }
+        /* Ctrl+A - Select all rows */
+        if (ctrl && wParam == 'A') {
+            ListView_SetItemState(g_hwndGrid, -1, LVIS_SELECTED, LVIS_SELECTED);
+            return 0;
+        }
         /* Ctrl+Z - Undo last delete (only in edit mode) */
         if (ctrl && wParam == 'Z' && g_editMode) {
             if (g_undoCount > 0) UndoDelete();
@@ -832,6 +837,18 @@ void ClearUndoStack(void) {
     g_undoCount = 0;
     g_undoCapacity = 0;
     g_undoBytes = 0;
+}
+
+int CanUndo(void) {
+    return g_undoCount > 0;
+}
+
+void DoUndo(void) {
+    if (g_undoCount > 0) UndoDelete();
+}
+
+void DoDeleteRows(void) {
+    if (g_editMode) DeleteSelectedRow();
 }
 
 /* Check available memory before caching */

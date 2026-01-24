@@ -69,22 +69,32 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hMenu, MF_POPUP, (UINT)hFile, L"&File");
             g_hFileMenu = hFile;
             
+            /* Create Edit menu */
+            g_hEditMenu = CreatePopupMenu();
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_UNDO, L"&Undo\tCtrl+Z");
+            AppendMenuW(g_hEditMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_CUT, L"Cu&t\tCtrl+X");
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_COPY, L"&Copy\tCtrl+C");
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_PASTE, L"&Paste\tCtrl+V");
+            AppendMenuW(g_hEditMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_SELECTALL, L"Select &All\tCtrl+A");
+            AppendMenuW(g_hEditMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_DELETE, L"&Delete\tDel");
+            AppendMenuW(g_hEditMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
+            AppendMenuW(g_hEditMenu, MF_STRING, IDM_REPLACE, L"&Replace...\tCtrl+H");
+            AppendMenuW(hMenu, MF_POPUP, (UINT)g_hEditMenu, L"&Edit");
+            
             /* Create all three context menus upfront */
             g_hQueryCtx = CreatePopupMenu();
             AppendMenuW(g_hQueryCtx, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
-            AppendMenuW(g_hQueryCtx, MF_SEPARATOR, 0, NULL);
-            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
-            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
-            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_REPLACE, L"&Replace...\tCtrl+H");
             
             g_hResultCtx = CreatePopupMenu();
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_VIEWGRID, L"&Grid View\tCtrl+G");
             AppendMenuW(g_hResultCtx, MF_SEPARATOR, 0, NULL);
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_EXPORTHTMLRES, L"Export &HTML...");
-            AppendMenuW(g_hResultCtx, MF_SEPARATOR, 0, NULL);
-            AppendMenuW(g_hResultCtx, MF_STRING, IDM_FIND, L"&Find...\tCtrl+F");
-            AppendMenuW(g_hResultCtx, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
             
             {
                 HMENU hSelObj = CreatePopupMenu();
@@ -395,6 +405,42 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_FONTSIZE:
                     CycleFontSize();
                     break;
+                /* Edit menu */
+                case IDM_UNDO:
+                    if (g_viewMode == VIEW_QUERY)
+                        SendMessage(g_hwndQuery, EM_UNDO, 0, 0);
+                    else if (g_editMode && CanUndo())
+                        DoUndo();
+                    break;
+                case IDM_CUT:
+                    if (g_viewMode == VIEW_QUERY)
+                        SendMessage(g_hwndQuery, WM_CUT, 0, 0);
+                    break;
+                case IDM_COPY:
+                    if (g_viewMode == VIEW_QUERY)
+                        SendMessage(g_hwndQuery, WM_COPY, 0, 0);
+                    else if (g_viewMode == VIEW_RESULT && !g_gridView)
+                        SendMessage(g_hwndResult, WM_COPY, 0, 0);
+                    break;
+                case IDM_PASTE:
+                    if (g_viewMode == VIEW_QUERY)
+                        SendMessage(g_hwndQuery, WM_PASTE, 0, 0);
+                    break;
+                case IDM_SELECTALL:
+                    if (g_viewMode == VIEW_QUERY) {
+                        SetFocus(g_hwndQuery);
+                        SendMessage(g_hwndQuery, EM_SETSEL, 0, -1);
+                    } else if (g_viewMode == VIEW_RESULT && !g_gridView) {
+                        SetFocus(g_hwndResult);
+                        SendMessage(g_hwndResult, EM_SETSEL, 0, -1);
+                    } else if (g_viewMode == VIEW_RESULT && g_gridView && g_hwndGrid) {
+                        SetFocus(g_hwndGrid);
+                        ListView_SetItemState(g_hwndGrid, -1, LVIS_SELECTED, LVIS_SELECTED);
+                    }
+                    break;
+                case IDM_DELETE:
+                    if (g_editMode && g_viewMode == VIEW_RESULT) DoDeleteRows();
+                    break;
                 case IDOK:        SendMessage(hwnd, WM_CLOSE, 0, 0); break;
                 case 1001:
                     if (HIWORD(wParam) == EN_CHANGE && g_viewMode == 0) {
@@ -540,6 +586,23 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         
         case WM_INITMENUPOPUP: {
             HMENU hMenu = (HMENU)wParam;
+            /* Update Edit menu state */
+            if (hMenu == g_hEditMenu) {
+                int canUndo = 0;
+                int hasSelection = 0;
+                int canCut = (g_viewMode == VIEW_QUERY);
+                if (g_viewMode == VIEW_QUERY)
+                    canUndo = SendMessage(g_hwndQuery, EM_CANUNDO, 0, 0);
+                else if (g_editMode)
+                    canUndo = CanUndo();
+                if (g_viewMode == VIEW_RESULT && g_gridView && g_hwndGrid)
+                    hasSelection = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED) >= 0;
+                EnableMenuItem(hMenu, IDM_UNDO, canUndo ? MF_ENABLED : MF_GRAYED);
+                EnableMenuItem(hMenu, IDM_CUT, canCut ? MF_ENABLED : MF_GRAYED);
+                EnableMenuItem(hMenu, IDM_DELETE, (g_editMode && g_viewMode == VIEW_RESULT && hasSelection) ? MF_ENABLED : MF_GRAYED);
+                EnableMenuItem(hMenu, IDM_REPLACE, (g_viewMode == VIEW_QUERY) ? MF_ENABLED : MF_GRAYED);
+                EnableMenuItem(hMenu, IDM_FINDNEXT, g_findText[0] ? MF_ENABLED : MF_GRAYED);
+            }
             /* Check if this is the Selected Object submenu */
             if (g_viewMode == 2) {
                 int objType = GetSelectedObjectType();

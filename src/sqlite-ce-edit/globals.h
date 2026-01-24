@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.10.0.47"
+#define SQLITECEDIT_VERSION L"0.10.0.56"
 
 /*============================================================================
 ** Menu IDs
@@ -142,6 +142,14 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_STATUSBAR     706
 #define IDM_FULLSCREEN    707
 
+/* Edit menu */
+#define IDM_UNDO      801
+#define IDM_CUT       802
+#define IDM_COPY      803
+#define IDM_PASTE     804
+#define IDM_SELECTALL 805
+#define IDM_DELETE    806
+
 /* Timer IDs */
 #define IDT_TAPHOLD 1
 
@@ -185,6 +193,7 @@ extern HWND g_hwndCB;
 extern HWND g_hwndStatus;
 extern HMENU g_hMenu;
 extern HMENU g_hViewMenu;
+extern HMENU g_hEditMenu;
 extern HMENU g_hRecentDbMenu;
 extern HMENU g_hRecentQueryMenu;
 extern HMENU g_hQueryCtx;
@@ -323,6 +332,9 @@ void GridFindNext(void);
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void OnGridDoubleClick(int row, int col);
 void ClearUndoStack(void);
+int CanUndo(void);
+void DoUndo(void);
+void DoDeleteRows(void);
 void OnSchemaDelete(void);
 int GetSelectedObjectType(void);  /* Returns IMG_TABLE, IMG_VIEW, IMG_TRIGGER, or -1 */
 void GetSchemaStatus(wchar_t *buf, int bufLen);

@@ -164,6 +164,7 @@ static void UpdateContextMenu(int mode) {
     /* Detach reusable submenus from old menu so DestroyMenu won't kill them */
     if (hOldMenu) {
         RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* File */
+        RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* Edit */
         RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* Context (Query/Results/Schema) */
         RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* View */
     }
@@ -171,6 +172,7 @@ static void UpdateContextMenu(int mode) {
     /* Build a fresh menu bar */
     hNewMenu = CreateMenu();
     AppendMenuW(hNewMenu, MF_POPUP, (UINT)g_hFileMenu, L"&File");
+    AppendMenuW(hNewMenu, MF_POPUP, (UINT)g_hEditMenu, L"&Edit");
     
     /* Add only the active context menu */
     if (mode == 0) {
@@ -189,6 +191,9 @@ static void UpdateContextMenu(int mode) {
     AppendMenuW(hNewMenu, MF_POPUP, (UINT)g_hViewMenu, L"&View");
     CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA,
         mode == 0 ? IDM_VIEWQUERY : (mode == 1 ? IDM_VIEWRESULT : IDM_VIEWSCHEMA), MF_BYCOMMAND);
+    
+    /* Update Edit menu state - basic state on view switch, WM_INITMENUPOPUP refines */
+    EnableMenuItem(g_hEditMenu, IDM_REPLACE, (mode == VIEW_QUERY) ? MF_ENABLED : MF_GRAYED);
     
     /* Remove old menu from CommandBar (index 0) */
     SendMessage(g_hwndCB, TB_DELETEBUTTON, 0, 0);
@@ -428,8 +433,8 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             SendMessage(hwnd, EM_SCROLLCARET, 0, 0);
             return 0;
         }
-        /* Ctrl+C/V/X - pass through for edit operations */
-        if (ctrl && (wParam == 'C' || wParam == 'V' || wParam == 'X'))
+        /* Ctrl+C/V/X/Z - pass through for edit operations */
+        if (ctrl && (wParam == 'C' || wParam == 'V' || wParam == 'X' || wParam == 'Z'))
             return CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
     }
     /* Update line count on keyup and scroll caret into view for navigation keys */
@@ -459,8 +464,8 @@ LRESULT CALLBACK QueryEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
                 UpdateLineNumbers();
                 return r;
             }
-            /* Ctrl+C=3, Ctrl+X=24 - pass through */
-            if (wParam == 3 || wParam == 24)
+            /* Ctrl+C=3, Ctrl+X=24, Ctrl+Z=26 - pass through */
+            if (wParam == 3 || wParam == 24 || wParam == 26)
                 return CallWindowProc(g_pfnQueryProc, hwnd, msg, wParam, lParam);
             return 0;
         }
