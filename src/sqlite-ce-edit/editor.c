@@ -177,6 +177,7 @@ static void UpdateContextMenu(int mode) {
     /* Add only the active context menu */
     if (mode == 0) {
         hCtx = g_hQueryCtx;
+        CheckMenuItem(hCtx, IDM_EXECATCURSOR, g_execAtCursor ? MF_CHECKED : MF_UNCHECKED);
         AppendMenuW(hNewMenu, MF_POPUP, (UINT)hCtx, L"&Query");
     } else if (mode == 1) {
         hCtx = g_hResultCtx;

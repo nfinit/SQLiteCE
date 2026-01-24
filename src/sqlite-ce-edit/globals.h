@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.10.0.59"
+#define SQLITECEDIT_VERSION L"0.10.0.62"
 
 /*============================================================================
 ** Menu IDs
@@ -141,6 +141,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_EXPORTALLDDL  705
 #define IDM_STATUSBAR     706
 #define IDM_FULLSCREEN    707
+#define IDM_COLLAPSEALL   708
 
 /* Edit menu */
 #define IDM_UNDO      801
@@ -149,6 +150,10 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_PASTE     804
 #define IDM_SELECTALL 805
 #define IDM_DELETE    806
+
+/* Results context menu */
+#define IDM_COPYALL      901
+#define IDM_CLEARRESULTS 902
 
 /* Timer IDs */
 #define IDT_TAPHOLD 1

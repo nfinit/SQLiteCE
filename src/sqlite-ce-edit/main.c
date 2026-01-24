@@ -89,9 +89,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             /* Create all three context menus upfront */
             g_hQueryCtx = CreatePopupMenu();
             AppendMenuW(g_hQueryCtx, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
+            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_EXECATCURSOR, L"Execute at &Cursor");
+            AppendMenuW(g_hQueryCtx, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_CLEAR, L"C&lear Editor");
             
             g_hResultCtx = CreatePopupMenu();
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_VIEWGRID, L"&Grid View\tCtrl+G");
+            AppendMenuW(g_hResultCtx, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hResultCtx, MF_STRING, IDM_COPYALL, L"&Copy All");
+            AppendMenuW(g_hResultCtx, MF_STRING, IDM_CLEARRESULTS, L"C&lear Results");
             AppendMenuW(g_hResultCtx, MF_SEPARATOR, 0, NULL);
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_EXPORTHTMLRES, L"Export &HTML...");
@@ -106,6 +112,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 AppendMenuW(g_hSchemaCtx, MF_POPUP, (UINT)hSelObj, L"Selected &Object");
                 AppendMenuW(g_hSchemaCtx, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(g_hSchemaCtx, MF_STRING, IDM_REFRESH, L"&Refresh");
+                AppendMenuW(g_hSchemaCtx, MF_STRING, IDM_COLLAPSEALL, L"&Collapse All");
                 AppendMenuW(g_hSchemaCtx, MF_STRING, IDM_EXPORTALLDDL, L"Export &All DDL...");
                 AppendMenuW(g_hSchemaCtx, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(g_hSchemaCtx, MF_STRING, IDM_SHOWSIZES, L"Show &Details");
@@ -341,6 +348,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_FIND:    DoFind(); break;
                 case IDM_FINDNEXT: DoFindNext(); break;
                 case IDM_REPLACE: DoReplace(); break;
+                case IDM_CLEAR:
+                    if (g_viewMode == VIEW_QUERY) {
+                        SetWindowTextW(g_hwndQuery, L"");
+                        g_queryDirty = 0;
+                        UpdateLineNumbers();
+                    }
+                    break;
+                case IDM_COPYALL:
+                    if (g_viewMode == VIEW_RESULT && !g_gridView) {
+                        SendMessage(g_hwndResult, EM_SETSEL, 0, -1);
+                        SendMessage(g_hwndResult, WM_COPY, 0, 0);
+                        SendMessage(g_hwndResult, EM_SETSEL, 0, 0);
+                    }
+                    break;
+                case IDM_CLEARRESULTS:
+                    if (g_viewMode == VIEW_RESULT) {
+                        SetWindowTextW(g_hwndResult, L"");
+                        FreeLastResults();
+                        if (g_gridView) PopulateGrid();
+                    }
+                    break;
                 case IDM_ABOUT:
                     DoAbout();
                     break;
@@ -371,6 +399,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
                 case IDM_REFRESH:
                     if (g_viewMode == 2) RefreshSchema();
+                    break;
+                case IDM_COLLAPSEALL:
+                    if (g_viewMode == 2 && g_hwndSchema) {
+                        /* Collapse category nodes (Tables/Views/Triggers) but keep db root expanded */
+                        HTREEITEM hRoot = TreeView_GetRoot(g_hwndSchema);
+                        if (hRoot) {
+                            HTREEITEM hChild = TreeView_GetChild(g_hwndSchema, hRoot);
+                            while (hChild) {
+                                TreeView_Expand(g_hwndSchema, hChild, TVE_COLLAPSE);
+                                hChild = TreeView_GetNextSibling(g_hwndSchema, hChild);
+                            }
+                        }
+                    }
                     break;
                 case IDM_SHOWSIZES:
                     g_showSizes = !g_showSizes;
