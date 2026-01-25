@@ -500,11 +500,20 @@ static void ce_wide_to_utf8(const wchar_t *wzWide, char *zUtf8, int nUtf8) {
 */
 int sqliteOsDelete(const char *zFilename) {
     wchar_t wzFilename[SQLITE_CE_MAX_PATH];
-    
+
     CE_TRACE("sqliteOsDelete");
     ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
-    DeleteFileW(wzFilename);
-    
+
+    if (!DeleteFileW(wzFilename)) {
+        /* File doesn't exist or couldn't be deleted - check error */
+        DWORD err = GetLastError();
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
+            /* File doesn't exist - treat as success for SQLite compatibility */
+            return SQLITE_OK;
+        }
+        return SQLITE_IOERR;
+    }
+
     return SQLITE_OK;
 }
 
@@ -678,7 +687,15 @@ int sqliteOsTempFileName(char *zBuf) {
     }
 #else
     /* CE 2.0 doesn't have GetTempPath - use our configured default */
-    strcpy(zDir, SQLITE_CE_TEMP_DIRECTORY);
+    {
+        const char *src = SQLITE_CE_TEMP_DIRECTORY;
+        int n = 0;
+        while (src[n] && n < SQLITE_CE_MAX_PATH - 1) {
+            zDir[n] = src[n];
+            n++;
+        }
+        zDir[n] = 0;
+    }
 #endif
     
     /* Generate random filename, retry until we find one that doesn't exist */
@@ -782,14 +799,21 @@ int sqliteOsSync(OsFile *id) {
 int sqliteOsTruncate(OsFile *id, off_t nByte) {
     LONG upperBits = (LONG)(nByte >> 32);
     LONG lowerBits = (LONG)(nByte & 0xFFFFFFFF);
-    
+    DWORD result;
+
     CE_TRACE("sqliteOsTruncate");
-    SetFilePointer(id->h, lowerBits, &upperBits, FILE_BEGIN);
+
+    result = SetFilePointer(id->h, lowerBits, &upperBits, FILE_BEGIN);
+    if (result == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR) {
+        CE_TRACE("sqliteOsTruncate: seek IOERR");
+        return SQLITE_IOERR;
+    }
+
     if (!SetEndOfFile(id->h)) {
         CE_TRACE("sqliteOsTruncate: IOERR");
         return SQLITE_IOERR;
     }
-    
+
     return SQLITE_OK;
 }
 
