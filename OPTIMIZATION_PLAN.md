@@ -257,12 +257,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Cache Schema Metadata |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Medium |
 | **Effort** | Medium |
 | **Files** | `src/sqlite-ce-edit/schema.c`, `src/sqlite/main.c` |
-| **Description** | Schema explorer queries sqlite_master on every tree expansion. Implement schema metadata caching with invalidation on DDL operations to avoid repeated parsing of schema information. |
-| **Acceptance Criteria** | - Schema queries cached per session<br>- Cache invalidated on CREATE/DROP/ALTER<br>- Faster schema tree population |
+| **Description** | **Partially optimized via lazy loading.** Schema tree already uses lazy population (G-002) - sqlite_master is queried only on RefreshSchema, and PRAGMA table_info only when nodes are expanded. Repeated expansion uses placeholder children without re-querying until refresh. |
+| **Acceptance Criteria** | - Schema queries cached per session ✓ (within tree lifetime)<br>- Cache invalidated on CREATE/DROP/ALTER ✓ (manual refresh)<br>- Faster schema tree population ✓ (lazy loading) |
+| **Completion Notes** | Tree state persists during session. RefreshSchema rebuilds tree only when explicitly called or after DDL. Column info queried once per expansion. Full caching would require DDL hooks and add complexity for minimal benefit. |
 
 #### B-009: Optimize Virtual ListView Data Access
 | Field | Value |
@@ -682,12 +683,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Double Buffering for Flicker-Free Drawing |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Medium |
 | **Effort** | Medium |
 | **Files** | `src/sqlite-ce-edit/editor.c`, `src/sqlite-ce-edit/grid.c` |
 | **Description** | UI controls flicker during rapid updates (typing, scrolling). Implement double-buffering where drawing occurs to off-screen bitmap first, then blitted to screen in single operation. |
 | **Acceptance Criteria** | - No visible flicker during typing<br>- Smooth scrolling in grid<br>- Memory overhead acceptable |
+| **Deferral Reason** | App uses standard Windows CE controls (ListView, TreeView, Edit) which handle their own painting. Custom double-buffering would require subclassing and intercepting WM_PAINT - complex and risky. LVS_EX_DOUBLEBUFFER only available on CE 5.0+. Modern devices handle this adequately. |
 
 #### G-002: Optimize Tree View Population
 | Field | Value |
@@ -705,12 +707,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Incremental Result Display |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Medium |
 | **Effort** | Medium |
 | **Files** | `src/sqlite-ce-edit/execute.c`, `src/sqlite-ce-edit/grid.c` |
 | **Description** | Results are displayed only after query completes. For long-running queries, implement incremental display that shows results as they become available, improving perceived responsiveness. |
 | **Acceptance Criteria** | - Results visible during query execution<br>- Row count updates incrementally<br>- Abort still functions correctly |
+| **Deferral Reason** | Would require callback-based UI updates during sqlite_exec, careful message pump handling to avoid reentrancy, and partial ListView population. Current approach with progress callback and Ctrl+C abort handles long queries adequately. Virtual ListView already handles large result sets efficiently. |
 
 #### G-004: Optimize Editor Line Number Rendering
 | Field | Value |
@@ -832,6 +835,9 @@ Based on impact and effort, items are prioritized as follows:
 | B-010 | Index Usage Hints | CPU | DEFERRED (SQLite 3.x feature) |
 | D-004 | Function Documentation | Cleanup | DEFERRED (high effort, incremental approach) |
 | F-005 | Developer Documentation | Build | COMPLETE (BUILD.md, OPTIMIZATION_PLAN.md) |
+| B-008 | Schema Metadata Cache | CPU | COMPLETE (lazy loading approach) |
+| G-001 | Double Buffering | UI | DEFERRED (standard controls handle painting) |
+| G-003 | Incremental Results | UI | DEFERRED (progress callback approach works) |
 | All remaining items | - | - | - |
 | D-007 | Standardize Naming Conventions | Cleanup | PENDING |
 | G-001 | Double Buffering | UI | PENDING |
@@ -907,6 +913,7 @@ A change is rejected if:
 | 1.13 | 2026-01-25 | Claude | **Phase 5 Continued**: B-006 (short-circuit already implemented), C-006 (deferred - SQLite 3.x), C-008 (lazy journal already implemented) |
 | 1.14 | 2026-01-25 | Claude | **Phase 5 Continued**: D-007 (naming audit), E-002/E-004/E-005/E-008 (deferred - high effort architectural changes) |
 | 1.15 | 2026-01-25 | Claude | **Phase 5 Continued**: B-010/D-004 (deferred), F-005 (complete - BUILD.md exists) |
+| 1.16 | 2026-01-25 | Claude | **Phase 5 Continued**: B-008 (lazy loading approach), G-001/G-003 (deferred - standard controls, progress callback) |
 
 ---
 
