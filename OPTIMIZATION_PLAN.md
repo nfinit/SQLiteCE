@@ -915,7 +915,8 @@ A change is rejected if:
 | 1.14 | 2026-01-25 | Claude | **Phase 5 Continued**: D-007 (naming audit), E-002/E-004/E-005/E-008 (deferred - high effort architectural changes) |
 | 1.15 | 2026-01-25 | Claude | **Phase 5 Continued**: B-010/D-004 (deferred), F-005 (complete - BUILD.md exists) |
 | 1.16 | 2026-01-25 | Claude | **Phase 5 Continued**: B-008 (lazy loading approach), G-001/G-003 (deferred - standard controls, progress callback) |
-| 1.17 | 2026-01-25 | Claude | **Phase 5 Complete**: Final audit - 39 COMPLETE, 6 PENDING (core SQLite), 11 DEFERRED |
+| 1.17 | 2026-01-25 | Claude | **Phase 5 Continued**: Final audit - 39 COMPLETE, 6 PENDING (core SQLite), 11 DEFERRED |
+| 1.18 | 2026-01-25 | Claude | **Phase 5 Complete**: B-001 marked complete (already uses UpperToLower[]). Final: 40 COMPLETE, 5 PENDING, 11 DEFERRED |
 
 ---
 
@@ -924,20 +925,19 @@ A change is rejected if:
 ### Completion Statistics
 | Status | Count | Percentage |
 |--------|-------|------------|
-| **COMPLETE** | 39 | 70% |
-| **PENDING** | 6 | 11% |
-| **DEFERRED** | 11 | 19% |
+| **COMPLETE** | 40 | 71% |
+| **PENDING** | 5 | 9% |
+| **DEFERRED** | 11 | 20% |
 | **Total** | 56 | 100% |
 
 ### Remaining PENDING Items (Future Work)
-These 6 items require careful implementation in core SQLite code:
+These 5 items require careful implementation in core SQLite code:
 
 | ID | Name | Effort | Notes |
 |----|------|--------|-------|
 | A-003 | String Interning | High | Needs hash table, reference counting |
 | A-005 | VDBE Stack Allocation | High | Core VM changes, complex |
 | A-007 | B-tree Page Cache Layout | Medium | Cache alignment, single allocation |
-| B-001 | String Comparison | Medium | Already uses UpperToLower[] lookup |
 | C-002 | Page Write Batching | Medium | Pager modification, durability concerns |
 | C-003 | Read-Ahead Buffer | Medium | Sequential access detection needed |
 
