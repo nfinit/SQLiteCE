@@ -4,6 +4,7 @@
 
 #include "globals.h"
 #include "constants.h"
+#include "strutils.h"
 
 /*============================================================================
 ** CSV Import
@@ -455,9 +456,9 @@ void DoImportCEDB(void) {
     }
     
     p = sql;
-    { const char *t = "CREATE TABLE \""; while (*t) *p++ = *t++; }
+    STR_COPY(p, "CREATE TABLE \"");
     for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
-    { const char *t = "\" (ceoid INTEGER PRIMARY KEY, data TEXT)"; while (*t) *p++ = *t++; }
+    STR_COPY(p, "\" (ceoid INTEGER PRIMARY KEY, data TEXT)");
     *p = 0;
     
     {
@@ -476,9 +477,9 @@ void DoImportCEDB(void) {
     nProps = 0;
     while ((recOid = CeReadRecordProps(hDb, CEDB_ALLOWREALLOC, &nProps, NULL, (LPBYTE*)&pProps, &cbBuf)) != 0) {
         p = sql;
-        { const char *t = "INSERT INTO \""; while (*t) *p++ = *t++; }
+        STR_COPY(p, "INSERT INTO \"");
         for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
-        { const char *t = "\" (ceoid, data) VALUES ("; while (*t) *p++ = *t++; }
+        STR_COPY(p, "\" (ceoid, data) VALUES (");
         
         { 
             char num[16]; char *np = num + 14; DWORD n = recOid;
@@ -488,7 +489,7 @@ void DoImportCEDB(void) {
             while (*np) *p++ = *np++;
         }
         
-        { const char *t = ", '"; while (*t) *p++ = *t++; }
+        STR_COPY(p, ", '");
         
         for (i = 0; i < nProps && (p - sql) < 3800; i++) {
             WORD type = LOWORD(pProps[i].propid);
@@ -521,7 +522,7 @@ void DoImportCEDB(void) {
             }
         }
         
-        { const char *t = "')"; while (*t) *p++ = *t++; }
+        STR_COPY(p, "')");
         *p = 0;
         
         sqlite_exec(g_db, sql, NULL, NULL, NULL);
