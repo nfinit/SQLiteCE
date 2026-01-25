@@ -140,6 +140,26 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             ListView_SetItemState(g_hwndGrid, -1, LVIS_SELECTED, LVIS_SELECTED);
             return 0;
         }
+        /* Ctrl+Home - Go to first row */
+        if (ctrl && wParam == VK_HOME) {
+            int count = ListView_GetItemCount(g_hwndGrid);
+            if (count > 0) {
+                ListView_SetItemState(g_hwndGrid, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+                ListView_SetItemState(g_hwndGrid, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+                ListView_EnsureVisible(g_hwndGrid, 0, FALSE);
+            }
+            return 0;
+        }
+        /* Ctrl+End - Go to last row */
+        if (ctrl && wParam == VK_END) {
+            int count = ListView_GetItemCount(g_hwndGrid);
+            if (count > 0) {
+                ListView_SetItemState(g_hwndGrid, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+                ListView_SetItemState(g_hwndGrid, count - 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+                ListView_EnsureVisible(g_hwndGrid, count - 1, FALSE);
+            }
+            return 0;
+        }
         /* Ctrl+Z - Undo last delete (only in edit mode) */
         if (ctrl && wParam == 'Z' && g_editMode) {
             if (g_undoCount > 0) UndoDelete();

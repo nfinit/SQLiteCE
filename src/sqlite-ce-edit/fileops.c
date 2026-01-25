@@ -1423,7 +1423,7 @@ void DoBackupDatabase(void) {
     const wchar_t *fn;
     wchar_t *d;
     HANDLE hSrc, hDst;
-    BYTE buf[4096];
+    BYTE buf[16384];  /* 16KB buffer for faster backup (was 4KB) */
     DWORD dwRead, dwWritten;
     int ok = 0;
     
@@ -1517,10 +1517,10 @@ void DoRestoreDatabase(void) {
     wchar_t *d;
     HANDLE hSrc, hDst, hFind;
     WIN32_FIND_DATAW fd;
-    BYTE buf[4096];
+    BYTE buf[16384];  /* 16KB buffer for faster restore (was 4KB) */
     DWORD dwRead, dwWritten;
     int ok = 0;
-    
+
     /* Extract database name (without extension) */
     fn = GetFilename(g_szDbPath);
     d = szDbName;

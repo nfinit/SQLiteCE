@@ -80,6 +80,11 @@ static LRESULT CALLBACK SchemaSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, L
     /* Global shortcuts first */
     if (HandleGlobalKeys(msg, wParam))
         return 0;
+    /* F5 - Refresh schema tree */
+    if (msg == WM_KEYDOWN && wParam == VK_F5) {
+        RefreshSchema();
+        return 0;
+    }
     /* Suppress beep on Enter - only eat WM_CHAR, let WM_KEYDOWN through for TVN_KEYDOWN */
     if (msg == WM_CHAR && wParam == '\r')
         return 0;
