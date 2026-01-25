@@ -314,6 +314,7 @@ void ReportError(int severity, const wchar_t *context, const wchar_t *message, i
 void UpdateLineCount(void);
 void UpdateLineNumbers(void);
 void SyncLineNumScroll(void);
+void CleanupLineNumCache(void);
 void SwitchView(int mode);
 void ForceMenuRebuild(void);
 void BuildMenuBar(int mode);

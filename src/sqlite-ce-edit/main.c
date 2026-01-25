@@ -671,6 +671,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         
         case WM_DESTROY:
             CloseDatabase();
+            CleanupLineNumCache();
             if (g_hFontQuery) DeleteObject(g_hFontQuery);
             if (g_hFontResult) DeleteObject(g_hFontResult);
             if (g_hBrushWhite) DeleteObject(g_hBrushWhite);

@@ -73,52 +73,76 @@ void UpdateLineCount(void) {
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)buf);
 }
 
+/*
+** Line number rendering with caching.
+** Caches editor text to avoid re-fetching on scroll.
+** Cache is invalidated when text length changes.
+*/
+static wchar_t *g_lineNumTextCache = NULL;
+static int g_lineNumTextLen = -1;
+static int g_lineNumLogicalTotal = 0;
+
 void UpdateLineNumbers(void) {
     wchar_t buf[4096];
     wchar_t *text = NULL;
     int i, visLines, firstVisible, pos = 0, textLen;
     int charIdx, logicalLine;
+    int textChanged = 0;
+
     if (!g_showLineNumbers || !g_hwndLineNum || !g_hFontQuery) return;
-    
+
     visLines = (int)SendMessage(g_hwndQuery, EM_GETLINECOUNT, 0, 0);
     textLen = GetWindowTextLengthW(g_hwndQuery);
-    
-    /* Get text once for all operations */
-    if (textLen > 0) {
-        text = (wchar_t*)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
-        if (text) GetWindowTextW(g_hwndQuery, text, textLen + 1);
-    }
-    
-    /* Count logical lines for gutter width */
-    {
-        int logicalTotal = 1;
-        if (text) {
-            for (i = 0; i < textLen; i++)
-                if (text[i] == '\n') logicalTotal++;
+
+    /* Check if text changed (invalidate cache) */
+    if (textLen != g_lineNumTextLen) {
+        textChanged = 1;
+        if (g_lineNumTextCache) {
+            LocalFree(g_lineNumTextCache);
+            g_lineNumTextCache = NULL;
         }
-        /* Auto-size gutter width */
-        {
-            HDC hdc = GetDC(g_hwndLineNum);
-            HFONT hOld = (HFONT)SelectObject(hdc, g_hFontQuery);
-            SIZE sz;
-            wchar_t numBuf[16];
-            int newWidth;
-            wsprintfW(numBuf, L"%d", logicalTotal);
-            GetTextExtentPoint32W(hdc, numBuf, lstrlenW(numBuf), &sz);
-            newWidth = sz.cx + 10;
-            if (newWidth < 20) newWidth = 20;
-            SelectObject(hdc, hOld);
-            ReleaseDC(g_hwndLineNum, hdc);
-            if (newWidth != g_lineNumWidth) {
-                g_lineNumWidth = newWidth;
-                SendMessage(g_hwndMain, WM_SIZE, 0, 0);
-                UpdateWindow(g_hwndMain);
+        g_lineNumTextLen = textLen;
+    }
+
+    /* Get/cache text for operations */
+    if (textLen > 0) {
+        if (textChanged || !g_lineNumTextCache) {
+            g_lineNumTextCache = (wchar_t*)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
+            if (g_lineNumTextCache) {
+                GetWindowTextW(g_hwndQuery, g_lineNumTextCache, textLen + 1);
+                /* Recount logical lines */
+                g_lineNumLogicalTotal = 1;
+                for (i = 0; i < textLen; i++)
+                    if (g_lineNumTextCache[i] == '\n') g_lineNumLogicalTotal++;
             }
         }
+        text = g_lineNumTextCache;
+    } else {
+        g_lineNumLogicalTotal = 1;
     }
-    
+
+    /* Auto-size gutter width (only if text changed) */
+    if (textChanged) {
+        HDC hdc = GetDC(g_hwndLineNum);
+        HFONT hOld = (HFONT)SelectObject(hdc, g_hFontQuery);
+        SIZE sz;
+        wchar_t numBuf[16];
+        int newWidth;
+        wsprintfW(numBuf, L"%d", g_lineNumLogicalTotal);
+        GetTextExtentPoint32W(hdc, numBuf, lstrlenW(numBuf), &sz);
+        newWidth = sz.cx + 10;
+        if (newWidth < 20) newWidth = 20;
+        SelectObject(hdc, hOld);
+        ReleaseDC(g_hwndLineNum, hdc);
+        if (newWidth != g_lineNumWidth) {
+            g_lineNumWidth = newWidth;
+            SendMessage(g_hwndMain, WM_SIZE, 0, 0);
+            UpdateWindow(g_hwndMain);
+        }
+    }
+
     firstVisible = (int)SendMessage(g_hwndQuery, EM_GETFIRSTVISIBLELINE, 0, 0);
-    
+
     /* Count logical line number at first visible line */
     charIdx = (int)SendMessage(g_hwndQuery, EM_LINEINDEX, firstVisible, 0);
     logicalLine = 1;
@@ -126,7 +150,7 @@ void UpdateLineNumbers(void) {
         for (i = 0; i < charIdx && i < textLen; i++)
             if (text[i] == '\n') logicalLine++;
     }
-    
+
     /* For each visible line, check if it starts a new logical line */
     for (i = firstVisible; i < visLines && pos < 4000; i++) {
         charIdx = (int)SendMessage(g_hwndQuery, EM_LINEINDEX, i, 0);
@@ -141,8 +165,16 @@ void UpdateLineNumbers(void) {
     }
     buf[pos] = 0;
     SetWindowTextW(g_hwndLineNum, buf);
-    
-    if (text) LocalFree(text);
+}
+
+/* Free line number cache (call on shutdown) */
+void CleanupLineNumCache(void) {
+    if (g_lineNumTextCache) {
+        LocalFree(g_lineNumTextCache);
+        g_lineNumTextCache = NULL;
+    }
+    g_lineNumTextLen = -1;
+    g_lineNumLogicalTotal = 0;
 }
 
 void SyncLineNumScroll(void) {

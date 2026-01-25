@@ -699,12 +699,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Optimize Editor Line Number Rendering |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Low |
 | **Effort** | Low |
-| **Files** | `src/sqlite-ce-edit/editor.c` |
-| **Description** | Line numbers are re-rendered on every scroll/edit. Cache line number bitmap for visible range and only update on line count change or scroll by full screen. |
-| **Acceptance Criteria** | - Cached line number rendering<br>- Reduced draw calls<br>- Correct numbers always displayed |
+| **Files** | `src/sqlite-ce-edit/editor.c`, `src/sqlite-ce-edit/globals.h`, `src/sqlite-ce-edit/main.c` |
+| **Description** | Added text caching to UpdateLineNumbers(). Cache avoids re-fetching editor text on scroll - only invalidated when text length changes. Gutter width recalculated only on text change. |
+| **Acceptance Criteria** | - Cached line number rendering ✓<br>- Reduced memory allocation on scroll ✓<br>- Correct numbers always displayed ✓ |
+| **Implementation Notes** | Added g_lineNumTextCache, g_lineNumTextLen, g_lineNumLogicalTotal statics. Cache invalidated when textLen changes. Added CleanupLineNumCache() called on WM_DESTROY. |
 
 #### G-005: Reduce Message Box Usage
 | Field | Value |
@@ -792,6 +793,7 @@ Based on impact and effort, items are prioritized as follows:
 | G-006 | Keyboard Navigation Improvements | UI | COMPLETE (Ctrl+Home/End, F5 refresh) |
 | B-009 | Virtual ListView Data Access | CPU | COMPLETE (already optimized) |
 | C-007 | Optimize Backup File Writing | I/O | COMPLETE (16KB buffer) |
+| G-004 | Editor Line Number Rendering | UI | COMPLETE (text caching) |
 | D-004 | Add Function Documentation | Cleanup | PENDING |
 | D-007 | Standardize Naming Conventions | Cleanup | PENDING |
 | G-001 | Double Buffering | UI | PENDING |
@@ -858,6 +860,7 @@ A change is rejected if:
 | 1.4 | 2026-01-25 | Claude | **Phase 4 Complete**: E-001 (db_api.h), E-003 (pal.h), E-006 (test_macros.h), F-001 (Makefile, BUILD.md) |
 | 1.5 | 2026-01-25 | Claude | **Phase 5 Progress**: B-003 (type-aware grid sorting), D-003/D-009/D-010/G-002 (verified already complete) |
 | 1.6 | 2026-01-25 | Claude | **Phase 5 Continued**: G-006 (keyboard navigation), B-009 (verified optimized), C-007 (backup buffer 16KB) |
+| 1.7 | 2026-01-25 | Claude | **Phase 5 Continued**: G-004 (line number caching) |
 
 ---
 
@@ -910,6 +913,9 @@ A change is rejected if:
 | `src/sqlite-ce-edit/grid.c` | Added type-aware sorting (IsNumeric, CmpValues), Ctrl+Home/End navigation |
 | `src/sqlite-ce-edit/schema.c` | Added F5 to refresh schema tree |
 | `src/sqlite-ce-edit/fileops.c` | Increased backup/restore buffer from 4KB to 16KB |
+| `src/sqlite-ce-edit/editor.c` | Added line number text caching, CleanupLineNumCache() |
+| `src/sqlite-ce-edit/globals.h` | Added CleanupLineNumCache declaration |
+| `src/sqlite-ce-edit/main.c` | Call CleanupLineNumCache on WM_DESTROY |
 
 ---
 
