@@ -3,6 +3,7 @@
 */
 
 #include "globals.h"
+#include "allocators.h"
 
 void ClearOutput(void) {
     g_szOutput[0] = '\0';
@@ -22,7 +23,7 @@ void OutputLine(const char *sz) {
 }
 
 void FlushOutput(void) {
-    wchar_t *wz = (wchar_t *)LocalAlloc(LMEM_FIXED, (g_nOutput + 1) * sizeof(wchar_t));
+    wchar_t *wz = ALLOC(wchar_t, g_nOutput + 1);
     if (wz) {
         MultiByteToWideChar(CP_ACP, 0, g_szOutput, -1, wz, g_nOutput + 1);
         SetWindowTextW(g_hwndResult, wz);
@@ -38,7 +39,7 @@ void ShowResultMessage(LPCWSTR msg, int clear) {
         /* Append to existing text */
         int existingLen = GetWindowTextLengthW(g_hwndResult);
         int msgLen = lstrlenW(msg);
-        wchar_t *buf = (wchar_t *)LocalAlloc(LMEM_FIXED, (existingLen + msgLen + 3) * sizeof(wchar_t));
+        wchar_t *buf = ALLOC(wchar_t, existingLen + msgLen + 3);
         if (buf) {
             GetWindowTextW(g_hwndResult, buf, existingLen + 1);
             if (existingLen > 0) {

@@ -3,6 +3,7 @@
 */
 
 #include "globals.h"
+#include "allocators.h"
 
 /*
 ** Centralized keyboard handler for app-wide shortcuts.
@@ -57,7 +58,7 @@ void UpdateLineCount(void) {
     cur = 1;
     total = 1;
     if (textLen > 0) {
-        text = (wchar_t*)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
+        text = ALLOC(wchar_t, textLen + 1);
         if (text) {
             GetWindowTextW(g_hwndQuery, text, textLen + 1);
             for (i = 0; i < textLen; i++) {
@@ -107,7 +108,7 @@ void UpdateLineNumbers(void) {
     /* Get/cache text for operations */
     if (textLen > 0) {
         if (textChanged || !g_lineNumTextCache) {
-            g_lineNumTextCache = (wchar_t*)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
+            g_lineNumTextCache = ALLOC(wchar_t, textLen + 1);
             if (g_lineNumTextCache) {
                 GetWindowTextW(g_hwndQuery, g_lineNumTextCache, textLen + 1);
                 /* Recount logical lines */

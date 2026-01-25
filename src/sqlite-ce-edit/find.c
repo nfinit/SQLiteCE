@@ -3,6 +3,7 @@
 */
 
 #include "globals.h"
+#include "allocators.h"
 
 static HWND g_hwndFindDlg = NULL;
 static HWND g_hwndFindEdit = NULL;
@@ -20,7 +21,7 @@ void DoFindNext(void) {
     len = GetWindowTextLengthW(hwndEdit);
     if (len == 0) return;
     
-    buf = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+    buf = ALLOC(wchar_t, len + 1);
     if (!buf) return;
     GetWindowTextW(hwndEdit, buf, len + 1);
     
@@ -174,7 +175,7 @@ static void DoReplaceOne(void) {
         int findLen = lstrlenW(g_findText);
         if (selLen == findLen) {
             int len = GetWindowTextLengthW(g_hwndQuery);
-            wchar_t *buf = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+            wchar_t *buf = ALLOC(wchar_t, len + 1);
             if (buf) {
                 int i, match = 1;
                 GetWindowTextW(g_hwndQuery, buf, len + 1);
@@ -209,7 +210,7 @@ static int DoReplaceAll(void) {
     len = GetWindowTextLengthW(g_hwndQuery);
     if (len == 0) return 0;
     
-    buf = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
+    buf = ALLOC(wchar_t, len + 1);
     if (!buf) return 0;
     GetWindowTextW(g_hwndQuery, buf, len + 1);
     
@@ -230,8 +231,7 @@ static int DoReplaceAll(void) {
     }
     
     /* Build new string */
-    newBuf = (wchar_t *)LocalAlloc(LMEM_FIXED, 
-        (len + count * (replLen - findLen) + 1) * sizeof(wchar_t));
+    newBuf = ALLOC(wchar_t, len + count * (replLen - findLen) + 1);
     if (!newBuf) {
         LocalFree(buf);
         return 0;
