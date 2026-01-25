@@ -23,7 +23,9 @@ static int g_editCol = -1;         /* Display column being edited */
 /* Undo state for deleted rows - UNDO_MAX_BYTES defined in constants.h */
 typedef struct {
     char **values;   /* Column values (NULL-terminated strings) */
+    char *data;      /* Contiguous storage for all string data */
     int numCols;
+    int dataBytes;   /* Actual bytes used (for accurate memory tracking) */
 } UndoRow;
 static UndoRow *g_undoStack = NULL;
 static int g_undoCount = 0;
@@ -927,13 +929,12 @@ static void CancelCellEdit(void) {
 **============================================================================*/
 
 static void FreeUndoRow(UndoRow *row) {
-    int i;
-    if (row->values) {
-        for (i = 0; i < row->numCols; i++) {
-            if (row->values[i]) LocalFree(row->values[i]);
-        }
-        LocalFree(row->values);
-    }
+    /* Single deallocation for values array */
+    if (row->values) LocalFree(row->values);
+    /* Single deallocation for all string data */
+    if (row->data) LocalFree(row->data);
+    row->values = NULL;
+    row->data = NULL;
 }
 
 void ClearUndoStack(void) {
@@ -964,7 +965,7 @@ void DoDeleteRows(void) {
 static int CanCacheUndo(int bytesNeeded) {
     /* Drop oldest entries if over limit */
     while (g_undoCount > 0 && g_undoBytes + bytesNeeded > UNDO_MAX_BYTES) {
-        int oldBytes = g_undoStack[0].numCols * 32;
+        int oldBytes = g_undoStack[0].dataBytes;  /* Use actual tracked bytes */
         int j;
         FreeUndoRow(&g_undoStack[0]);
         g_undoBytes -= oldBytes;
@@ -977,28 +978,43 @@ static int CanCacheUndo(int bytesNeeded) {
 }
 
 static void PushUndo(char **values, int numCols) {
-    int i, rowBytes = 0;
+    int i, dataBytes = 0, ptrBytes;
+    int *lengths;
+    char *dataPtr;
     UndoRow *row;
-    
+
     if (!values || numCols < 1) return;
-    
-    /* Estimate memory needed */
+
+    /* Calculate total data size needed */
+    lengths = (int *)LocalAlloc(LMEM_FIXED, numCols * sizeof(int));
+    if (!lengths) return;
+
     for (i = 0; i < numCols; i++) {
         if (values[i]) {
             int len = 0;
             while (values[i][len]) len++;
-            rowBytes += len + 1;
+            lengths[i] = len + 1;
+            dataBytes += len + 1;
+        } else {
+            lengths[i] = 0;
         }
     }
-    rowBytes += numCols * sizeof(char *);
-    
-    if (!CanCacheUndo(rowBytes)) return;
-    
+
+    ptrBytes = numCols * sizeof(char *);
+
+    if (!CanCacheUndo(dataBytes + ptrBytes)) {
+        LocalFree(lengths);
+        return;
+    }
+
     /* Grow stack if needed */
     if (g_undoCount >= g_undoCapacity) {
         int newCap = g_undoCapacity ? g_undoCapacity * 2 : 8;
         UndoRow *newStack = (UndoRow *)LocalAlloc(LMEM_FIXED, newCap * sizeof(UndoRow));
-        if (!newStack) return;
+        if (!newStack) {
+            LocalFree(lengths);
+            return;
+        }
         if (g_undoStack) {
             for (i = 0; i < g_undoCount; i++) newStack[i] = g_undoStack[i];
             LocalFree(g_undoStack);
@@ -1006,28 +1022,37 @@ static void PushUndo(char **values, int numCols) {
         g_undoStack = newStack;
         g_undoCapacity = newCap;
     }
-    
-    /* Copy row data */
+
+    /* Allocate contiguous storage for all column data */
     row = &g_undoStack[g_undoCount];
     row->numCols = numCols;
-    row->values = (char **)LocalAlloc(LMEM_FIXED, numCols * sizeof(char *));
-    if (!row->values) return;
-    
+    row->dataBytes = dataBytes + ptrBytes;
+    row->values = (char **)LocalAlloc(LMEM_FIXED, ptrBytes);
+    row->data = dataBytes > 0 ? (char *)LocalAlloc(LMEM_FIXED, dataBytes) : NULL;
+
+    if (!row->values || (dataBytes > 0 && !row->data)) {
+        if (row->values) LocalFree(row->values);
+        if (row->data) LocalFree(row->data);
+        LocalFree(lengths);
+        return;
+    }
+
+    /* Copy all strings into contiguous block */
+    dataPtr = row->data;
     for (i = 0; i < numCols; i++) {
-        if (values[i]) {
-            int len = 0, j;
-            while (values[i][len]) len++;
-            row->values[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
-            if (row->values[i]) {
-                for (j = 0; j <= len; j++) row->values[i][j] = values[i][j];
-            }
+        if (lengths[i] > 0) {
+            int j;
+            row->values[i] = dataPtr;
+            for (j = 0; j < lengths[i]; j++) dataPtr[j] = values[i][j];
+            dataPtr += lengths[i];
         } else {
             row->values[i] = NULL;
         }
     }
-    
+
+    LocalFree(lengths);
     g_undoCount++;
-    g_undoBytes += rowBytes;
+    g_undoBytes += row->dataBytes;
 }
 
 static void UndoDelete(void) {
@@ -1100,9 +1125,11 @@ static void UndoDelete(void) {
     }
     
     /* Remove from undo stack */
+    g_undoBytes -= row->dataBytes;
+    if (g_undoBytes < 0) g_undoBytes = 0;
     FreeUndoRow(row);
     g_undoCount--;
-    
+
     /* Refresh grid */
     OpenTableForEditing(tableName);
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Row restored");

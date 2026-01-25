@@ -84,10 +84,10 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define VIEW_SCHEMA  2
 
 /*============================================================================
-** Version
+** Version - defined in version.h for single source of truth
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.10.0.62"
+#include "version.h"
 
 /*============================================================================
 ** Menu IDs
