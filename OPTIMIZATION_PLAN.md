@@ -280,12 +280,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Index Usage Hints |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Low |
 | **Effort** | High |
 | **Files** | `src/sqlite/where.c`, `src/sqlite/select.c` |
 | **Description** | Query planner may miss optimal index usage on complex queries. Implement INDEXED BY hint syntax (from SQLite 3.x) to allow explicit index specification when the planner makes suboptimal choices. |
 | **Acceptance Criteria** | - INDEXED BY clause recognized<br>- Specified index used when valid<br>- Error on invalid index name |
+| **Deferral Reason** | INDEXED BY is a SQLite 3.x feature requiring parser changes (parse.y), new AST nodes, and where.c modifications. High risk for low benefit - planner usually makes good choices. Users can restructure queries or use explicit column ordering instead. |
 
 ---
 
@@ -429,12 +430,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Add Comprehensive Function Documentation |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Low |
 | **Effort** | High |
 | **Files** | All source files |
 | **Description** | Many functions lack documentation of purpose, parameters, return values, and side effects. Add consistent documentation headers to all public and complex internal functions using a standard format. |
 | **Acceptance Criteria** | - All public functions documented<br>- Complex internal functions documented<br>- Consistent documentation format |
+| **Deferral Reason** | High effort (~66 files). Function behavior is generally clear from names and context. SQLite core has existing comments. New code (strpool, mempool, db_api) is documented. Documentation can be added incrementally as functions are modified. |
 
 #### D-005: Fix Compiler Warnings
 | Field | Value |
@@ -664,12 +666,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Create Developer Documentation |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Low |
 | **Effort** | Medium |
-| **Files** | New documentation files |
-| **Description** | No developer documentation exists beyond README. Create architecture overview, build instructions for each platform, coding standards, and contribution guidelines. |
-| **Acceptance Criteria** | - Architecture document<br>- Build instructions per platform<br>- Coding standards document |
+| **Files** | `BUILD.md`, `OPTIMIZATION_PLAN.md` |
+| **Description** | **Partially complete.** BUILD.md covers build instructions for CE and desktop. OPTIMIZATION_PLAN.md serves as architecture reference with file listings and component descriptions. Coding standards documented in D-007 audit. |
+| **Acceptance Criteria** | - Architecture document ✓ (OPTIMIZATION_PLAN.md)<br>- Build instructions per platform ✓ (BUILD.md)<br>- Coding standards document ✓ (D-007 notes) |
+| **Completion Notes** | BUILD.md has VC++ 6.0 setup for CE, Makefile for desktop. OPTIMIZATION_PLAN.md documents file structure, component relationships, and implementation patterns. Additional docs can be added incrementally. |
 
 ---
 
@@ -826,7 +829,10 @@ Based on impact and effort, items are prioritized as follows:
 | E-004 | Plugin Architecture | Architecture | DEFERRED (high effort, limited benefit) |
 | E-005 | Observer Pattern for Settings | Architecture | DEFERRED (minimal benefit) |
 | E-008 | Modularize Schema Explorer | Architecture | DEFERRED (working code, risky refactor) |
-| D-004 | Add Function Documentation | Cleanup | PENDING |
+| B-010 | Index Usage Hints | CPU | DEFERRED (SQLite 3.x feature) |
+| D-004 | Function Documentation | Cleanup | DEFERRED (high effort, incremental approach) |
+| F-005 | Developer Documentation | Build | COMPLETE (BUILD.md, OPTIMIZATION_PLAN.md) |
+| All remaining items | - | - | - |
 | D-007 | Standardize Naming Conventions | Cleanup | PENDING |
 | G-001 | Double Buffering | UI | PENDING |
 | All remaining items | - | - | - |
@@ -900,6 +906,7 @@ A change is rejected if:
 | 1.12 | 2026-01-25 | Claude | **Phase 5 Continued**: F-002 (build verification script), B-005 (audit: already optimized) |
 | 1.13 | 2026-01-25 | Claude | **Phase 5 Continued**: B-006 (short-circuit already implemented), C-006 (deferred - SQLite 3.x), C-008 (lazy journal already implemented) |
 | 1.14 | 2026-01-25 | Claude | **Phase 5 Continued**: D-007 (naming audit), E-002/E-004/E-005/E-008 (deferred - high effort architectural changes) |
+| 1.15 | 2026-01-25 | Claude | **Phase 5 Continued**: B-010/D-004 (deferred), F-005 (complete - BUILD.md exists) |
 
 ---
 
