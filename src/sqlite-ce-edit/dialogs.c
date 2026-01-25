@@ -85,6 +85,7 @@ void DoAbout(void) {
 **============================================================================*/
 
 static wchar_t g_szPathBuf[MAX_PATH];
+static const wchar_t *g_szPathTitle = NULL;
 static HWND g_hwndPathEdit;
 
 static LRESULT CALLBACK PathDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -92,6 +93,8 @@ static LRESULT CALLBACK PathDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         case WM_INITDIALOG: {
             RECT rc;
             GetClientRect(hwnd, &rc);
+            if (g_szPathTitle)
+                SetWindowTextW(hwnd, g_szPathTitle);
             g_hwndPathEdit = CreateWindowW(L"EDIT", g_szPathBuf,
                 WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
                 10, 10, rc.right - 20, 26,
@@ -126,7 +129,7 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
         WORD menu, wndclass, title;
     } dlg;
     
-    (void)title;  /* TODO: use title in dialog */
+    g_szPathTitle = title;
     lstrcpyW(g_szPathBuf, defPath);
     
     memset(&dlg, 0, sizeof(dlg));
