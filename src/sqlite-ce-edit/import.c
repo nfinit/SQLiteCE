@@ -223,11 +223,13 @@ void DoImportCSV(void) {
     LocalFree(buf);
     UpdateDbSize();
     
+    /* Show completion in status bar instead of blocking message box */
     {
         wchar_t msg[128];
-        wsprintfW(msg, L"Imported %d rows into table '%s'", rowNum, tblName);
-        MessageBoxW(g_hwndMain, msg, L"Import Complete", MB_OK | MB_ICONINFORMATION);
+        wsprintfW(msg, L"Imported %d rows into '%s'", rowNum, tblName);
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)msg);
     }
+    RefreshSchema();
 }
 
 /*============================================================================

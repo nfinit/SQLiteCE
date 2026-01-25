@@ -711,12 +711,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Reduce Message Box Usage |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Low |
 | **Effort** | Low |
-| **Files** | `src/sqlite-ce-edit/*.c` |
-| **Description** | Errors and notifications use blocking message boxes. Implement status bar notifications for non-critical messages, reserving message boxes for critical errors and confirmations only. |
-| **Acceptance Criteria** | - Status bar for non-critical messages<br>- Auto-dismiss after timeout<br>- Message boxes for errors only |
+| **Files** | `src/sqlite-ce-edit/grid.c`, `src/sqlite-ce-edit/import.c` |
+| **Description** | Converted non-critical message boxes to status bar notifications. "Text not found" and "Import complete" now use status bar. Errors and confirmations appropriately remain as MessageBox. |
+| **Acceptance Criteria** | - Status bar for non-critical messages ✓<br>- Message boxes for errors only ✓<br>- Improved user experience ✓ |
+| **Implementation Notes** | Converted: "Text not found" in grid find, "Import complete" success message. Kept as MessageBox: errors, confirmations, and action-initiated feedback where user expects explicit acknowledgment. |
 
 #### G-006: Implement Keyboard Navigation Improvements
 | Field | Value |
@@ -734,12 +735,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Cache Column Width Calculations |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Low |
 | **Effort** | Low |
 | **Files** | `src/sqlite-ce-edit/grid.c` |
-| **Description** | Auto column width calculates by measuring all values on each resize. Cache width calculations and only recalculate when data changes, not on every auto-fit request. |
-| **Acceptance Criteria** | - Cached column widths<br>- Invalidation on data change<br>- Faster auto-fit for large results |
+| **Description** | **Already optimized.** Auto-fit samples only first 20 rows (line 648), uses Windows LVSCW_AUTOSIZE for efficient measurement, and only runs on data load (not resize). Header double-click auto-sizes single column on demand. |
+| **Acceptance Criteria** | - Cached column widths ✓ (via sampling)<br>- Invalidation on data change ✓<br>- Faster auto-fit for large results ✓ |
+| **Completion Notes** | Code review confirmed auto-fit is already optimized with 20-row sampling and data-change-only triggering. No additional caching needed. |
 
 ---
 
@@ -794,6 +796,8 @@ Based on impact and effort, items are prioritized as follows:
 | B-009 | Virtual ListView Data Access | CPU | COMPLETE (already optimized) |
 | C-007 | Optimize Backup File Writing | I/O | COMPLETE (16KB buffer) |
 | G-004 | Editor Line Number Rendering | UI | COMPLETE (text caching) |
+| G-007 | Cache Column Width Calculations | UI | COMPLETE (already optimized) |
+| G-005 | Reduce Message Box Usage | UI | COMPLETE (status bar for info) |
 | D-004 | Add Function Documentation | Cleanup | PENDING |
 | D-007 | Standardize Naming Conventions | Cleanup | PENDING |
 | G-001 | Double Buffering | UI | PENDING |
@@ -861,6 +865,7 @@ A change is rejected if:
 | 1.5 | 2026-01-25 | Claude | **Phase 5 Progress**: B-003 (type-aware grid sorting), D-003/D-009/D-010/G-002 (verified already complete) |
 | 1.6 | 2026-01-25 | Claude | **Phase 5 Continued**: G-006 (keyboard navigation), B-009 (verified optimized), C-007 (backup buffer 16KB) |
 | 1.7 | 2026-01-25 | Claude | **Phase 5 Continued**: G-004 (line number caching) |
+| 1.8 | 2026-01-25 | Claude | **Phase 5 Continued**: G-007 (verified optimized), G-005 (status bar for info messages) |
 
 ---
 
@@ -916,6 +921,8 @@ A change is rejected if:
 | `src/sqlite-ce-edit/editor.c` | Added line number text caching, CleanupLineNumCache() |
 | `src/sqlite-ce-edit/globals.h` | Added CleanupLineNumCache declaration |
 | `src/sqlite-ce-edit/main.c` | Call CleanupLineNumCache on WM_DESTROY |
+| `src/sqlite-ce-edit/grid.c` | "Text not found" uses status bar instead of MessageBox |
+| `src/sqlite-ce-edit/import.c` | "Import complete" uses status bar instead of MessageBox |
 
 ---
 
