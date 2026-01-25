@@ -124,7 +124,7 @@ BENCH_OBJS := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(BENCH_SRCS))
 # Targets
 #============================================================================
 
-.PHONY: all sqlite test bench clean help dirs
+.PHONY: all sqlite test bench clean help dirs check
 
 all: sqlite test bench
 
@@ -142,6 +142,19 @@ clean:
 	@echo "Cleaning build artifacts..."
 	$(Q)rm -rf $(BUILDDIR)
 
+check:
+	@echo "Running static analysis with cppcheck..."
+	$(Q)cppcheck --enable=all --suppress-xml=cppcheck-suppress.xml \
+		-I$(SQLITE_SRC) -I$(SQLITE_CE_SRC) -I$(EDIT_SRC) \
+		--platform=win32W \
+		--template="{file}:{line}: {severity}: {message} [{id}]" \
+		--suppress=missingIncludeSystem \
+		--suppress=unusedFunction:$(SQLITE_SRC)/*.c \
+		$(SQLITE_SRC) $(SQLITE_CE_SRC) 2>&1 | head -50
+	@echo ""
+	@echo "Static analysis complete. For full output, run:"
+	@echo "  cppcheck --enable=all --suppress-xml=cppcheck-suppress.xml src/"
+
 help:
 	@echo "SQLite/CE Build System"
 	@echo ""
@@ -150,6 +163,7 @@ help:
 	@echo "  sqlite   - Build SQLite library"
 	@echo "  test     - Build and run unit tests"
 	@echo "  bench    - Build benchmark tool"
+	@echo "  check    - Run static analysis (cppcheck)"
 	@echo "  clean    - Remove build artifacts"
 	@echo ""
 	@echo "Options:"

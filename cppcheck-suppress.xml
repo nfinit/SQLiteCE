@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<!--
+  Cppcheck Suppression File for SQLite/CE
+
+  This file suppresses intentional patterns and false positives.
+  Use with: cppcheck --suppress-xml=cppcheck-suppress.xml
+-->
+<suppressions>
+  <!-- SQLite core: Unused functions kept for API completeness -->
+  <suppress>
+    <id>unusedFunction</id>
+    <fileName>src/sqlite/*.c</fileName>
+  </suppress>
+
+  <!-- Memory pool: Intentionally unused utility functions for debugging -->
+  <suppress>
+    <id>unusedFunction</id>
+    <fileName>src/sqlite-ce/mempool.c</fileName>
+    <functionName>sqliteMemPoolStats</functionName>
+  </suppress>
+  <suppress>
+    <id>unusedFunction</id>
+    <fileName>src/sqlite-ce/mempool.c</fileName>
+    <functionName>sqliteMemPoolShutdown</functionName>
+  </suppress>
+
+  <!-- String pool: Stats function kept for debugging -->
+  <suppress>
+    <id>unusedFunction</id>
+    <fileName>src/sqlite-ce-edit/strpool.c</fileName>
+    <functionName>StrPoolStats</functionName>
+  </suppress>
+  <suppress>
+    <id>unusedFunction</id>
+    <fileName>src/sqlite-ce-edit/strpool.c</fileName>
+    <functionName>StrPoolAllocZero</functionName>
+  </suppress>
+
+  <!-- Windows CE specific: Missing system headers on desktop builds -->
+  <suppress>
+    <id>missingIncludeSystem</id>
+  </suppress>
+
+  <!-- SQLite uses (void) casts for unused parameters - this is intentional -->
+  <suppress>
+    <id>unusedVariable</id>
+    <symbolName>arg</symbolName>
+  </suppress>
+
+  <!-- Intentional #if 0 blocks in SQLite core (upstream markers) -->
+  <suppress>
+    <id>preprocessorErrorDirective</id>
+    <fileName>src/sqlite/*.c</fileName>
+  </suppress>
+</suppressions>

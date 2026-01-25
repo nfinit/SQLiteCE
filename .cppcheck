@@ -1,0 +1,37 @@
+# Cppcheck configuration for SQLite/CE
+#
+# Run with: cppcheck --project=.cppcheck .
+# Or simply: cppcheck --enable=all --suppress-xml=cppcheck-suppress.xml src/
+
+# Paths to check
+-Isrc/sqlite
+-Isrc/sqlite-ce
+-Isrc/sqlite-ce-edit
+
+# Enable all checks
+--enable=all
+
+# Suppress noisy/irrelevant warnings
+--suppress=missingIncludeSystem
+--suppress=unmatchedSuppression
+
+# CE-specific: These headers won't be found on desktop
+--suppress=missingInclude:*windows.h*
+--suppress=missingInclude:*commctrl.h*
+--suppress=missingInclude:*windbase.h*
+
+# SQLite core uses intentional patterns that trigger warnings
+# Unused functions kept for API completeness
+--suppress=unusedFunction:src/sqlite/*.c
+
+# Platform: treat as 32-bit (Windows CE)
+--platform=win32W
+
+# Output format
+--template="{file}:{line}: {severity}: {message} [{id}]"
+
+# Performance: use multiple cores
+-j4
+
+# Inconclusive checks (more thorough but may have false positives)
+--inconclusive

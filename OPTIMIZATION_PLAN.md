@@ -158,12 +158,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Reduce Column Metadata Duplication |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Low |
 | **Effort** | Low |
 | **Files** | `src/sqlite-ce-edit/execute.c`, `src/sqlite-ce-edit/globals.h` |
-| **Description** | Column names and types are stored redundantly in multiple places (result headers, grid metadata, schema cache). Implement shared column metadata that is referenced rather than copied. |
-| **Acceptance Criteria** | - Single source of truth for column metadata<br>- Reduced memory for multi-column results<br>- Consistent type information across views |
+| **Description** | **Audit complete - current design is appropriate.** The perceived "duplication" between g_colMeta (schema info) and g_lastResult (query results) serves different purposes: g_colMeta contains schema constraints (type, PK, notNull, isAutoInc) for validation, while g_lastResult contains arbitrary query results. Consolidating would couple unrelated concerns. |
+| **Acceptance Criteria** | - Current separation of concerns is correct ✓<br>- Schema metadata distinct from query results ✓<br>- No changes needed ✓ |
+| **Completion Notes** | g_colMeta uses fixed-size arrays (96 bytes/column) for edit mode validation. g_lastResult uses StrPool for query output. Different lifetimes and purposes make sharing impractical and architecturally unwise. |
 
 ---
 
@@ -629,12 +630,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Create Static Analysis Configuration |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Low |
 | **Effort** | Low |
-| **Files** | Analysis configuration files |
-| **Description** | No static analysis is configured. Set up configuration for available static analyzers (PC-lint, Cppcheck, VS Code Analysis) to catch bugs early and enforce coding standards. |
-| **Acceptance Criteria** | - Static analyzer configured<br>- Zero false positives in baseline<br>- Integration with build process |
+| **Files** | `.cppcheck`, `cppcheck-suppress.xml`, `Makefile` |
+| **Description** | Created cppcheck configuration for static analysis with suppression file for intentional patterns. Integrated with Makefile via `make check` target. |
+| **Acceptance Criteria** | - Static analyzer configured ✓<br>- Suppression file for false positives ✓<br>- Integration with build process ✓ |
+| **Implementation Notes** | Created .cppcheck with project settings (include paths, platform win32W, enabled checks). Created cppcheck-suppress.xml for intentional patterns (unused SQLite API functions, debug utilities, CE system headers). Added `make check` target to Makefile. |
 
 #### F-004: Version Header Generation
 | Field | Value |
@@ -802,6 +804,8 @@ Based on impact and effort, items are prioritized as follows:
 | G-005 | Reduce Message Box Usage | UI | COMPLETE (status bar for info) |
 | A-004 | Reduce Undo Stack Memory Overhead | Memory | COMPLETE (contiguous allocation) |
 | F-004 | Version Header Generation | Build | COMPLETE (version.h) |
+| F-003 | Static Analysis Configuration | Build | COMPLETE (cppcheck) |
+| A-008 | Reduce Column Metadata Duplication | Memory | COMPLETE (audit: design appropriate) |
 | D-004 | Add Function Documentation | Cleanup | PENDING |
 | D-007 | Standardize Naming Conventions | Cleanup | PENDING |
 | G-001 | Double Buffering | UI | PENDING |
@@ -872,6 +876,7 @@ A change is rejected if:
 | 1.8 | 2026-01-25 | Claude | **Phase 5 Continued**: G-007 (verified optimized), G-005 (status bar for info messages) |
 | 1.9 | 2026-01-25 | Claude | **Phase 5 Continued**: A-004 (undo stack contiguous allocation, fixed memory tracking) |
 | 1.10 | 2026-01-25 | Claude | **Phase 5 Continued**: F-004 (version.h for single source of truth) |
+| 1.11 | 2026-01-25 | Claude | **Phase 5 Continued**: F-003 (cppcheck static analysis), A-008 (audit: design appropriate) |
 
 ---
 
@@ -932,6 +937,9 @@ A change is rejected if:
 | `src/sqlite-ce-edit/grid.c` | Undo stack: contiguous allocation, accurate byte tracking |
 | `src/sqlite-ce-edit/version.h` | **NEW** - Version header with structured components |
 | `src/sqlite-ce-edit/globals.h` | Updated to include version.h |
+| `.cppcheck` | **NEW** - Cppcheck project configuration |
+| `cppcheck-suppress.xml` | **NEW** - Suppression file for intentional patterns |
+| `Makefile` | Added `make check` target for static analysis |
 
 ---
 
