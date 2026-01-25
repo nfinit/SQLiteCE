@@ -4,6 +4,7 @@
 
 #include "globals.h"
 #include "constants.h"
+#include "allocators.h"
 #include <commctrl.h>
 
 /* Schema image list indices defined in constants.h */
@@ -547,8 +548,7 @@ int LoadColumnMetadata(const char *tablename) {
         if (nRows < 1) return 0;
         
         /* Allocate array */
-        g_colMeta = (ColumnMeta *)LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT, 
-            nRows * sizeof(ColumnMeta));
+        g_colMeta = ALLOC_ZERO(ColumnMeta, nRows);
         if (!g_colMeta) return 0;
         
         ctx.capacity = nRows;
@@ -657,12 +657,12 @@ void OpenTableForEditing(const char *tablename) {
     g_lastResultCols = nCols;
     total = (nRows + 1) * nCols;
     
-    g_lastResult = (char **)LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT, total * sizeof(char *));
+    g_lastResult = ALLOC_ZERO(char *, total);
     if (g_lastResult) {
         /* Build header row from column metadata if no results */
         if (!results || nRows == 0) {
             /* First column is rowid */
-            g_lastResult[0] = (char *)LocalAlloc(LMEM_FIXED, 6);
+            g_lastResult[0] = ALLOC(char, 6);
             if (g_lastResult[0]) {
                 g_lastResult[0][0] = 'r'; g_lastResult[0][1] = 'o';
                 g_lastResult[0][2] = 'w'; g_lastResult[0][3] = 'i';
@@ -673,7 +673,7 @@ void OpenTableForEditing(const char *tablename) {
                 int len = 0;
                 const char *src = g_colMeta[i].name;
                 while (src[len]) len++;
-                g_lastResult[i + 1] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+                g_lastResult[i + 1] = ALLOC(char, len + 1);
                 if (g_lastResult[i + 1]) {
                     int j;
                     for (j = 0; j <= len; j++) g_lastResult[i + 1][j] = src[j];
@@ -686,7 +686,7 @@ void OpenTableForEditing(const char *tablename) {
                     int len = 0;
                     const char *src = results[i];
                     while (src[len]) len++;
-                    g_lastResult[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+                    g_lastResult[i] = ALLOC(char, len + 1);
                     if (g_lastResult[i]) {
                         int j;
                         for (j = 0; j <= len; j++) g_lastResult[i][j] = results[i][j];

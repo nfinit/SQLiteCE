@@ -5,6 +5,7 @@
 #include "globals.h"
 #include "constants.h"
 #include "strpool.h"
+#include "allocators.h"
 
 /*============================================================================
 ** Progress callback for query abort
@@ -132,7 +133,7 @@ static void StoreLastResults(void) {
     }
 
     /* Allocate flat array like sqlite_get_table: (nRows+1) * nCols pointers */
-    g_lastResult = (char **)LocalAlloc(LMEM_FIXED, (g_resultRows + 1) * g_nCols * sizeof(char *));
+    g_lastResult = ALLOC(char *, (g_resultRows + 1) * g_nCols);
     if (!g_lastResult) return;
 
     g_lastResultRows = g_resultRows;
@@ -343,8 +344,8 @@ void ExecuteQuery(void) {
     if (selStart != selEnd) {
         /* Execute selected text only */
         len = selEnd - selStart;
-        wsql = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
-        sql = (char *)LocalAlloc(LMEM_FIXED, (len + 1) * 3);
+        wsql = ALLOC(wchar_t, len + 1);
+        sql = ALLOC(char, (len + 1) * 3);
         if (!wsql || !sql) {
             if (wsql) LocalFree(wsql);
             if (sql) LocalFree(sql);
@@ -357,7 +358,7 @@ void ExecuteQuery(void) {
         /* Get selected text via buffer */
         {
             int fullLen = GetWindowTextLengthW(g_hwndQuery);
-            wchar_t *full = (wchar_t *)LocalAlloc(LMEM_FIXED, (fullLen + 1) * sizeof(wchar_t));
+            wchar_t *full = ALLOC(wchar_t, fullLen + 1);
             if (full) {
                 int i;
                 GetWindowTextW(g_hwndQuery, full, fullLen + 1);
@@ -417,8 +418,8 @@ void ExecuteQuery(void) {
                full[stmtStart] == '\r' || full[stmtStart] == '\n')) stmtStart++;
         
         len = stmtEnd - stmtStart;
-        wsql = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
-        sql = (char *)LocalAlloc(LMEM_FIXED, (len + 1) * 3);
+        wsql = ALLOC(wchar_t, len + 1);
+        sql = ALLOC(char, (len + 1) * 3);
         if (!wsql || !sql) {
             LocalFree(full);
             if (wsql) LocalFree(wsql);
@@ -443,8 +444,8 @@ void ExecuteQuery(void) {
             return;
         }
         
-        wsql = (wchar_t *)LocalAlloc(LMEM_FIXED, (len + 1) * sizeof(wchar_t));
-        sql = (char *)LocalAlloc(LMEM_FIXED, (len + 1) * 3);
+        wsql = ALLOC(wchar_t, len + 1);
+        sql = ALLOC(char, (len + 1) * 3);
         if (!wsql || !sql) {
             if (wsql) LocalFree(wsql);
             if (sql) LocalFree(sql);
