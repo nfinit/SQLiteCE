@@ -218,7 +218,64 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return CallWindowProc(g_pfnGridProc, hwnd, msg, wParam, lParam);
 }
 
-/* Case-insensitive string comparison for sorting */
+/*
+** Type-aware comparison for grid sorting.
+** Detects numeric values and compares them numerically.
+** Falls back to case-insensitive string comparison otherwise.
+*/
+
+/* Check if string is a valid number (integer or decimal) */
+static int IsNumeric(const char *s, double *pVal) {
+    const char *p = s;
+    double val = 0.0;
+    double frac = 0.0;
+    double div = 1.0;
+    int neg = 0;
+    int hasDigit = 0;
+    int hasDot = 0;
+
+    if (!s || !*s) return 0;
+
+    /* Skip leading whitespace */
+    while (*p == ' ' || *p == '\t') p++;
+
+    /* Handle sign */
+    if (*p == '-') { neg = 1; p++; }
+    else if (*p == '+') { p++; }
+
+    /* Parse integer part */
+    while (*p >= '0' && *p <= '9') {
+        val = val * 10.0 + (*p - '0');
+        hasDigit = 1;
+        p++;
+    }
+
+    /* Parse decimal part */
+    if (*p == '.') {
+        hasDot = 1;
+        p++;
+        while (*p >= '0' && *p <= '9') {
+            div *= 10.0;
+            frac = frac * 10.0 + (*p - '0');
+            hasDigit = 1;
+            p++;
+        }
+    }
+
+    /* Skip trailing whitespace */
+    while (*p == ' ' || *p == '\t') p++;
+
+    /* Must have digits and be at end of string */
+    if (!hasDigit || *p != '\0') return 0;
+
+    val = val + frac / div;
+    if (neg) val = -val;
+
+    if (pVal) *pVal = val;
+    return 1;
+}
+
+/* Case-insensitive string comparison */
 static int StrCmpNoCase(const char *a, const char *b) {
     if (!a && !b) return 0;
     if (!a) return -1;
@@ -233,13 +290,33 @@ static int StrCmpNoCase(const char *a, const char *b) {
     return *a - *b;
 }
 
+/* Type-aware value comparison */
+static int CmpValues(const char *a, const char *b) {
+    double na, nb;
+
+    /* NULL handling */
+    if (!a && !b) return 0;
+    if (!a) return -1;  /* NULL sorts first */
+    if (!b) return 1;
+
+    /* Try numeric comparison first */
+    if (IsNumeric(a, &na) && IsNumeric(b, &nb)) {
+        if (na < nb) return -1;
+        if (na > nb) return 1;
+        return 0;
+    }
+
+    /* Fall back to string comparison */
+    return StrCmpNoCase(a, b);
+}
+
 static int g_cmpCol;  /* Data column index for sorting */
 static int CmpRows(const void *pa, const void *pb) {
     int ra = *(const int*)pa;
     int rb = *(const int*)pb;
     char *va = g_lastResult[(ra + 1) * g_lastResultCols + g_cmpCol];
     char *vb = g_lastResult[(rb + 1) * g_lastResultCols + g_cmpCol];
-    int cmp = StrCmpNoCase(va, vb);
+    int cmp = CmpValues(va, vb);
     return g_sortAsc ? cmp : -cmp;
 }
 
