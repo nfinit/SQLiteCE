@@ -107,4 +107,29 @@ wchar_t *StrTrimRightW(wchar_t *s);
 #define StrEqualsI(a, b) ((a) && (b) && lstrcmpiA((a), (b)) == 0)
 #define StrEqualsIW(a, b) ((a) && (b) && lstrcmpiW((a), (b)) == 0)
 
+/*
+** STR_COPY - Inline string copy for building SQL and buffer strings
+** Replaces the common pattern: while (*s) *p++ = *s++;
+**
+** Usage:
+**   char *p = buf;
+**   STR_COPY(p, "SELECT * FROM ");
+**   STR_COPY(p, tableName);
+**   *p = '\0';
+**
+** Note: Does NOT null-terminate. Caller must add *p = '\0' at end.
+*/
+#define STR_COPY(dst, src) \
+    do { const char *_s = (src); while (*_s) *(dst)++ = *_s++; } while(0)
+
+#define STR_COPY_W(dst, src) \
+    do { const wchar_t *_s = (src); while (*_s) *(dst)++ = *_s++; } while(0)
+
+/*
+** STR_COPY_N - Copy up to N characters
+** Note: Does NOT null-terminate.
+*/
+#define STR_COPY_N(dst, src, n) \
+    do { const char *_s = (src); int _n = (n); while (_n-- > 0 && *_s) *(dst)++ = *_s++; } while(0)
+
 #endif /* SQLITE_CE_STRUTILS_H */
