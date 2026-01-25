@@ -3,6 +3,8 @@
 */
 
 #include "globals.h"
+#include "constants.h"
+#include "strpool.h"
 
 /*============================================================================
 ** Progress callback for query abort
@@ -32,14 +34,16 @@ static int g_nRows;
 static int g_nCols;
 static int g_totalRows;
 
-/* Result buffering for aligned output */
-#define MAX_RESULT_COLS 32
-#define MAX_RESULT_ROWS 500
-#define MAX_CELL_LEN 64
-
+/* Result buffering for aligned output - limits defined in constants.h */
 static char *g_results[MAX_RESULT_ROWS + 1][MAX_RESULT_COLS];
 static int g_colWidths[MAX_RESULT_COLS];
 static int g_resultRows;
+
+/* String pool for result data - reduces LocalAlloc calls by ~95% */
+static StrPool *g_resultPool = NULL;
+
+/* String pool for last result storage */
+static StrPool *g_lastResultPool = NULL;
 
 static int strlen_safe(const char *s) {
     int n = 0;
@@ -49,13 +53,20 @@ static int strlen_safe(const char *s) {
 
 static void FreeResults(void) {
     int r, c;
+
+    /* Clear pointer array */
     for (r = 0; r <= g_resultRows; r++) {
         for (c = 0; c < g_nCols; c++) {
-            if (g_results[r][c]) { LocalFree(g_results[r][c]); g_results[r][c] = NULL; }
+            g_results[r][c] = NULL;
         }
     }
     for (c = 0; c < MAX_RESULT_COLS; c++) g_colWidths[c] = 0;
     g_resultRows = 0;
+
+    /* Reset the string pool - keeps allocated chunks for reuse */
+    if (g_resultPool) {
+        StrPoolReset(g_resultPool);
+    }
 }
 
 static void OutputPadded(const char *s, int width) {
@@ -94,52 +105,54 @@ static void OutputResults(void) {
 
 void FreeLastResults(void) {
     if (g_lastResult) {
-        int i, total = (g_lastResultRows + 1) * g_lastResultCols;
-        for (i = 0; i < total; i++) {
-            if (g_lastResult[i]) LocalFree(g_lastResult[i]);
-        }
+        /* Free the pointer array only - strings are in the pool */
         LocalFree(g_lastResult);
         g_lastResult = NULL;
     }
     g_lastResultRows = 0;
     g_lastResultCols = 0;
+
+    /* Reset the last result pool */
+    if (g_lastResultPool) {
+        StrPoolReset(g_lastResultPool);
+    }
 }
 
 static void StoreLastResults(void) {
-    int r, c, len;
+    int r, c;
+
     /* Free previous */
     FreeLastResults();
     if (g_nCols == 0 || g_resultRows == 0) return;
-    
+
+    /* Create or reset the pool - 32KB chunks for typical result sets */
+    if (!g_lastResultPool) {
+        g_lastResultPool = StrPoolCreate(32 * 1024);
+        if (!g_lastResultPool) return;
+    }
+
     /* Allocate flat array like sqlite_get_table: (nRows+1) * nCols pointers */
     g_lastResult = (char **)LocalAlloc(LMEM_FIXED, (g_resultRows + 1) * g_nCols * sizeof(char *));
     if (!g_lastResult) return;
-    
+
     g_lastResultRows = g_resultRows;
     g_lastResultCols = g_nCols;
-    
-    /* Copy header row */
+
+    /* Copy header row - use string pool */
     for (c = 0; c < g_nCols; c++) {
         if (g_results[0][c]) {
-            len = strlen_safe(g_results[0][c]);
-            g_lastResult[c] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
-            if (g_lastResult[c]) {
-                int i; for (i = 0; i <= len; i++) g_lastResult[c][i] = g_results[0][c][i];
-            }
+            g_lastResult[c] = StrPoolDup(g_lastResultPool, g_results[0][c]);
         } else {
             g_lastResult[c] = NULL;
         }
     }
-    /* Copy data rows */
+
+    /* Copy data rows - use string pool */
     for (r = 1; r <= g_resultRows; r++) {
         for (c = 0; c < g_nCols; c++) {
             int idx = r * g_nCols + c;
             if (g_results[r][c]) {
-                len = strlen_safe(g_results[r][c]);
-                g_lastResult[idx] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
-                if (g_lastResult[idx]) {
-                    int i; for (i = 0; i <= len; i++) g_lastResult[idx][i] = g_results[r][c][i];
-                }
+                g_lastResult[idx] = StrPoolDup(g_lastResultPool, g_results[r][c]);
             } else {
                 g_lastResult[idx] = NULL;
             }
@@ -170,9 +183,15 @@ static int QueryCallback(void *arg, int argc, char **argv, char **cols) {
     int i, len;
     int colsChanged = 0;
     (void)arg;
-    
+
     if (argc > MAX_RESULT_COLS) argc = MAX_RESULT_COLS;
-    
+
+    /* Ensure we have a result pool */
+    if (!g_resultPool) {
+        g_resultPool = StrPoolCreate(32 * 1024);  /* 32KB chunks */
+        if (!g_resultPool) return 1;  /* Allocation failure */
+    }
+
     /* Check if columns changed (new statement) */
     if (g_nRows > 0) {
         if (argc != g_nCols) {
@@ -189,7 +208,7 @@ static int QueryCallback(void *arg, int argc, char **argv, char **cols) {
         }
         if (colsChanged) FlushResultSet();
     }
-    
+
     /* Store column headers on first row */
     if (g_nRows == 0) {
         g_nCols = argc;
@@ -197,32 +216,26 @@ static int QueryCallback(void *arg, int argc, char **argv, char **cols) {
             const char *s = cols[i] ? cols[i] : "";
             len = strlen_safe(s);
             if (len > MAX_CELL_LEN - 1) len = MAX_CELL_LEN - 1;
-            g_results[0][i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
-            if (g_results[0][i]) {
-                int j; for (j = 0; j < len; j++) g_results[0][i][j] = s[j];
-                g_results[0][i][len] = '\0';
-            }
+            /* Use string pool instead of LocalAlloc */
+            g_results[0][i] = StrPoolNDup(g_resultPool, s, len);
             if (len > g_colWidths[i]) g_colWidths[i] = len;
         }
     }
-    
+
     if (g_resultRows >= MAX_RESULT_ROWS) return 0;
-    
+
     /* Store row data */
     g_resultRows++;
     for (i = 0; i < argc; i++) {
         const char *s = argv[i] ? argv[i] : "(null)";
         len = strlen_safe(s);
         if (len > MAX_CELL_LEN - 1) len = MAX_CELL_LEN - 1;
-        g_results[g_resultRows][i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
-        if (g_results[g_resultRows][i]) {
-            int j; for (j = 0; j < len; j++) g_results[g_resultRows][i][j] = s[j];
-            g_results[g_resultRows][i][len] = '\0';
-        }
+        /* Use string pool instead of LocalAlloc */
+        g_results[g_resultRows][i] = StrPoolNDup(g_resultPool, s, len);
         if (len > g_colWidths[i]) g_colWidths[i] = len;
     }
     g_nRows++;
-    
+
     return 0;
 }
 

@@ -310,4 +310,36 @@ char *sqliteOsFullPathname(const char*);
 #define SQLITE_CE_FULL_VERSION \
     "SQLite 2.8.17 / " SQLITE_CE_VERSION_STRING " / " SQLITE_CE_PROCESSOR
 
+/*============================================================================
+** Memory Pool Integration
+** Small allocations (<=64 bytes) use a fixed-size block pool to reduce
+** fragmentation and malloc overhead on memory-constrained CE devices.
+**============================================================================*/
+
+#include "mempool.h"
+
+/*
+** Redirect malloc/free/realloc to use the memory pool.
+** The memory pool handles small allocations; larger ones go to LocalAlloc.
+*/
+#define malloc(n)       sqlitePoolMalloc(n)
+#define free(p)         sqlitePoolFree(p)
+#define realloc(p, n)   sqlitePoolRealloc(p, n)
+
+/*============================================================================
+** Logging Infrastructure
+** Simple log levels with compile-time filtering and runtime control.
+** Override SQLITE_CE_LOG_LEVEL to change compile-time level.
+**============================================================================*/
+
+#include "log.h"
+
+/*============================================================================
+** Platform Abstraction Layer (PAL)
+** Clean interface for platform-specific functions.
+** See pal.h for documentation on porting to new platforms.
+**============================================================================*/
+
+#include "pal.h"
+
 #endif /* CONFIG_WINCE_H */

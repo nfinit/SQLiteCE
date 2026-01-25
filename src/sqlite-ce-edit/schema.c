@@ -3,17 +3,10 @@
 */
 
 #include "globals.h"
+#include "constants.h"
 #include <commctrl.h>
 
-/* Schema image list indices */
-#define IMG_DATABASE 0
-#define IMG_TABLE    1
-#define IMG_COLUMN   2
-#define IMG_KEY      3
-#define IMG_VIEW     4
-#define IMG_TRIGGER  5
-#define IMG_INDEX    6
-
+/* Schema image list indices defined in constants.h */
 static HIMAGELIST g_hSchemaImages = NULL;
 
 /* Schema counts for status bar */
@@ -21,24 +14,8 @@ static int g_nTables = 0;
 static int g_nViews = 0;
 static int g_nTriggers = 0;
 
-/* Show sizes option (off by default) */
-int g_showSizes = 0;
-
-/* Grid auto-size columns (off by default - slow on older devices) */
-int g_gridAutoSize = 1;
-
-/* Use storage card for backups (off by default) */
-int g_useStorageCard = 0;
-
-/* Use storage card for data (off by default) */
-int g_useStorageCardData = 0;
-
-/* Relative data path (appended to base) */
-wchar_t g_szDataRelPath[MAX_PATH] = L"\\Data";
-
-/* Base paths (hidden settings, editable via registry) */
-wchar_t g_szLocalBasePath[MAX_PATH] = L"\\My Documents";
-wchar_t g_szCardBasePath[MAX_PATH] = L"";
+/* Note: g_showSizes, g_gridAutoSize, g_useStorageCard, g_useStorageCardData,
+** g_szDataRelPath, g_szLocalBasePath, g_szCardBasePath are now defined in globals.c */
 
 /*============================================================================
 ** Get database file size

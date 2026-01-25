@@ -103,14 +103,21 @@ static int strCompare(const void *pKey1, int n1, const void *pKey2, int n2){
 
 /*
 ** Hash and comparison functions when the mode is SQLITE_HASH_BINARY
+** Uses FNV-1a algorithm for better distribution than the original
+** shift-xor approach. FNV-1a provides excellent avalanche characteristics
+** which reduces collision rates in typical usage patterns.
 */
+#define FNV_OFFSET_BASIS 2166136261U
+#define FNV_PRIME 16777619U
+
 static int binHash(const void *pKey, int nKey){
-  int h = 0;
-  const char *z = (const char *)pKey;
+  unsigned int h = FNV_OFFSET_BASIS;
+  const unsigned char *z = (const unsigned char *)pKey;
   while( nKey-- > 0 ){
-    h = (h<<3) ^ h ^ *(z++);
+    h ^= *z++;
+    h *= FNV_PRIME;
   }
-  return h & 0x7fffffff;
+  return (int)(h & 0x7fffffff);
 }
 static int binCompare(const void *pKey1, int n1, const void *pKey2, int n2){
   if( n1!=n2 ) return n2-n1;

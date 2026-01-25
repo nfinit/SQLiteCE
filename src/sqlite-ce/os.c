@@ -5,6 +5,10 @@
 ** It replaces os.c entirely for CE builds - do not include os.c in the
 ** project when building for CE.
 **
+** This implements the Platform Abstraction Layer (PAL) interface defined
+** in pal.h. To port to a new platform, implement pal.h functions in a
+** new os_<platform>.c file.
+**
 ** See docs/PORTING.md for design rationale and implementation notes.
 */
 
@@ -402,8 +406,9 @@ int ce_sprintf(char *buf, const char *fmt, ...) {
 
 /*
 ** Output a UTF-8 string to debugger via OutputDebugStringW.
+** Part of PAL - see pal.h for interface documentation.
 */
-static void ce_debug_output(const char *zMsg) {
+void ce_debug_output(const char *zMsg) {
     wchar_t wzMsg[512];
     if (zMsg) {
         MultiByteToWideChar(CP_ACP, 0, zMsg, -1, wzMsg, 512);

@@ -3,13 +3,11 @@
 */
 
 #include "globals.h"
+#include "constants.h"
 
 /*============================================================================
 ** CSV Import
 **============================================================================*/
-
-#define CSV_MAX_COLS 64
-#define CSV_MAX_LINE 8192
 
 static int InferType(const char *val) {
     const char *s = val;
@@ -88,7 +86,7 @@ void DoImportCSV(void) {
     }
     
     dwSize = GetFileSize(hFile, NULL);
-    if (dwSize > 1024 * 1024) {
+    if (dwSize > CSV_MAX_FILE_SIZE) {
         CloseHandle(hFile);
         MessageBoxW(g_hwndMain, L"File too large (max 1MB)", L"Import Error", MB_OK | MB_ICONERROR);
         return;

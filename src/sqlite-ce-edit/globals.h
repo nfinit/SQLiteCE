@@ -238,8 +238,8 @@ extern WNDPROC g_pfnResultProc;
 extern WNDPROC g_pfnGridProc;
 extern WNDPROC g_pfnLineNumProc;
 
-/* Output buffer */
-extern char g_szOutput[32000];
+/* Output buffer - size defined in constants.h as OUTPUT_BUFFER_SIZE */
+extern char g_szOutput[32000];  /* Must match OUTPUT_BUFFER_SIZE */
 extern int g_nOutput;
 
 /* State flags */
@@ -297,6 +297,15 @@ void Output(const char *sz);
 void OutputLine(const char *sz);
 void FlushOutput(void);
 void ShowResultMessage(LPCWSTR msg, int clear);
+
+/* Error severity levels for ReportError */
+#define ERR_INFO    0   /* Informational */
+#define ERR_WARNING 1   /* Warning */
+#define ERR_ERROR   2   /* Error */
+#define ERR_FATAL   3   /* Fatal (always shows msgbox) */
+
+/* Centralized error reporting */
+void ReportError(int severity, const wchar_t *context, const wchar_t *message, int showMsgBox);
 
 /*============================================================================
 ** Function Declarations - Editor (editor.c)

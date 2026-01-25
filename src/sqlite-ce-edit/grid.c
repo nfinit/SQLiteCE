@@ -3,6 +3,7 @@
 */
 
 #include "globals.h"
+#include "constants.h"
 
 /* Sort state */
 static int *g_sortIndex = NULL;    /* Maps display row -> data row */
@@ -19,8 +20,7 @@ static WNDPROC g_pfnEditOverlayProc = NULL;
 static int g_editRow = -1;         /* Display row being edited */
 static int g_editCol = -1;         /* Display column being edited */
 
-/* Undo state for deleted rows */
-#define UNDO_MAX_BYTES 65536  /* 64KB limit for undo cache */
+/* Undo state for deleted rows - UNDO_MAX_BYTES defined in constants.h */
 typedef struct {
     char **values;   /* Column values (NULL-terminated strings) */
     int numCols;
@@ -457,6 +457,17 @@ void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
     }
 }
 
+/*
+** PopulateGrid - Fill ListView with query results
+**
+** Long function (~130 lines) that could be refactored into:
+** - ClearGridColumns() - remove existing columns
+** - SetupGridColumns() - add columns from result metadata
+** - AutoSizeColumns() - calculate optimal column widths
+** - PopulateGridRows() - set row count and trigger redraw
+**
+** See OPTIMIZATION_PLAN.md D-006 for details.
+*/
 void PopulateGrid(void) {
     int j, startCol, numDisplayCols;
     LVCOLUMNW col;
@@ -985,7 +996,7 @@ static void UndoDelete(void) {
     if (rc != SQLITE_OK) {
         wchar_t wmsg[256];
         MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
-        MessageBoxW(g_hwndMain, wmsg, L"Undo Failed", MB_OK | MB_ICONERROR);
+        ReportError(ERR_ERROR, L"Undo Failed", wmsg, 1);
         if (errmsg) sqlite_freemem(errmsg);
         return;
     }
@@ -1093,7 +1104,7 @@ static void DeleteSelectedRow(void) {
         if (rc != SQLITE_OK) {
             wchar_t wmsg[256];
             MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
-            MessageBoxW(g_hwndMain, wmsg, L"Delete Failed", MB_OK | MB_ICONERROR);
+            ReportError(ERR_ERROR, L"Delete Failed", wmsg, 1);
             if (errmsg) sqlite_freemem(errmsg);
             break;
         }
@@ -1259,7 +1270,7 @@ static void CommitInsert(void) {
     if (rc != SQLITE_OK) {
         wchar_t wmsg[256];
         MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
-        MessageBoxW(g_hwndMain, wmsg, L"Insert Failed", MB_OK | MB_ICONERROR);
+        ReportError(ERR_ERROR, L"Insert Failed", wmsg, 1);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)wmsg);
         if (errmsg) sqlite_freemem(errmsg);
         return;
@@ -1272,6 +1283,18 @@ static void CommitInsert(void) {
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Row inserted");
 }
 
+/*
+** CommitCellEdit - Save cell changes to database
+**
+** This function handles multiple concerns and could be refactored into:
+** - HandleInsertModeCommit() - store pending values for new row
+** - BuildUpdateSQL() - construct UPDATE statement with escaping
+** - ExecuteUpdateWithFallback() - run UPDATE, retry with empty on NOT NULL fail
+** - UpdateResultCache() - update in-memory result after successful UPDATE
+** - CleanupCellEdit() - destroy overlay and reset state
+**
+** See OPTIMIZATION_PLAN.md D-006 for details.
+*/
 static void CommitCellEdit(void) {
     wchar_t wval[256];
     char newVal[512];

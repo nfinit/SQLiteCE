@@ -1589,35 +1589,76 @@ int fileBtreeMoveto(BtCursor *pCur, const void *pKey, int nKey, int *pRes){
   rc = moveToRoot(pCur);
   if( rc ) return rc;
   for(;;){
-    int lwr, upr;
+    int lwr, upr, nCell;
     Pgno chldPg;
     MemPage *pPage = pCur->pPage;
     int c = -1;  /* pRes return if table is empty must be -1 */
+
+    nCell = pPage->nCell;
     lwr = 0;
-    upr = pPage->nCell-1;
-    while( lwr<=upr ){
-      pCur->idx = (lwr+upr)/2;
-      rc = fileBtreeKeyCompare(pCur, pKey, nKey, 0, &c);
-      if( rc ) return rc;
-      if( c==0 ){
-        pCur->iMatch = c;
-        if( pRes ) *pRes = 0;
-        return SQLITE_OK;
+    upr = nCell - 1;
+
+    /*
+    ** Optimized binary search with reduced branching.
+    ** For small pages (<=8 cells), use linear search which is faster
+    ** due to better cache behavior and no branch misprediction overhead.
+    */
+    if( nCell <= 8 ){
+      /* Linear search for small pages */
+      int i;
+      for( i = 0; i < nCell; i++ ){
+        pCur->idx = i;
+        rc = fileBtreeKeyCompare(pCur, pKey, nKey, 0, &c);
+        if( rc ) return rc;
+        if( c == 0 ){
+          pCur->iMatch = 0;
+          if( pRes ) *pRes = 0;
+          return SQLITE_OK;
+        }
+        if( c > 0 ){
+          /* Key is less than current cell, we've gone too far */
+          lwr = i;
+          break;
+        }
+        lwr = i + 1;
       }
-      if( c<0 ){
-        lwr = pCur->idx+1;
-      }else{
-        upr = pCur->idx-1;
+    }else{
+      /* Binary search for larger pages */
+      while( lwr <= upr ){
+        int idx = (lwr + upr) >> 1;  /* Use shift instead of divide */
+        int cmp_lt, cmp_gt;
+
+        pCur->idx = idx;
+        rc = fileBtreeKeyCompare(pCur, pKey, nKey, 0, &c);
+        if( rc ) return rc;
+
+        if( c == 0 ){
+          pCur->iMatch = 0;
+          if( pRes ) *pRes = 0;
+          return SQLITE_OK;
+        }
+
+        /*
+        ** Branchless update: compute both possible values and select.
+        ** This reduces branch mispredictions on simple CPU pipelines.
+        ** cmp_lt is 1 if c<0 (key > cell), 0 otherwise
+        ** cmp_gt is 1 if c>0 (key < cell), 0 otherwise
+        */
+        cmp_lt = (c < 0);
+        cmp_gt = (c > 0);
+        lwr = (cmp_lt * (idx + 1)) + ((1 - cmp_lt) * lwr);
+        upr = (cmp_gt * (idx - 1)) + ((1 - cmp_gt) * upr);
       }
     }
-    assert( lwr==upr+1 );
+
+    assert( lwr == upr + 1 || nCell <= 8 );
     assert( pPage->isInit );
-    if( lwr>=pPage->nCell ){
+    if( lwr >= nCell ){
       chldPg = pPage->u.hdr.rightChild;
     }else{
       chldPg = pPage->apCell[lwr]->h.leftChild;
     }
-    if( chldPg==0 ){
+    if( chldPg == 0 ){
       pCur->iMatch = c;
       if( pRes ) *pRes = c;
       return SQLITE_OK;

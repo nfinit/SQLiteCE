@@ -483,15 +483,21 @@ static unsigned char UpperToLower[] = {
 /*
 ** This function computes a hash on the name of a keyword.
 ** Case is not significant.
+** Uses FNV-1a algorithm for better distribution than the original
+** shift-xor approach, reducing hash collisions.
 */
+#define FNV_OFFSET_BASIS 2166136261U
+#define FNV_PRIME 16777619U
+
 int sqliteHashNoCase(const char *z, int n){
-  int h = 0;
+  unsigned int h = FNV_OFFSET_BASIS;
   if( n<=0 ) n = strlen(z);
   while( n > 0  ){
-    h = (h<<3) ^ h ^ UpperToLower[(unsigned char)*z++];
+    h ^= UpperToLower[(unsigned char)*z++];
+    h *= FNV_PRIME;
     n--;
   }
-  return h & 0x7fffffff;
+  return (int)(h & 0x7fffffff);
 }
 
 /*

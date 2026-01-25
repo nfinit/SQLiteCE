@@ -4,6 +4,7 @@
 */
 
 #include "globals.h"
+#include "constants.h"
 
 /*============================================================================
 ** File Picker State
@@ -26,10 +27,7 @@ static WNDPROC g_pfnListProc = NULL;
 static WNDPROC g_pfnEditProc = NULL;
 static HWND g_hwndFilter = NULL;
 
-/* Type-ahead buffer */
-#define TYPEAHEAD_TIMER_ID 1
-#define TYPEAHEAD_TIMEOUT 800
-#define TYPEAHEAD_MAX 16
+/* Type-ahead buffer - constants defined in constants.h */
 static wchar_t g_typeAhead[TYPEAHEAD_MAX + 1];
 static int g_typeAheadLen = 0;
 
@@ -89,9 +87,8 @@ static void PopulateFilterCombo(const wchar_t *filter) {
 
 /*============================================================================
 ** Populate file list for current directory
+** PICKER_PICKER_MAX_ENTRIES defined in constants.h
 **============================================================================*/
-
-#define MAX_ENTRIES 256
 
 static void SortAndAdd(wchar_t entries[][MAX_PATH], int count, int bracket) {
     int i, j;
@@ -124,7 +121,7 @@ static void PopulateFileList(void) {
     wchar_t pattern[MAX_PATH];
     wchar_t ext[32];
     int atRoot;
-    static wchar_t entries[MAX_ENTRIES][MAX_PATH];
+    static wchar_t entries[PICKER_MAX_ENTRIES][MAX_PATH];
     int count;
     
     /* Reset type-ahead on directory change */
@@ -156,7 +153,7 @@ static void PopulateFileList(void) {
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
             if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
-                fd.cFileName[0] != '.' && count < MAX_ENTRIES) {
+                fd.cFileName[0] != '.' && count < PICKER_MAX_ENTRIES) {
                 lstrcpyW(entries[count++], fd.cFileName);
             }
         } while (FindNextFileW(hFind, &fd));
@@ -184,7 +181,7 @@ static void PopulateFileList(void) {
     hFind = FindFirstFileW(pattern, &fd);
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
-            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && count < MAX_ENTRIES) {
+            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && count < PICKER_MAX_ENTRIES) {
                 lstrcpyW(entries[count++], fd.cFileName);
             }
         } while (FindNextFileW(hFind, &fd));
