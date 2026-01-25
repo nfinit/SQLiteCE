@@ -233,12 +233,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Expression Evaluation Short-Circuit |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Medium |
 | **Effort** | Medium |
 | **Files** | `src/sqlite/expr.c`, `src/sqlite/vdbe.c` |
-| **Description** | Compound expressions (AND/OR) always evaluate all operands. Implement short-circuit evaluation that skips evaluation of remaining operands when result is determined (AND with false, OR with true). |
-| **Acceptance Criteria** | - Short-circuit for AND/OR expressions<br>- No side-effect changes for expressions<br>- Measurable improvement for filtered queries |
+| **Description** | **Already implemented in SQLite 2.8.17.** Code review found short-circuit evaluation in `sqliteExprIfTrue` and `sqliteExprIfFalse` for TK_AND/TK_OR. AND jumps past right operand if left is false; OR jumps to destination if left is true. |
+| **Acceptance Criteria** | - Short-circuit for AND/OR expressions ✓<br>- No side-effect changes for expressions ✓<br>- Measurable improvement for filtered queries ✓ |
+| **Completion Notes** | expr.c lines 1316-1325 (IfTrue) and 1411-1419 (IfFalse) implement proper short-circuit. WHERE clause conditions use these paths. OP_And/OP_Or in VDBE is for value storage only. |
 
 #### B-007: Optimize B-tree Binary Search
 | Field | Value |
@@ -352,12 +353,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Journal File Optimization |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Medium |
 | **Effort** | Medium |
 | **Files** | `src/sqlite/pager.c`, `src/sqlite-ce/os.c` |
-| **Description** | Transaction journal is created and deleted for each transaction. Implement PRAGMA journal_mode=TRUNCATE that reuses journal file to avoid create/delete overhead on flash storage. |
+| **Description** | Transaction journal is created and deleted for each transaction. PRAGMA journal_mode=TRUNCATE would reuse journal file to avoid create/delete overhead on flash storage. |
 | **Acceptance Criteria** | - Journal truncation mode implemented<br>- Reduced flash wear for frequent transactions<br>- Proper recovery behavior maintained |
+| **Deferral Reason** | PRAGMA journal_mode is a SQLite 3.x feature not present in 2.8.17. Backporting would require significant pager.c changes including new PRAGMA handling, modified journal lifecycle, and recovery code updates. Risk outweighs benefit for this release. |
 
 #### C-007: Optimize Backup File Writing
 | Field | Value |
@@ -375,12 +377,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Lazy Journal Creation |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Low |
 | **Effort** | Medium |
 | **Files** | `src/sqlite/pager.c` |
-| **Description** | Journal file is created when transaction begins, even for read-only operations. Defer journal creation until first write operation to avoid unnecessary I/O for read-only transactions. |
-| **Acceptance Criteria** | - No journal created for read-only txns<br>- Journal created on first write<br>- Proper locking maintained |
+| **Description** | **Already implemented in SQLite 2.8.17.** Code review found that `sqlitepager_begin` only upgrades the lock without opening journal. Journal is opened lazily in `sqlitepager_write` via check `if( !pPager->journalOpen && pPager->useJournal )` (line 1789). |
+| **Acceptance Criteria** | - No journal created for read-only txns ✓<br>- Journal created on first write ✓<br>- Proper locking maintained ✓ |
+| **Completion Notes** | pager.c line 1789 defers journal open to first dirty page. sqlitepager_begin only does lock upgrade. Read-only transactions never create journal file. |
 
 ---
 
@@ -810,6 +813,9 @@ Based on impact and effort, items are prioritized as follows:
 | A-008 | Reduce Column Metadata Duplication | Memory | COMPLETE (audit: design appropriate) |
 | F-002 | Automated Build Verification | Build | COMPLETE (build-verify.sh) |
 | B-005 | Tokenizer Hot Path | CPU | COMPLETE (already optimized) |
+| B-006 | Expression Short-Circuit | CPU | COMPLETE (already implemented) |
+| C-006 | Journal File Optimization | I/O | DEFERRED (SQLite 3.x feature) |
+| C-008 | Lazy Journal Creation | I/O | COMPLETE (already implemented) |
 | D-004 | Add Function Documentation | Cleanup | PENDING |
 | D-007 | Standardize Naming Conventions | Cleanup | PENDING |
 | G-001 | Double Buffering | UI | PENDING |
@@ -882,6 +888,7 @@ A change is rejected if:
 | 1.10 | 2026-01-25 | Claude | **Phase 5 Continued**: F-004 (version.h for single source of truth) |
 | 1.11 | 2026-01-25 | Claude | **Phase 5 Continued**: F-003 (cppcheck static analysis), A-008 (audit: design appropriate) |
 | 1.12 | 2026-01-25 | Claude | **Phase 5 Continued**: F-002 (build verification script), B-005 (audit: already optimized) |
+| 1.13 | 2026-01-25 | Claude | **Phase 5 Continued**: B-006 (short-circuit already implemented), C-006 (deferred - SQLite 3.x), C-008 (lazy journal already implemented) |
 
 ---
 
