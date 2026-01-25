@@ -11,72 +11,8 @@
 #include <windbase.h>
 #include "sqlite.h"
 
-/*============================================================================
-** CE Extended Window Styles (may not be in CE 2.0 SDK headers)
-**============================================================================*/
-
-#ifndef WS_EX_CAPTIONOKBTN
-#define WS_EX_CAPTIONOKBTN 0x80000000L
-#endif
-
-#ifndef WM_CONTEXTMENU
-#define WM_CONTEXTMENU 0x007B
-#endif
-
-#ifndef TVN_FIRST
-#define TVN_FIRST (0U - 400U)
-#endif
-
-#ifndef TVN_KEYDOWN
-#define TVN_KEYDOWN (TVN_FIRST - 12)
-typedef struct tagTVKEYDOWN {
-    NMHDR hdr;
-    WORD wVKey;
-    UINT flags;
-} TV_KEYDOWN;
-#endif
-
-/*============================================================================
-** Common File Dialog (may not be in CE 2.0 SDK headers)
-**============================================================================*/
-
-#define OFN_FILEMUSTEXIST   0x00001000
-#define OFN_PATHMUSTEXIST   0x00000800
-#define OFN_HIDEREADONLY    0x00000004
-#define OFN_OVERWRITEPROMPT 0x00000002
-
-typedef struct tagOFN {
-    DWORD         lStructSize;
-    HWND          hwndOwner;
-    HINSTANCE     hInstance;
-    LPCWSTR       lpstrFilter;
-    LPWSTR        lpstrCustomFilter;
-    DWORD         nMaxCustFilter;
-    DWORD         nFilterIndex;
-    LPWSTR        lpstrFile;
-    DWORD         nMaxFile;
-    LPWSTR        lpstrFileTitle;
-    DWORD         nMaxFileTitle;
-    LPCWSTR       lpstrInitialDir;
-    LPCWSTR       lpstrTitle;
-    DWORD         Flags;
-    WORD          nFileOffset;
-    WORD          nFileExtension;
-    LPCWSTR       lpstrDefExt;
-    LPARAM        lCustData;
-    void*         lpfnHook;
-    LPCWSTR       lpTemplateName;
-} CE_OPENFILENAME;
-
-BOOL WINAPI GetOpenFileNameW(CE_OPENFILENAME*);
-BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
-
-/* View toolbar icons (may not be in CE 2.0 headers) */
-#ifndef IDB_VIEW_SMALL_COLOR
-#define IDB_VIEW_SMALL_COLOR 4
-#define VIEW_LIST    2
-#define VIEW_DETAILS 3
-#endif
+/* Windows CE compatibility defines (older SDK support) */
+#include "wince-compat.h"
 
 /* Application view modes for SwitchView() */
 #define VIEW_QUERY   0

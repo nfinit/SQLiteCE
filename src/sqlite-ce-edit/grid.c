@@ -4,6 +4,7 @@
 
 #include "globals.h"
 #include "constants.h"
+#include "allocators.h"
 
 /* Sort state */
 static int *g_sortIndex = NULL;    /* Maps display row -> data row */
@@ -365,7 +366,7 @@ void OnGridColumnClick(int col) {
     
     /* Allocate/reset index */
     if (!g_sortIndex) {
-        g_sortIndex = (int*)LocalAlloc(LMEM_FIXED, g_lastResultRows * sizeof(int));
+        g_sortIndex = ALLOC(int, g_lastResultRows);
         if (!g_sortIndex) return;
     }
     for (i = 0; i < g_lastResultRows; i++) g_sortIndex[i] = i;
@@ -986,7 +987,7 @@ static void PushUndo(char **values, int numCols) {
     if (!values || numCols < 1) return;
 
     /* Calculate total data size needed */
-    lengths = (int *)LocalAlloc(LMEM_FIXED, numCols * sizeof(int));
+    lengths = ALLOC(int, numCols);
     if (!lengths) return;
 
     for (i = 0; i < numCols; i++) {
@@ -1010,7 +1011,7 @@ static void PushUndo(char **values, int numCols) {
     /* Grow stack if needed */
     if (g_undoCount >= g_undoCapacity) {
         int newCap = g_undoCapacity ? g_undoCapacity * 2 : 8;
-        UndoRow *newStack = (UndoRow *)LocalAlloc(LMEM_FIXED, newCap * sizeof(UndoRow));
+        UndoRow *newStack = ALLOC(UndoRow, newCap);
         if (!newStack) {
             LocalFree(lengths);
             return;
@@ -1027,8 +1028,8 @@ static void PushUndo(char **values, int numCols) {
     row = &g_undoStack[g_undoCount];
     row->numCols = numCols;
     row->dataBytes = dataBytes + ptrBytes;
-    row->values = (char **)LocalAlloc(LMEM_FIXED, ptrBytes);
-    row->data = dataBytes > 0 ? (char *)LocalAlloc(LMEM_FIXED, dataBytes) : NULL;
+    row->values = (char **)ALLOC_SIZE(ptrBytes);
+    row->data = dataBytes > 0 ? (char *)ALLOC_SIZE(dataBytes) : NULL;
 
     if (!row->values || (dataBytes > 0 && !row->data)) {
         if (row->values) LocalFree(row->values);
@@ -1157,7 +1158,7 @@ static void DeleteSelectedRow(void) {
     if (count < 1) return;
     
     /* Collect selection indices BEFORE dialog (dialog may clear selection) */
-    selRows = (int *)LocalAlloc(LMEM_FIXED, count * sizeof(int));
+    selRows = ALLOC(int, count);
     if (!selRows) return;
     i = 0;
     sel = -1;
@@ -1184,7 +1185,7 @@ static void DeleteSelectedRow(void) {
     }
     
     /* Collect rowids and save row data for undo */
-    rowids = (char **)LocalAlloc(LMEM_FIXED, count * sizeof(char *));
+    rowids = ALLOC(char *, count);
     if (!rowids) { LocalFree(selRows); return; }
     
     for (i = 0; i < count; i++) {
@@ -1276,8 +1277,7 @@ static void InitInsertMode(void) {
     if (g_colMetaCount < 1) return;
     
     /* Allocate pending values array */
-    g_pendingValues = (char **)LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT,
-        g_colMetaCount * sizeof(char *));
+    g_pendingValues = ALLOC_ZERO(char *, g_colMetaCount);
     if (!g_pendingValues) return;
     
     g_insertMode = 1;
