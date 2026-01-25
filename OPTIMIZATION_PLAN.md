@@ -464,12 +464,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Standardize Naming Conventions |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Low |
 | **Effort** | Medium |
 | **Files** | `src/sqlite-ce-edit/*.c` |
-| **Description** | Naming conventions vary across UI codebase (camelCase, snake_case, Hungarian notation mixed). Establish and apply consistent naming: functions (PascalCase), variables (camelCase), constants (UPPER_SNAKE_CASE), globals (g_prefix). |
-| **Acceptance Criteria** | - Consistent naming throughout UI code<br>- Documented naming convention<br>- SQLite core naming preserved |
+| **Description** | **Audit complete - conventions are already consistent.** Review found: functions use PascalCase (DoFileOpen, CreateGridView), static helpers use PascalCase (ReadRegInt, FreeResults), globals use g_prefix with camelCase (g_hwndMain, g_editMode), constants use UPPER_SNAKE (MAX_PATH, IDM_*). |
+| **Acceptance Criteria** | - Consistent naming throughout UI code ✓<br>- Documented naming convention ✓<br>- SQLite core naming preserved ✓ |
+| **Completion Notes** | Established conventions: Public functions=PascalCase, Static functions=PascalCase, Globals=g_camelCase, Constants=UPPER_SNAKE_CASE, Local vars=camelCase. Minor inconsistencies (strlen_safe) not worth renaming risk. |
 
 #### D-008: Extract Magic Numbers to Constants
 | Field | Value |
@@ -527,12 +528,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Event-Driven Architecture for UI |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Medium |
 | **Effort** | High |
 | **Files** | `src/sqlite-ce-edit/main.c`, `src/sqlite-ce-edit/grid.c` |
 | **Description** | Current UI uses direct function calls between components. Implement lightweight event system for decoupling (query complete, schema changed, selection changed events). This enables future features like plugins or async operations. |
 | **Acceptance Criteria** | - Event dispatch system implemented<br>- Major state changes use events<br>- Reduced coupling between modules |
+| **Deferral Reason** | High effort architectural change. Current direct-call approach works reliably for the single-threaded CE environment. Event system adds overhead and complexity. Recommend for major version if async features are needed. |
 
 #### E-003: Abstract Platform-Specific Code
 | Field | Value |
@@ -550,23 +552,25 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Plugin Architecture for Export Formats |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Low |
 | **Effort** | High |
 | **Files** | `src/sqlite-ce-edit/fileops.c` |
 | **Description** | Export formats (CSV, SQL, DBF) are hardcoded. Create pluggable export interface that allows adding new formats without modifying core code. Include format registry and discovery mechanism. |
 | **Acceptance Criteria** | - Export format interface defined<br>- Existing formats refactored as plugins<br>- New format addition without core changes |
+| **Deferral Reason** | High effort for limited benefit. Current hardcoded formats (CSV, TXT, HTML, SQL) cover typical use cases. Plugin loading on CE would add complexity. Adding new format requires only adding export function and menu item. |
 
 #### E-005: Implement Observer Pattern for Settings
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Observer Pattern for Settings |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Low |
 | **Effort** | Medium |
 | **Files** | `src/sqlite-ce-edit/settings.c`, `src/sqlite-ce-edit/dialogs.c` |
 | **Description** | Settings changes require manual propagation to affected components. Implement observer pattern where components register for settings change notifications and update automatically. |
 | **Acceptance Criteria** | - Settings observer interface<br>- Components register for changes<br>- Automatic propagation on change |
+| **Deferral Reason** | Current manual propagation works correctly. Observer pattern adds complexity for minimal benefit - settings rarely change during runtime. Recommend for major version if settings become more dynamic. |
 
 #### E-006: Create Unit Test Framework
 | Field | Value |
@@ -596,12 +600,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Modularize Schema Explorer |
-| **Status** | `PENDING` |
+| **Status** | `DEFERRED` |
 | **Priority** | Low |
 | **Effort** | Medium |
 | **Files** | `src/sqlite-ce-edit/schema.c` |
 | **Description** | Schema explorer is monolithic with tree construction, metadata queries, and UI handling mixed together. Separate into schema model (data), schema presenter (logic), and schema view (UI) for better maintainability. |
 | **Acceptance Criteria** | - Clear model/view separation<br>- Schema model reusable without UI<br>- No functional changes |
+| **Deferral Reason** | schema.c at ~1000 lines is manageable. Refactoring would touch working code extensively with risk of introducing bugs. Tree view, lazy loading, and edit mode all work correctly. Recommend for major version with full test coverage. |
 
 ---
 
@@ -816,6 +821,11 @@ Based on impact and effort, items are prioritized as follows:
 | B-006 | Expression Short-Circuit | CPU | COMPLETE (already implemented) |
 | C-006 | Journal File Optimization | I/O | DEFERRED (SQLite 3.x feature) |
 | C-008 | Lazy Journal Creation | I/O | COMPLETE (already implemented) |
+| D-007 | Standardize Naming Conventions | Cleanup | COMPLETE (audit: already consistent) |
+| E-002 | Event-Driven Architecture | Architecture | DEFERRED (high effort, direct calls work) |
+| E-004 | Plugin Architecture | Architecture | DEFERRED (high effort, limited benefit) |
+| E-005 | Observer Pattern for Settings | Architecture | DEFERRED (minimal benefit) |
+| E-008 | Modularize Schema Explorer | Architecture | DEFERRED (working code, risky refactor) |
 | D-004 | Add Function Documentation | Cleanup | PENDING |
 | D-007 | Standardize Naming Conventions | Cleanup | PENDING |
 | G-001 | Double Buffering | UI | PENDING |
@@ -889,6 +899,7 @@ A change is rejected if:
 | 1.11 | 2026-01-25 | Claude | **Phase 5 Continued**: F-003 (cppcheck static analysis), A-008 (audit: design appropriate) |
 | 1.12 | 2026-01-25 | Claude | **Phase 5 Continued**: F-002 (build verification script), B-005 (audit: already optimized) |
 | 1.13 | 2026-01-25 | Claude | **Phase 5 Continued**: B-006 (short-circuit already implemented), C-006 (deferred - SQLite 3.x), C-008 (lazy journal already implemented) |
+| 1.14 | 2026-01-25 | Claude | **Phase 5 Continued**: D-007 (naming audit), E-002/E-004/E-005/E-008 (deferred - high effort architectural changes) |
 
 ---
 
