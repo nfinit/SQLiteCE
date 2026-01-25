@@ -17,37 +17,57 @@ static int g_settingsCleared = 0;  /* Block save after clear */
 ** Setting Definitions
 **============================================================================*/
 
+/*
+** Setting definition structure
+** Note: We use void* for pValue since VC++ 6.0 doesn't support C99 unions.
+** Type safety is enforced by separating int and string settings into
+** different arrays and using the helper macros below.
+*/
 typedef enum { SET_INT, SET_STR } SettingType;
 
 typedef struct {
     const wchar_t *name;
     SettingType type;
-    void *pValue;       /* Pointer to global variable */
+    void *pValue;       /* Pointer to global: int* for SET_INT, wchar_t* for SET_STR */
     int defaultInt;     /* Default for SET_INT */
     const wchar_t *defaultStr;  /* Default for SET_STR */
 } SettingDef;
 
-/* Integer settings */
-static SettingDef g_intSettings[] = {
-    { L"ClearOnExec",    SET_INT, &g_clearOnExec,      1, NULL },
-    { L"ExecAtCursor",   SET_INT, &g_execAtCursor,     0, NULL },
-    { L"ShowLineNumbers",SET_INT, &g_showLineNumbers,  1, NULL },
-    { L"ShowStatusBar",  SET_INT, &g_showStatusBar,    1, NULL },
-    { L"ShowErrorMsgBox",SET_INT, &g_showErrorMsgBox,  0, NULL },
-    { L"ShowSizes",      SET_INT, &g_showSizes,        0, NULL },
-    { L"GridAutoSize",   SET_INT, &g_gridAutoSize,     1, NULL },
-    { L"UseStorageCard", SET_INT, &g_useStorageCard,   0, NULL },
-    { L"UseStorageCardData", SET_INT, &g_useStorageCardData, 0, NULL },
+/*
+** Helper macros for type-safe setting definitions
+** INT_SETTING: defines an integer setting (pValue must be int*)
+** STR_SETTING: defines a string setting (pValue must be wchar_t[])
+*/
+#define INT_SETTING(regname, var, def) \
+    { L##regname, SET_INT, (void*)&(var), (def), NULL }
+
+#define STR_SETTING(regname, var, def) \
+    { L##regname, SET_STR, (void*)(var), 0, L##def }
+
+#define END_SETTINGS \
     { NULL, 0, NULL, 0, NULL }
+
+/* Integer settings - all pValue entries are int* */
+static SettingDef g_intSettings[] = {
+    INT_SETTING("ClearOnExec",      g_clearOnExec,      1),
+    INT_SETTING("ExecAtCursor",     g_execAtCursor,     0),
+    INT_SETTING("ShowLineNumbers",  g_showLineNumbers,  1),
+    INT_SETTING("ShowStatusBar",    g_showStatusBar,    1),
+    INT_SETTING("ShowErrorMsgBox",  g_showErrorMsgBox,  0),
+    INT_SETTING("ShowSizes",        g_showSizes,        0),
+    INT_SETTING("GridAutoSize",     g_gridAutoSize,     1),
+    INT_SETTING("UseStorageCard",   g_useStorageCard,   0),
+    INT_SETTING("UseStorageCardData", g_useStorageCardData, 0),
+    END_SETTINGS
 };
 
-/* String settings */
+/* String settings - all pValue entries are wchar_t[] */
 static SettingDef g_strSettings[] = {
-    { L"DefaultDbPath",  SET_STR, g_szDefaultDbPath,   0, L"\\My Documents\\Data" },
-    { L"DataRelPath",    SET_STR, g_szDataRelPath,     0, L"\\Data" },
-    { L"LocalBasePath",  SET_STR, g_szLocalBasePath,   0, L"\\My Documents" },
-    { L"CardBasePath",   SET_STR, g_szCardBasePath,    0, L"" },
-    { NULL, 0, NULL, 0, NULL }
+    STR_SETTING("DefaultDbPath",  g_szDefaultDbPath,  "\\My Documents\\Data"),
+    STR_SETTING("DataRelPath",    g_szDataRelPath,    "\\Data"),
+    STR_SETTING("LocalBasePath",  g_szLocalBasePath,  "\\My Documents"),
+    STR_SETTING("CardBasePath",   g_szCardBasePath,   ""),
+    END_SETTINGS
 };
 
 /*============================================================================
