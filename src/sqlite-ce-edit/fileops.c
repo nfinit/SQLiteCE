@@ -3,6 +3,7 @@
 */
 
 #include "globals.h"
+#include "allocators.h"
 
 /*============================================================================
 ** Storage Card Detection Helper
@@ -179,13 +180,13 @@ void OpenQueryFile(const wchar_t *path) {
     if (hFile != INVALID_HANDLE_VALUE) {
         dwSize = GetFileSize(hFile, NULL);
         if (dwSize < 65536) {
-            buf = (char*)LocalAlloc(LMEM_FIXED, dwSize + 1);
+            buf = ALLOC(char, dwSize + 1);
             if (buf && ReadFile(hFile, buf, dwSize, &dwRead, NULL)) {
                 buf[dwRead] = '\0';
                 extraCR = 0;
                 for (i = 0; i < (int)dwRead; i++)
                     if (buf[i] == '\n' && (i == 0 || buf[i-1] != '\r')) extraCR++;
-                wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwRead + extraCR + 1) * sizeof(wchar_t));
+                wbuf = ALLOC(wchar_t, dwRead + extraCR + 1);
                 if (wbuf) {
                     for (i = 0, j = 0; i < (int)dwRead; i++) {
                         if (buf[i] == '\n' && (i == 0 || buf[i-1] != '\r'))
@@ -252,8 +253,8 @@ void DoSaveQuery(void) {
     }
     
     dwLen = GetWindowTextLengthW(g_hwndQuery);
-    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
-    buf = (char*)LocalAlloc(LMEM_FIXED, dwLen + 1);
+    wbuf = ALLOC(wchar_t, dwLen + 1);
+    buf = ALLOC(char, dwLen + 1);
     if (wbuf && buf) {
         GetWindowTextW(g_hwndQuery, wbuf, dwLen + 1);
         for (i = 0; i <= dwLen; i++) buf[i] = (char)wbuf[i];
@@ -322,11 +323,11 @@ void DoExportResults(void) {
     dwLen = GetWindowTextLengthW(g_hwndResult);
     if (dwLen == 0) return;
     
-    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
-    buf = (char*)LocalAlloc(LMEM_FIXED, (dwLen * 2) + 1);
+    wbuf = ALLOC(wchar_t, dwLen + 1);
+    buf = ALLOC(char, (dwLen * 2) + 1);
     if (wbuf && buf) {
         GetWindowTextW(g_hwndResult, wbuf, dwLen + 1);
-        
+
         if (isCSV) {
             /* Convert tabs to commas, handle quoting */
             bp = buf;
@@ -398,8 +399,8 @@ void DoExportCSV(void) {
     dwLen = GetWindowTextLengthW(g_hwndResult);
     if (dwLen == 0) return;
     
-    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
-    buf = (char*)LocalAlloc(LMEM_FIXED, (dwLen * 2) + 1);
+    wbuf = ALLOC(wchar_t, dwLen + 1);
+    buf = ALLOC(char, (dwLen * 2) + 1);
     if (wbuf && buf) {
         GetWindowTextW(g_hwndResult, wbuf, dwLen + 1);
         bp = buf;
@@ -464,8 +465,8 @@ void DoExportTxt(void) {
     dwLen = GetWindowTextLengthW(g_hwndResult);
     if (dwLen == 0) return;
     
-    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
-    buf = (char*)LocalAlloc(LMEM_FIXED, dwLen + 1);
+    wbuf = ALLOC(wchar_t, dwLen + 1);
+    buf = ALLOC(char, dwLen + 1);
     if (wbuf && buf) {
         GetWindowTextW(g_hwndResult, wbuf, dwLen + 1);
         WideCharToMultiByte(CP_ACP, 0, wbuf, -1, buf, dwLen + 1, NULL, NULL);
@@ -905,7 +906,7 @@ void DoExportHTML(void) {
     
     /* Estimate buffer size and allocate */
     bufSize = 256 + (nRow + 1) * (nCol * 64 + 32);
-    buf = (char *)LocalAlloc(LMEM_FIXED, bufSize);
+    buf = ALLOC(char, bufSize);
     if (!buf) { sqlite_free_table(result); return; }
     bp = buf;
     
@@ -1082,7 +1083,7 @@ void DoExportHTMLResults(void) {
     
     /* Estimate buffer size and allocate */
     bufSize = 256 + (g_lastResultRows + 1) * (g_lastResultCols * 80 + 32);
-    buf = (char *)LocalAlloc(LMEM_FIXED, bufSize);
+    buf = ALLOC(char, bufSize);
     if (!buf) return;
     bp = buf;
     
