@@ -124,7 +124,7 @@ BENCH_OBJS := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(BENCH_SRCS))
 # Targets
 #============================================================================
 
-.PHONY: all sqlite test bench clean help dirs check
+.PHONY: all sqlite test bench clean help dirs check verify
 
 all: sqlite test bench
 
@@ -155,6 +155,10 @@ check:
 	@echo "Static analysis complete. For full output, run:"
 	@echo "  cppcheck --enable=all --suppress-xml=cppcheck-suppress.xml src/"
 
+verify:
+	@echo "Running full build verification..."
+	$(Q)./scripts/build-verify.sh
+
 help:
 	@echo "SQLite/CE Build System"
 	@echo ""
@@ -164,6 +168,7 @@ help:
 	@echo "  test     - Build and run unit tests"
 	@echo "  bench    - Build benchmark tool"
 	@echo "  check    - Run static analysis (cppcheck)"
+	@echo "  verify   - Full build verification (clean, build, test, check)"
 	@echo "  clean    - Remove build artifacts"
 	@echo ""
 	@echo "Options:"
