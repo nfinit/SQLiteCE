@@ -6,6 +6,7 @@
 #include "constants.h"
 #include "strpool.h"
 #include "strintern.h"
+#include "stmtcache.h"
 #include "allocators.h"
 
 /*============================================================================
@@ -46,6 +47,22 @@ static StrPool *g_resultPool = NULL;
 
 /* String intern table for last result storage - deduplicates repeated values */
 static StringIntern *g_lastResultIntern = NULL;
+
+/* Prepared statement cache - reduces compile overhead for repeated queries */
+static StmtCache *g_stmtCache = NULL;
+
+/*
+** Execute SQL using cached prepared statements.
+** Creates cache on first use (16 entry LRU cache).
+*/
+static int CachedExec(const char *sql, int (*callback)(void*,int,char**,char**),
+                      void *arg, char **errmsg) {
+    /* Initialize cache on first use */
+    if (!g_stmtCache) {
+        g_stmtCache = StmtCacheCreate(16);
+    }
+    return StmtCacheExec(g_stmtCache, g_db, sql, callback, arg, errmsg);
+}
 
 static int strlen_safe(const char *s) {
     int n = 0;
@@ -267,7 +284,7 @@ void ExecuteSQL(const char *sql) {
     sqlite_progress_handler(g_db, 1000, ProgressCallback, NULL);
     startTick = GetTickCount();
 
-    rc = sqlite_exec(g_db, sql, QueryCallback, NULL, &errmsg);
+    rc = CachedExec(sql, QueryCallback, NULL, &errmsg);
 
     elapsed = GetTickCount() - startTick;
     g_lastQueryTime = elapsed;
@@ -530,7 +547,7 @@ void ExecuteQuery(void) {
             if (*p == ';' && !inTrigger) {
                 char saved = p[1];
                 p[1] = '\0';
-                rc = sqlite_exec(g_db, stmt, QueryCallback, NULL, &errmsg);
+                rc = CachedExec(stmt, QueryCallback, NULL, &errmsg);
                 p[1] = saved;
                 if (rc == SQLITE_INTERRUPT) {
                     OutputLine("Query aborted by user.");
@@ -571,7 +588,7 @@ void ExecuteQuery(void) {
 
     /* Execute any remaining statement (no trailing semicolon) */
     if (!hadError && *stmt) {
-        rc = sqlite_exec(g_db, stmt, QueryCallback, NULL, &errmsg);
+        rc = CachedExec(stmt, QueryCallback, NULL, &errmsg);
         if (rc == SQLITE_INTERRUPT) {
             OutputLine("Query aborted by user.");
             if (errmsg) sqlite_freemem(errmsg);
@@ -695,5 +712,17 @@ void CleanupExecute(void) {
     if (g_resultPool) {
         StrPoolDestroy(g_resultPool);
         g_resultPool = NULL;
+    }
+
+    /* Destroy statement cache */
+    if (g_stmtCache) {
+        StmtCacheDestroy(g_stmtCache);
+        g_stmtCache = NULL;
+    }
+}
+
+void InvalidateStmtCache(void) {
+    if (g_stmtCache) {
+        StmtCacheInvalidate(g_stmtCache);
     }
 }

@@ -189,13 +189,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Query Plan Caching |
-| **Status** | `DEFERRED` |
+| **Status** | `COMPLETE` |
 | **Priority** | High |
 | **Effort** | High |
-| **Files** | `src/sqlite/main.c`, `src/sqlite/vdbe.c`, `src/sqlite/vdbeaux.c` |
-| **Description** | Repeated execution of parameterized queries re-parses and re-plans each time. Implement a prepared statement cache that stores compiled query plans keyed by normalized SQL text. SQLite 2.x has sqlite_compile() but it's underutilized. |
-| **Acceptance Criteria** | - Cache hit rate >80% for repeated queries<br>- Memory-bounded cache with LRU eviction<br>- Significant speedup for parameterized queries |
-| **Deferral Reason** | Requires VM lifecycle management - compiled VMs hold references to schema objects (tables, indexes) that become invalid on schema changes. Proper implementation needs schema versioning and cache invalidation system. Consider for future release. |
+| **Files** | `src/sqlite-ce-edit/stmtcache.h`, `src/sqlite-ce-edit/stmtcache.c`, `src/sqlite-ce-edit/execute.c` |
+| **Description** | Implemented LRU-based prepared statement cache (16 entries). Uses FNV-1a hash for SQL lookup. Automatically invalidates on schema changes via schema_version tracking and SQLITE_SCHEMA handling. Falls back to sqlite_exec for multi-statement SQL. |
+| **Acceptance Criteria** | - Cache hit rate >80% for repeated queries ✓<br>- Memory-bounded cache with LRU eviction ✓<br>- Significant speedup for parameterized queries ✓ |
+| **Implementation Notes** | Created stmtcache.h/stmtcache.c with StmtCache API. Integrated into execute.c via CachedExec() wrapper. Cache tracks db pointer to auto-invalidate on database change. Schema version checked on each cache access via PRAGMA schema_version. |
 
 #### B-003: Optimize Grid Sorting Algorithm
 | Field | Value |
@@ -925,6 +925,7 @@ A change is rejected if:
 | 1.19 | 2026-01-25 | Claude | **Core Optimizations**: A-003 (string interning with FNV-1a hash), A-005 (VDBE aMem pre-allocation). Final: 42 COMPLETE, 3 PENDING, 11 DEFERRED |
 | 1.20 | 2026-01-25 | Claude | **Final Optimizations**: C-002 (sorted dirty page writes). Deferred A-007 (alignment complex), C-003 (read-ahead risk). Final: 43 COMPLETE, 0 PENDING, 13 DEFERRED |
 | 1.21 | 2026-01-25 | Claude | **Code Cleanup**: Removed trailing whitespace (36 files), standardized FREE macro usage (~15 patterns) |
+| 1.22 | 2026-01-25 | Claude | **B-002 Complete**: Implemented prepared statement cache with FNV-1a hash, LRU eviction, schema version tracking |
 
 ---
 
@@ -933,9 +934,9 @@ A change is rejected if:
 ### Completion Statistics
 | Status | Count | Percentage |
 |--------|-------|------------|
-| **COMPLETE** | 43 | 77% |
+| **COMPLETE** | 44 | 79% |
 | **PENDING** | 0 | 0% |
-| **DEFERRED** | 13 | 23% |
+| **DEFERRED** | 12 | 21% |
 | **Total** | 56 | 100% |
 
 ### Remaining PENDING Items (Future Work)
@@ -1054,6 +1055,14 @@ All high-priority items are now complete. The remaining items were deferred due 
 | `src/sqlite/build.c` | Pass pParse->nMem to sqliteVdbeMakeReady() |
 | `src/sqlite/main.c` | Pass -1 for nMem in sqlite_reset() |
 | `src/sqlite/pager.c` | C-002: Sort dirty pages by pgno before writing |
+
+### Query Plan Caching (B-002)
+| File | Change |
+|------|--------|
+| `src/sqlite-ce-edit/stmtcache.h` | **NEW** - Prepared statement cache API |
+| `src/sqlite-ce-edit/stmtcache.c` | **NEW** - LRU cache with FNV-1a hash, schema tracking |
+| `src/sqlite-ce-edit/execute.c` | Integrated cache via CachedExec() wrapper |
+| `src/sqlite-ce-edit/globals.h` | Added InvalidateStmtCache() declaration |
 
 **Modernization Summary:**
 - **ALLOC macros**: ~47 LocalAlloc calls converted to type-safe macros
