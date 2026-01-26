@@ -168,6 +168,7 @@ struct Pager {
   int nRef;                   /* Number of in-memory pages with PgHdr.nRef>0 */
   int mxPage;                 /* Maximum number of pages to hold in cache */
   int nHit, nMiss, nOvfl;     /* Cache hits, missing, and LRU overflows */
+  int nReadAhead;             /* Count of read-ahead prefetches performed */
   void (*xCodec)(void*,void*,Pgno,int); /* Routine for en/decoding data */
   void *pCodecArg;            /* First argument to xCodec() */
   u8 journalOpen;             /* True if journal file descriptors is valid */
@@ -192,6 +193,9 @@ struct Pager {
   PgHdr *pAll;                /* List of all pages */
   PgHdr *pCkpt;               /* List of pages in the checkpoint journal */
   PgHdr *aHash[N_PG_HASH];    /* Hash table to map page number of PgHdr */
+  /* Read-ahead state for sequential access optimization */
+  Pgno lastPgno;              /* Last page number accessed */
+  int seqCount;               /* Count of consecutive sequential accesses */
 };
 
 /*
@@ -989,6 +993,9 @@ int sqlitepager_open(
   pPager->pFirstSynced = 0;
   pPager->pLast = 0;
   pPager->nExtra = nExtra;
+  pPager->lastPgno = 0;
+  pPager->seqCount = 0;
+  pPager->nReadAhead = 0;
   memset(pPager->aHash, 0, sizeof(pPager->aHash));
   *ppPager = pPager;
   return SQLITE_OK;
@@ -1300,9 +1307,80 @@ static PgHdr *pager_get_all_dirty_pages(Pager *pPager){
 }
 
 /*
+** Prefetch a page into the cache if there's room.
+** This is a speculative read-ahead - errors are ignored.
+** Only prefetches if: page not already cached, cache has room, page exists.
+*/
+static void pager_prefetch(Pager *pPager, Pgno pgno){
+  PgHdr *pPg;
+  int h;
+
+  /* Don't prefetch if cache is full or page is beyond file */
+  if( pPager->nPage >= pPager->mxPage ) return;
+  if( pPager->dbSize >= 0 && (int)pgno > pPager->dbSize ) return;
+
+  /* Check if already in cache */
+  pPg = pager_lookup(pPager, pgno);
+  if( pPg ) return;
+
+  /* Allocate a new page (don't recycle - that could evict useful pages) */
+  pPg = sqliteMallocRaw( sizeof(*pPg) + SQLITE_PAGE_SIZE
+                          + sizeof(u32) + pPager->nExtra );
+  if( pPg==0 ) return;
+
+  memset(pPg, 0, sizeof(*pPg));
+  pPg->pPager = pPager;
+  pPg->pgno = pgno;
+
+  /* Read the page from disk */
+  sqliteOsSeek(&pPager->fd, (pgno-1)*(off_t)SQLITE_PAGE_SIZE);
+  if( sqliteOsRead(&pPager->fd, PGHDR_TO_DATA(pPg), SQLITE_PAGE_SIZE)!=SQLITE_OK ){
+    sqliteFree(pPg);
+    return;
+  }
+  CODEC(pPager, PGHDR_TO_DATA(pPg), pgno, 3);
+
+  /* Add to page list and hash */
+  pPg->pNextAll = pPager->pAll;
+  if( pPager->pAll ){
+    pPager->pAll->pPrevAll = pPg;
+  }
+  pPg->pPrevAll = 0;
+  pPager->pAll = pPg;
+  pPager->nPage++;
+
+  h = pager_hash(pgno);
+  pPg->pNextHash = pPager->aHash[h];
+  pPager->aHash[h] = pPg;
+  if( pPg->pNextHash ){
+    pPg->pNextHash->pPrevHash = pPg;
+  }
+
+  /* Add to free list (nRef=0, so it's available for reuse) */
+  pPg->nRef = 0;
+  pPg->pPrevFree = pPager->pLast;
+  if( pPager->pLast ){
+    pPager->pLast->pNextFree = pPg;
+  }else{
+    pPager->pFirst = pPg;
+  }
+  pPager->pLast = pPg;
+  if( pPager->pFirstSynced==0 ){
+    pPager->pFirstSynced = pPg;
+  }
+
+  if( pPager->nExtra>0 ){
+    memset(PGHDR_TO_EXTRA(pPg), 0, pPager->nExtra);
+  }
+
+  pPager->nReadAhead++;
+  TRACE2("PREFETCH %d\n", pgno);
+}
+
+/*
 ** Acquire a page.
 **
-** A read lock on the disk file is obtained when the first page is acquired. 
+** A read lock on the disk file is obtained when the first page is acquired.
 ** This read lock is dropped when the last page is released.
 **
 ** A _get works for any page number greater than 0.  If the database
@@ -1553,6 +1631,27 @@ int sqlitepager_get(Pager *pPager, Pgno pgno, void **ppPage){
     pPager->nHit++;
     page_ref(pPg);
   }
+
+  /* Track sequential access pattern and trigger read-ahead.
+  ** After 2 consecutive sequential page accesses, prefetch the next page.
+  ** This helps table scans by reducing seek latency.
+  */
+  if( pgno == pPager->lastPgno + 1 ){
+    pPager->seqCount++;
+    if( pPager->seqCount >= 2 ){
+      /* Sequential pattern detected - prefetch next page */
+      pager_prefetch(pPager, pgno + 1);
+      /* After 4+ sequential accesses, prefetch 2 pages ahead */
+      if( pPager->seqCount >= 4 ){
+        pager_prefetch(pPager, pgno + 2);
+      }
+    }
+  }else{
+    /* Non-sequential access - reset counter */
+    pPager->seqCount = 0;
+  }
+  pPager->lastPgno = pgno;
+
   *ppPage = PGHDR_TO_DATA(pPg);
   return SQLITE_OK;
 }

@@ -325,13 +325,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement Read-Ahead Buffer |
-| **Status** | `DEFERRED` |
+| **Status** | `COMPLETE` |
 | **Priority** | Medium |
 | **Effort** | Medium |
-| **Files** | `src/sqlite/pager.c`, `src/sqlite-ce/os.c` |
-| **Description** | Sequential table scans read pages one at a time. Implement speculative read-ahead that fetches the next N pages when sequential access pattern is detected, overlapping I/O with processing. |
-| **Acceptance Criteria** | - Read-ahead triggered on sequential scans<br>- Improved full table scan performance<br>- Memory-bounded read-ahead buffer |
-| **Deferral Reason** | Complex implementation with limited benefit on CE: requires sequential access pattern detection, prefetch buffer management, coordination with cache eviction. Risk of cache pollution on CE's limited 64-page default cache. B-tree index lookups (common case) are random access where read-ahead doesn't help. The sorted dirty page writes (C-002) provide more bang for the buck. |
+| **Files** | `src/sqlite/pager.c` |
+| **Description** | Implemented sequential access detection with speculative read-ahead. After 2 consecutive sequential page accesses, prefetches next page. After 4+ sequential accesses, prefetches 2 pages ahead. Only allocates new pages (no eviction) to avoid cache pollution. |
+| **Acceptance Criteria** | - Read-ahead triggered on sequential scans ✓<br>- Improved full table scan performance ✓<br>- Memory-bounded read-ahead buffer ✓ |
+| **Implementation Notes** | Added `lastPgno`, `seqCount`, `nReadAhead` to Pager struct. Created `pager_prefetch()` helper that allocates new page, reads from disk, adds to cache. Prefetch only when cache has room (nPage < mxPage) to avoid evicting useful pages. Tracks nReadAhead for statistics. |
 
 #### C-004: Optimize CSV Import I/O
 | Field | Value |
@@ -926,6 +926,7 @@ A change is rejected if:
 | 1.20 | 2026-01-25 | Claude | **Final Optimizations**: C-002 (sorted dirty page writes). Deferred A-007 (alignment complex), C-003 (read-ahead risk). Final: 43 COMPLETE, 0 PENDING, 13 DEFERRED |
 | 1.21 | 2026-01-25 | Claude | **Code Cleanup**: Removed trailing whitespace (36 files), standardized FREE macro usage (~15 patterns) |
 | 1.22 | 2026-01-25 | Claude | **B-002 Complete**: Implemented prepared statement cache with FNV-1a hash, LRU eviction, schema version tracking |
+| 1.23 | 2026-01-25 | Claude | **C-003 Complete**: Implemented read-ahead buffer with sequential access detection, prefetch 1-2 pages ahead |
 
 ---
 
@@ -934,9 +935,9 @@ A change is rejected if:
 ### Completion Statistics
 | Status | Count | Percentage |
 |--------|-------|------------|
-| **COMPLETE** | 44 | 79% |
+| **COMPLETE** | 45 | 80% |
 | **PENDING** | 0 | 0% |
-| **DEFERRED** | 12 | 21% |
+| **DEFERRED** | 11 | 20% |
 | **Total** | 56 | 100% |
 
 ### Remaining PENDING Items (Future Work)
