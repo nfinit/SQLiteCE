@@ -5,6 +5,7 @@
 #include "globals.h"
 #include "constants.h"
 #include "allocators.h"
+#include "strutils.h"
 #include <commctrl.h>
 
 /* Schema image list indices defined in constants.h */
@@ -135,11 +136,9 @@ static int GetRowCount(const char *tblname) {
     char **results = NULL;
     int nRows = 0, nCols = 0, count = 0;
     char *p = sql;
-    const char *s = "SELECT COUNT(*) FROM ";
-    
-    while (*s) *p++ = *s++;
-    s = tblname;
-    while (*s) *p++ = *s++;
+
+    STR_COPY(p, "SELECT COUNT(*) FROM ");
+    STR_COPY(p, tblname);
     *p = 0;
     
     sqlite_get_table(g_db, sql, &results, &nRows, &nCols, NULL);
@@ -155,11 +154,9 @@ static int GetTableSize(const char *tblname) {
     char **results = NULL;
     int nRows = 0, nCols = 0, size = 0, i, j;
     char *p = sql;
-    const char *s = "SELECT * FROM ";
-    
-    while (*s) *p++ = *s++;
-    s = tblname;
-    while (*s) *p++ = *s++;
+
+    STR_COPY(p, "SELECT * FROM ");
+    STR_COPY(p, tblname);
     *p = 0;
     
     sqlite_get_table(g_db, sql, &results, &nRows, &nCols, NULL);
@@ -373,10 +370,8 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
     /* Query columns */
     {
         char *p = sql;
-        const char *s = "PRAGMA table_info('";
-        while (*s) *p++ = *s++;
-        s = tblname;
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "PRAGMA table_info('");
+        STR_COPY(p, tblname);
         *p++ = '\''; *p++ = ')'; *p = 0;
     }
     ctx.hParent = pnm->itemNew.hItem;
@@ -387,10 +382,8 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
     /* Query indexes for this table */
     {
         char *p = sql;
-        const char *s = "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='";
-        while (*s) *p++ = *s++;
-        s = tblname;
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='");
+        STR_COPY(p, tblname);
         *p++ = '\''; *p = 0;
     }
     sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
@@ -535,10 +528,8 @@ int LoadColumnMetadata(const char *tablename) {
         int nRows = 0, nCols = 0;
         
         p = sql;
-        s = "PRAGMA table_info('";
-        while (*s) *p++ = *s++;
-        s = tablename;
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "PRAGMA table_info('");
+        STR_COPY(p, tablename);
         *p++ = '\''; *p++ = ')'; *p = '\0';
         
         sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
@@ -617,10 +608,8 @@ void OpenTableForEditing(const char *tablename) {
     }
     
     /* Build SELECT rowid, * FROM tablename */
-    s = "SELECT rowid, * FROM ";
-    while (*s) *p++ = *s++;
-    s = tablename;
-    while (*s) *p++ = *s++;
+    STR_COPY(p, "SELECT rowid, * FROM ");
+    STR_COPY(p, tablename);
     *p++ = ';'; *p = 0;
     
     /* Setup for query */
@@ -763,10 +752,8 @@ void OnSchemaDoubleClick(void) {
         /* Views open read-only via ExecuteSQL */
         char sql[256];
         char *p = sql;
-        const char *s = "SELECT * FROM ";
-        while (*s) *p++ = *s++;
-        s = name;
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "SELECT * FROM ");
+        STR_COPY(p, name);
         *p++ = ';'; *p = 0;
         ClearEditMode();
         ExecuteSQL(sql);
@@ -818,12 +805,10 @@ void OnSchemaDelete(void) {
     /* Build and execute DROP */
     WideCharToMultiByte(CP_ACP, 0, text, -1, name, 128, NULL, NULL);
     p = sql;
-    s = type;
-    while (*s) *p++ = *s++;
-    s = name;
-    while (*s) *p++ = *s++;
+    STR_COPY(p, type);
+    STR_COPY(p, name);
     *p++ = ';'; *p = 0;
-    
+
     ExecuteSQL(sql);
     RefreshSchema();
 }
@@ -895,10 +880,8 @@ void ExportSelectedDDL(void) {
     /* Query DDL from sqlite_master */
     {
         char *p = sql;
-        const char *s = "SELECT sql FROM sqlite_master WHERE name='";
-        while (*s) *p++ = *s++;
-        s = name;
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "SELECT sql FROM sqlite_master WHERE name='");
+        STR_COPY(p, name);
         *p++ = '\''; *p = 0;
     }
     
