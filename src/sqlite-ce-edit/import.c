@@ -150,9 +150,9 @@ void DoImportCSV(void) {
     }
     
     p = sql;
-    for (t = "CREATE TABLE \""; *t; ) *p++ = *t++;
+    STR_COPY(p, "CREATE TABLE \"");
     for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
-    for (t = "\" ("; *t; ) *p++ = *t++;
+    STR_COPY(p, "\" (");
     for (i = 0; i < nCols; i++) {
         if (i > 0) { *p++ = ','; *p++ = ' '; }
         *p++ = '"';
@@ -194,9 +194,9 @@ void DoImportCSV(void) {
             int n = ParseCSVLine(line, fields, nCols);
             
             p = sql;
-            for (t = "INSERT INTO \""; *t; ) *p++ = *t++;
+            STR_COPY(p, "INSERT INTO \"");
             for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
-            for (t = "\" VALUES("; *t; ) *p++ = *t++;
+            STR_COPY(p, "\" VALUES(");
             
             for (i = 0; i < nCols; i++) {
                 char *val = (i < n) ? fields[i] : "";

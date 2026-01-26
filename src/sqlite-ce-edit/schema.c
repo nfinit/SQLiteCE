@@ -962,10 +962,10 @@ void ExportAllDDL(void) {
             const char *s;
             int di;
             WideCharToMultiByte(CP_ACP, 0, dbname, -1, dbname8, 64, NULL, NULL);
-            for (s = "-- Schema export: "; *s; ) *p++ = *s++;
-            for (s = dbname8; *s; ) *p++ = *s++;
+            STR_COPY(p, "-- Schema export: ");
+            STR_COPY(p, dbname8);
             *p++ = '\r'; *p++ = '\n';
-            for (s = "-- Exported: "; *s; ) *p++ = *s++;
+            STR_COPY(p, "-- Exported: ");
             wsprintfW(datebuf, L"%04d-%02d-%02d %02d:%02d:%02d",
                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
             for (di = 0; datebuf[di]; di++) *p++ = (char)datebuf[di];

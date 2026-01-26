@@ -673,8 +673,8 @@ void DoExportTable(void) {
     
     /* Query table data */
     p = sql;
-    for (t = "SELECT * FROM \""; *t; ) *p++ = *t++;
-    for (t = tblName; *t; ) *p++ = *t++;
+    STR_COPY(p, "SELECT * FROM \"");
+    STR_COPY(p, tblName);
     *p++ = '"'; *p = 0;
     
     if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
@@ -899,8 +899,8 @@ void DoExportHTML(void) {
     
     /* Query table data */
     p = sql;
-    for (t = "SELECT * FROM \""; *t; ) *p++ = *t++;
-    for (t = tblName; *t; ) *p++ = *t++;
+    STR_COPY(p, "SELECT * FROM \"");
+    STR_COPY(p, tblName);
     *p++ = '"'; *p = 0;
     
     if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
@@ -1200,15 +1200,15 @@ static void ExportTableToCSV(const wchar_t *dir, const char *tblName) {
     
     /* Build path: dir\tablename.csv */
     wp = path;
-    for (wd = dir; *wd; ) *wp++ = *wd++;
+    STR_COPY_W(wp, dir);
     *wp++ = '\\';
     for (t = tblName; *t; ) *wp++ = (wchar_t)*t++;
     *wp++ = '.'; *wp++ = 'c'; *wp++ = 's'; *wp++ = 'v'; *wp = 0;
     
     /* Build SELECT */
     p = sql;
-    for (t = "SELECT * FROM \""; *t; ) *p++ = *t++;
-    for (t = tblName; *t; ) *p++ = *t++;
+    STR_COPY(p, "SELECT * FROM \"");
+    STR_COPY(p, tblName);
     *p++ = '"'; *p = 0;
     
     if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
@@ -1360,8 +1360,8 @@ void DoExportDb(void) {
             }
             
             p = sql;
-            for (t = "SELECT * FROM \""; *t; ) *p++ = *t++;
-            for (t = tblName; *t; ) *p++ = *t++;
+            STR_COPY(p, "SELECT * FROM \"");
+            STR_COPY(p, tblName);
             *p++ = '"'; *p = '\0';
             
             {
@@ -1370,9 +1370,9 @@ void DoExportDb(void) {
                 if (sqlite_get_table(g_db, sql, &dataResult, &dataRow, &dataCol, NULL) == SQLITE_OK) {
                     for (j = 1; j <= dataRow; j++) {
                         char *ins = sql;
-                        for (t = "INSERT INTO \""; *t; ) *ins++ = *t++;
-                        for (t = tblName; *t; ) *ins++ = *t++;
-                        for (t = "\" VALUES("; *t; ) *ins++ = *t++;
+                        STR_COPY(ins, "INSERT INTO \"");
+                        STR_COPY(ins, tblName);
+                        STR_COPY(ins, "\" VALUES(");
                         for (k = 0; k < dataCol; k++) {
                             char *val = dataResult[j * dataCol + k];
                             if (k > 0) *ins++ = ',';
