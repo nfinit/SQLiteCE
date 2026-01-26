@@ -5,6 +5,7 @@
 #include "globals.h"
 #include "constants.h"
 #include "allocators.h"
+#include "strutils.h"
 
 /* Sort state */
 static int *g_sortIndex = NULL;    /* Maps display row -> data row */
@@ -1068,33 +1069,27 @@ static void UndoDelete(void) {
     if (g_undoCount < 1 || !g_editMode) return;
     
     /* Save table name */
-    s = g_editTableName;
     p = tableName;
-    while (*s) *p++ = *s++;
+    STR_COPY(p, g_editTableName);
     *p = '\0';
-    
+
     row = &g_undoStack[g_undoCount - 1];
-    
+
     /* Build INSERT - skip column 0 (rowid) */
     p = sql;
-    s = "INSERT INTO \"";
-    while (*s) *p++ = *s++;
-    s = tableName;
-    while (*s) *p++ = *s++;
-    s = "\" (";
-    while (*s) *p++ = *s++;
-    
+    STR_COPY(p, "INSERT INTO \"");
+    STR_COPY(p, tableName);
+    STR_COPY(p, "\" (");
+
     /* Column names from metadata (skip rowid) */
     for (i = 1; i < row->numCols && i < g_colMetaCount + 1; i++) {
         if (i > 1) *p++ = ',';
         *p++ = '"';
-        s = g_colMeta[i - 1].name;
-        while (*s) *p++ = *s++;
+        STR_COPY(p, g_colMeta[i - 1].name);
         *p++ = '"';
     }
-    
-    s = ") VALUES (";
-    while (*s) *p++ = *s++;
+
+    STR_COPY(p, ") VALUES (");
     
     /* Values (skip rowid at index 0) */
     for (i = 1; i < row->numCols; i++) {
@@ -1108,8 +1103,7 @@ static void UndoDelete(void) {
             }
             *p++ = '\'';
         } else {
-            s = "NULL";
-            while (*s) *p++ = *s++;
+            STR_COPY(p, "NULL");
         }
     }
     *p++ = ')';
@@ -1168,9 +1162,8 @@ static void DeleteSelectedRow(void) {
     count = i;
     
     /* Save table name before it gets cleared */
-    s = g_editTableName;
     p = tableName;
-    while (*s) *p++ = *s++;
+    STR_COPY(p, g_editTableName);
     *p = '\0';
     
     /* Confirm deletion */
@@ -1215,14 +1208,10 @@ static void DeleteSelectedRow(void) {
     for (i = 0; i < count; i++) {
         if (!rowids[i]) continue;
         p = sql;
-        s = "DELETE FROM \"";
-        while (*s) *p++ = *s++;
-        s = tableName;
-        while (*s) *p++ = *s++;
-        s = "\" WHERE rowid = ";
-        while (*s) *p++ = *s++;
-        s = rowids[i];
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "DELETE FROM \"");
+        STR_COPY(p, tableName);
+        STR_COPY(p, "\" WHERE rowid = ");
+        STR_COPY(p, rowids[i]);
         *p++ = ';';
         *p = '\0';
         
@@ -1323,56 +1312,49 @@ static void CommitInsert(void) {
     if (!g_insertMode || !g_pendingValues) return;
     
     /* Save table name */
-    s = g_editTableName;
     p = tableName;
-    while (*s) *p++ = *s++;
+    STR_COPY(p, g_editTableName);
     *p = '\0';
-    
+
     /* Build INSERT statement */
     p = sql;
-    s = "INSERT INTO \"";
-    while (*s) *p++ = *s++;
-    s = tableName;
-    while (*s) *p++ = *s++;
-    s = "\" (";
-    while (*s) *p++ = *s++;
-    
+    STR_COPY(p, "INSERT INTO \"");
+    STR_COPY(p, tableName);
+    STR_COPY(p, "\" (");
+
     /* Column list - skip autoincrement, only include columns with values */
     first = 1;
     for (i = 0; i < g_colMetaCount; i++) {
         if (g_colMeta[i].isAutoInc) continue;
         if (!g_pendingValues[i]) continue;
-        
+
         if (!first) *p++ = ',';
         first = 0;
         *p++ = '"';
-        s = g_colMeta[i].name;
-        while (*s) *p++ = *s++;
+        STR_COPY(p, g_colMeta[i].name);
         *p++ = '"';
     }
-    
+
     /* If no columns have values, can't insert */
     if (first) {
         MessageBoxW(g_hwndMain, L"No values entered.", L"Insert", MB_OK | MB_ICONWARNING);
         return;
     }
-    
-    s = ") VALUES (";
-    while (*s) *p++ = *s++;
-    
+
+    STR_COPY(p, ") VALUES (");
+
     /* Values list */
     first = 1;
     for (i = 0; i < g_colMetaCount; i++) {
         if (g_colMeta[i].isAutoInc) continue;
         if (!g_pendingValues[i]) continue;
-        
+
         if (!first) *p++ = ',';
         first = 0;
-        
+
         /* Check for explicit NULL marker */
         if (g_pendingValues[i][0] == '\x01' && g_pendingValues[i][1] == '\0') {
-            s = "NULL";
-            while (*s) *p++ = *s++;
+            STR_COPY(p, "NULL");
         } else {
             *p++ = '\'';
             /* Escape single quotes */
@@ -1385,10 +1367,9 @@ static void CommitInsert(void) {
         }
     }
     
-    s = ");";
-    while (*s) *p++ = *s++;
+    STR_COPY(p, ");");
     *p = '\0';
-    
+
     /* Execute INSERT */
     rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
     
@@ -1498,34 +1479,26 @@ static void CommitCellEdit(void) {
     
     /* Build UPDATE statement */
     p = sql;
-    s = "UPDATE \"";
-    while (*s) *p++ = *s++;
-    s = g_editTableName;
-    while (*s) *p++ = *s++;
-    s = "\" SET \"";
-    while (*s) *p++ = *s++;
-    s = colName;
-    while (*s) *p++ = *s++;
-    
+    STR_COPY(p, "UPDATE \"");
+    STR_COPY(p, g_editTableName);
+    STR_COPY(p, "\" SET \"");
+    STR_COPY(p, colName);
+
     if (setNull) {
         /* SET column = NULL */
-        s = "\" = NULL WHERE rowid = ";
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "\" = NULL WHERE rowid = ");
     } else {
         /* SET column = 'value' */
-        s = "\" = '";
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "\" = '");
         /* Escape single quotes in value */
         s = newVal;
         while (*s) {
             if (*s == '\'') *p++ = '\'';  /* Double up quotes */
             *p++ = *s++;
         }
-        s = "' WHERE rowid = ";
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "' WHERE rowid = ");
     }
-    s = rowid;
-    while (*s) *p++ = *s++;
+    STR_COPY(p, rowid);
     *p++ = ';';
     *p = 0;
     
@@ -1538,18 +1511,12 @@ static void CommitCellEdit(void) {
         
         /* Rebuild as empty string: SET "col" = '' WHERE rowid = N */
         p = sql;
-        s = "UPDATE \"";
-        while (*s) *p++ = *s++;
-        s = g_editTableName;
-        while (*s) *p++ = *s++;
-        s = "\" SET \"";
-        while (*s) *p++ = *s++;
-        s = colName;
-        while (*s) *p++ = *s++;
-        s = "\" = '' WHERE rowid = ";
-        while (*s) *p++ = *s++;
-        s = rowid;
-        while (*s) *p++ = *s++;
+        STR_COPY(p, "UPDATE \"");
+        STR_COPY(p, g_editTableName);
+        STR_COPY(p, "\" SET \"");
+        STR_COPY(p, colName);
+        STR_COPY(p, "\" = '' WHERE rowid = ");
+        STR_COPY(p, rowid);
         *p++ = ';';
         *p = 0;
         
