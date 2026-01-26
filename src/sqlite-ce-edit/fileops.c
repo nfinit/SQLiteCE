@@ -13,7 +13,7 @@
 static int FindStorageCard(wchar_t *cardPath, int maxLen) {
     WIN32_FIND_DATAW fd;
     HANDLE hFind;
-    
+
     hFind = FindFirstFileW(L"\\Storage Card*", &fd);
     if (hFind != INVALID_HANDLE_VALUE) {
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
@@ -30,7 +30,7 @@ static int FindStorageCard(wchar_t *cardPath, int maxLen) {
 /* Get effective data path based on storage card option */
 static void GetDataPath(wchar_t *path, int maxLen) {
     wchar_t cardPath[MAX_PATH];
-    
+
     if (g_useStorageCardData && FindStorageCard(cardPath, MAX_PATH)) {
         /* Card base path is appended after detected card path */
         wsprintfW(path, L"%s%s%s", cardPath, g_szCardBasePath, g_szDataRelPath);
@@ -47,11 +47,11 @@ static void GetDataPath(wchar_t *path, int maxLen) {
 void DoFileNew(void) {
     wchar_t szFile[MAX_PATH];
     wchar_t szDataPath[MAX_PATH];
-    
+
     /* Get data path (storage card or My Documents) */
     GetDataPath(szDataPath, MAX_PATH);
     lstrcpyW(szFile, L"new.db");
-    
+
     if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"New Database", L"Database Files (*.db)\0*.db\0",
             L"db", szDataPath, 1)) {
@@ -63,10 +63,10 @@ void DoFileNew(void) {
 void DoFileOpen(void) {
     wchar_t szFile[MAX_PATH] = L"";
     wchar_t szDataPath[MAX_PATH];
-    
+
     /* Get data path (storage card or My Documents) */
     GetDataPath(szDataPath, MAX_PATH);
-    
+
     if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Open Database", L"Database Files (*.db)\0*.db\0",
             NULL, szDataPath, 0)) {
@@ -103,12 +103,12 @@ void AddRecentFile(const wchar_t *path) {
 
 void UpdateRecentMenu(void) {
     int i, j;
-    
+
     if (!g_hRecentDbMenu) return;
-    
+
     /* Clear and rebuild */
     while (RemoveMenu(g_hRecentDbMenu, 0, MF_BYPOSITION));
-    
+
     if (g_recentCount == 0) {
         AppendMenuW(g_hRecentDbMenu, MF_STRING | MF_GRAYED, 0, L"(none)");
     } else {
@@ -146,11 +146,11 @@ void AddRecentQuery(const wchar_t *path) {
 
 void UpdateRecentQueryMenu(void) {
     int i, j;
-    
+
     if (!g_hRecentQueryMenu) return;
-    
+
     while (RemoveMenu(g_hRecentQueryMenu, 0, MF_BYPOSITION));
-    
+
     if (g_recentQueryCount == 0) {
         AppendMenuW(g_hRecentQueryMenu, MF_STRING | MF_GRAYED, 0, L"(none)");
     } else {
@@ -176,7 +176,7 @@ void OpenQueryFile(const wchar_t *path) {
     char *buf;
     wchar_t *wbuf;
     int i, j, extraCR;
-    
+
     hFile = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     if (hFile != INVALID_HANDLE_VALUE) {
         dwSize = GetFileSize(hFile, NULL);
@@ -219,7 +219,7 @@ void OpenQueryFile(const wchar_t *path) {
 void DoOpenQuery(void) {
     wchar_t szFile[MAX_PATH] = L"";
     int i;
-    
+
     if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Open Query", L"SQL Files (*.sql)\0*.sql\0",
             NULL, g_szLastQueryDir, 0)) {
@@ -240,19 +240,19 @@ void DoSaveQuery(void) {
     wchar_t *wbuf;
     char *buf;
     DWORD i;
-    
+
     if (g_szQueryPath[0]) {
         lstrcpyW(szFile, g_szQueryPath);
     } else {
         lstrcpyW(szFile, L"query.sql");
-        
+
         if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
                 L"Save Query", L"SQL Files (*.sql)\0*.sql\0",
                 L"sql", g_szLastQueryDir, 1)) return;
         lstrcpyW(g_szQueryPath, szFile);
         UpdateTitle();
     }
-    
+
     dwLen = GetWindowTextLengthW(g_hwndQuery);
     wbuf = ALLOC(wchar_t, dwLen + 1);
     buf = ALLOC(char, dwLen + 1);
@@ -299,15 +299,15 @@ void DoExportResults(void) {
     char *buf, *bp;
     int needQuote, isCSV;
     wchar_t *dot;
-    
+
     if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Export Results", L"CSV Files (*.csv)\0*.csv\0",
             L"csv", NULL, 1)) return;
-    
+
     /* Check extension to determine format */
     dot = szFile + lstrlenW(szFile) - 4;
     isCSV = (dot > szFile && (lstrcmpiW(dot, L".csv") == 0));
-    
+
     /* Append extension if none present */
     {
         wchar_t *p = szFile + lstrlenW(szFile);
@@ -320,10 +320,10 @@ void DoExportResults(void) {
             lstrcatW(szFile, isCSV ? L".csv" : L".txt");
         }
     }
-    
+
     dwLen = GetWindowTextLengthW(g_hwndResult);
     if (dwLen == 0) return;
-    
+
     wbuf = ALLOC(wchar_t, dwLen + 1);
     buf = ALLOC(char, (dwLen * 2) + 1);
     if (wbuf && buf) {
@@ -369,7 +369,7 @@ void DoExportResults(void) {
             WideCharToMultiByte(CP_ACP, 0, wbuf, -1, buf, (dwLen * 2) + 1, NULL, NULL);
             dwLen = (DWORD)strlen(buf);
         }
-        
+
         hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile != INVALID_HANDLE_VALUE) {
             WriteFile(hFile, buf, dwLen, &dwWritten, NULL);
@@ -391,15 +391,15 @@ void DoExportCSV(void) {
     wchar_t *wbuf, *wp;
     char *buf, *bp;
     int needQuote;
-    
+
     if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Export Results",
             L"CSV Files\0*.csv\0All Files\0*.*\0",
             L"csv", NULL, 1)) return;
-    
+
     dwLen = GetWindowTextLengthW(g_hwndResult);
     if (dwLen == 0) return;
-    
+
     wbuf = ALLOC(wchar_t, dwLen + 1);
     buf = ALLOC(char, (dwLen * 2) + 1);
     if (wbuf && buf) {
@@ -436,7 +436,7 @@ void DoExportCSV(void) {
             }
         }
         *bp = '\0';
-        
+
         hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile != INVALID_HANDLE_VALUE) {
             WriteFile(hFile, buf, (DWORD)(bp - buf), &dwWritten, NULL);
@@ -457,21 +457,21 @@ void DoExportTxt(void) {
     DWORD dwLen, dwWritten;
     wchar_t *wbuf;
     char *buf;
-    
+
     if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Export Results",
             L"Text Files\0*.txt\0All Files\0*.*\0",
             L"txt", NULL, 1)) return;
-    
+
     dwLen = GetWindowTextLengthW(g_hwndResult);
     if (dwLen == 0) return;
-    
+
     wbuf = ALLOC(wchar_t, dwLen + 1);
     buf = ALLOC(char, dwLen + 1);
     if (wbuf && buf) {
         GetWindowTextW(g_hwndResult, wbuf, dwLen + 1);
         WideCharToMultiByte(CP_ACP, 0, wbuf, -1, buf, dwLen + 1, NULL, NULL);
-        
+
         hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile != INVALID_HANDLE_VALUE) {
             WriteFile(hFile, buf, (DWORD)strlen(buf), &dwWritten, NULL);
@@ -540,18 +540,18 @@ static int PickTable(char *tblName) {
     wchar_t wname[128];
     WNDCLASSW wc;
     WNDPROC pfnOrig;
-    
+
     /* Get table list */
     sqlite_get_table(g_db,
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
         &results, &nRows, &nCols, NULL);
-    
+
     if (!results || nRows < 1) {
         if (results) sqlite_free_table(results);
         MessageBoxW(g_hwndMain, L"No tables in database", L"Export Table", MB_OK);
         return 0;
     }
-    
+
     /* Register window class once */
     {
         static int classRegistered = 0;
@@ -565,48 +565,48 @@ static int PickTable(char *tblName) {
             classRegistered = 1;
         }
     }
-    
+
     /* Create popup window */
     g_pickResult[0] = 0;
     g_pickDone = 0;
     g_hwndPickDlg = CreateWindowExW(0, L"PickTableWnd", L"Select Table",
         WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
         50, 50, 180, 160, g_hwndMain, NULL, g_hInst, NULL);
-    
+
     hwndList = CreateWindowW(L"LISTBOX", NULL,
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY,
         10, 10, 156, 80, g_hwndPickDlg, (HMENU)101, g_hInst, NULL);
-    
+
     /* Subclass listbox for Enter key */
     pfnOrig = (WNDPROC)SetWindowLong(hwndList, GWL_WNDPROC, (LONG)PickListProc);
     SetWindowLong(hwndList, GWL_USERDATA, (LONG)pfnOrig);
-    
+
     for (i = 0; i < nRows; i++) {
         MultiByteToWideChar(CP_ACP, 0, results[i + 1], -1, wname, 128);
         SendMessageW(hwndList, LB_ADDSTRING, 0, (LPARAM)wname);
     }
     SendMessage(hwndList, LB_SETCURSEL, 0, 0);
-    
+
     hwndOK = CreateWindowW(L"BUTTON", L"Export",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
         10, 100, 70, 26, g_hwndPickDlg, (HMENU)IDOK, g_hInst, NULL);
     hwndCancel = CreateWindowW(L"BUTTON", L"Cancel",
         WS_CHILD | WS_VISIBLE,
         90, 100, 70, 26, g_hwndPickDlg, (HMENU)IDCANCEL, g_hInst, NULL);
-    
+
     SetFocus(hwndList);
     EnableWindow(g_hwndMain, FALSE);
-    
+
     while (!g_pickDone && GetMessageW(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    
+
     EnableWindow(g_hwndMain, TRUE);
     ShowWindow(g_hwndMain, SW_SHOWNORMAL);
     SetForegroundWindow(g_hwndMain);
     sqlite_free_table(results);
-    
+
     if (g_pickResult[0]) {
         strcpy(tblName, g_pickResult);
         return 1;
@@ -626,9 +626,9 @@ void DoExportTable(void) {
     char *lp, *p;
     const char *t;
     wchar_t *ext;
-    
+
     if (!g_db) return;
-    
+
     /* Get table name from schema selection or picker */
     tblName[0] = 0;
     if (g_viewMode == 2 && g_hwndSchema) {
@@ -649,20 +649,20 @@ void DoExportTable(void) {
             }
         }
     }
-    
+
     /* If no table selected, show picker */
     if (!tblName[0]) {
         if (!PickTable(tblName)) return;
     }
-    
+
     /* Default filename from table name */
     MultiByteToWideChar(CP_ACP, 0, tblName, -1, szFile, MAX_PATH);
     lstrcatW(szFile, L".csv");
-    
+
     if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Export Table", L"CSV (*.csv)\0*.csv\0",
             L"csv", NULL, 1)) return;
-    
+
     /* Determine format from extension: csv=1, sql=2 (INSERT), default csv */
     ext = szFile + lstrlenW(szFile) - 4;
     if (ext > szFile && lstrcmpiW(ext, L".sql") == 0) {
@@ -670,21 +670,21 @@ void DoExportTable(void) {
     } else {
         fmt = 1;  /* CSV */
     }
-    
+
     /* Query table data */
     p = sql;
     STR_COPY(p, "SELECT * FROM \"");
     STR_COPY(p, tblName);
     *p++ = '"'; *p = 0;
-    
+
     if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
-    
+
     hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
         sqlite_free_table(result);
         return;
     }
-    
+
     if (fmt == 1) {
         /* CSV format */
         /* Write header row */
@@ -696,7 +696,7 @@ void DoExportTable(void) {
         }
         *lp++ = '\r'; *lp++ = '\n';
         WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
-        
+
         /* Write data rows */
         for (i = 1; i <= nRow; i++) {
             lp = line;
@@ -740,7 +740,7 @@ void DoExportTable(void) {
                 sqlite_free_table(ddlRes);
             }
         }
-        
+
         /* Write INSERT statements */
         for (i = 1; i <= nRow; i++) {
             lp = line;
@@ -765,7 +765,7 @@ void DoExportTable(void) {
             WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
         }
     }
-    
+
     CloseHandle(hFile);
     sqlite_free_table(result);
 }
@@ -817,9 +817,9 @@ void DoExportHTML(void) {
     WNDCLASSW wc;
     MSG msg;
     HWND hwndChk, hwndLbl, hwndId, hwndClass, hwndSave, hwndClip, hwndCancel;
-    
+
     if (!g_db) return;
-    
+
     /* Get table name */
     tblName[0] = 0;
     if (g_viewMode == 2 && g_hwndSchema) {
@@ -843,7 +843,7 @@ void DoExportHTML(void) {
     if (!tblName[0]) {
         if (!PickTable(tblName)) return;
     }
-    
+
     /* Show options dialog */
     memset(&wc, 0, sizeof(wc));
     wc.lpfnWndProc = HtmlDlgProc;
@@ -851,29 +851,29 @@ void DoExportHTML(void) {
     wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
     wc.lpszClassName = L"HtmlExportDlg";
     RegisterClassW(&wc);
-    
+
     g_htmlResult = 0;
     g_hwndHtmlDlg = CreateWindowExW(0, L"HtmlExportDlg", L"HTML Export Options",
         WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
         30, 25, 250, 175, g_hwndMain, NULL, g_hInst, NULL);
-    
+
     hwndChk = CreateWindowW(L"BUTTON", L"Include header row (<thead>)",
         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
         10, 10, 225, 20, g_hwndHtmlDlg, (HMENU)101, g_hInst, NULL);
     SendMessage(hwndChk, BM_SETCHECK, g_htmlIncludeHeader ? BST_CHECKED : BST_UNCHECKED, 0);
-    
+
     hwndLbl = CreateWindowW(L"STATIC", L"Table ID:",
         WS_CHILD | WS_VISIBLE, 10, 38, 60, 18, g_hwndHtmlDlg, NULL, g_hInst, NULL);
     hwndId = CreateWindowW(L"EDIT", g_htmlTableId,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
         75, 35, 160, 22, g_hwndHtmlDlg, (HMENU)102, g_hInst, NULL);
-    
+
     hwndLbl = CreateWindowW(L"STATIC", L"Table class:",
         WS_CHILD | WS_VISIBLE, 10, 63, 60, 18, g_hwndHtmlDlg, NULL, g_hInst, NULL);
     hwndClass = CreateWindowW(L"EDIT", g_htmlTableClass,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
         75, 60, 160, 22, g_hwndHtmlDlg, (HMENU)103, g_hInst, NULL);
-    
+
     hwndSave = CreateWindowW(L"BUTTON", L"Save to File...",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
         10, 95, 110, 26, g_hwndHtmlDlg, (HMENU)201, g_hInst, NULL);
@@ -883,34 +883,34 @@ void DoExportHTML(void) {
     hwndCancel = CreateWindowW(L"BUTTON", L"Cancel",
         WS_CHILD | WS_VISIBLE,
         80, 130, 80, 26, g_hwndHtmlDlg, (HMENU)IDCANCEL, g_hInst, NULL);
-    
+
     EnableWindow(g_hwndMain, FALSE);
-    
+
     while (GetMessageW(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    
+
     EnableWindow(g_hwndMain, TRUE);
     SetForegroundWindow(g_hwndMain);
     UnregisterClassW(L"HtmlExportDlg", g_hInst);
-    
+
     if (!g_htmlResult) return;
-    
+
     /* Query table data */
     p = sql;
     STR_COPY(p, "SELECT * FROM \"");
     STR_COPY(p, tblName);
     *p++ = '"'; *p = 0;
-    
+
     if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
-    
+
     /* Estimate buffer size and allocate */
     bufSize = 256 + (nRow + 1) * (nCol * 64 + 32);
     buf = ALLOC(char, bufSize);
     if (!buf) { sqlite_free_table(result); return; }
     bp = buf;
-    
+
     /* Build HTML */
     /* <table> opening tag with optional id/class */
     STR_COPY(bp, "<table");
@@ -969,9 +969,9 @@ void DoExportHTML(void) {
     STR_COPY(bp, "</tbody>\r\n</table>\r\n");
     *bp = 0;
     len = bp - buf;
-    
+
     sqlite_free_table(result);
-    
+
     if (g_htmlToClipboard) {
         /* Copy to clipboard - CE needs CF_UNICODETEXT */
         HLOCAL hMem = LocalAlloc(LMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
@@ -992,9 +992,9 @@ void DoExportHTML(void) {
         wchar_t szFile[MAX_PATH];
         HANDLE hFile;
         DWORD written;
-        
+
         MultiByteToWideChar(CP_ACP, 0, tblName, -1, szFile, MAX_PATH);
-        
+
         if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
                 L"Export HTML Table",
                 L"HTML Files\0*.html\0All Files\0*.*\0",
@@ -1006,7 +1006,7 @@ void DoExportHTML(void) {
             }
         }
     }
-    
+
     LocalFree(buf);
 }
 
@@ -1022,13 +1022,13 @@ void DoExportHTMLResults(void) {
     WNDCLASSW wc;
     MSG msg;
     HWND hwndChk, hwndLbl, hwndId, hwndClass, hwndSave, hwndClip, hwndCancel;
-    
+
     /* Check for results */
     if (!g_lastResult || g_lastResultRows < 1 || g_lastResultCols < 1) {
         MessageBoxW(g_hwndMain, L"No results to export", L"Export HTML", MB_OK);
         return;
     }
-    
+
     /* Show options dialog */
     memset(&wc, 0, sizeof(wc));
     wc.lpfnWndProc = HtmlDlgProc;
@@ -1036,29 +1036,29 @@ void DoExportHTMLResults(void) {
     wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
     wc.lpszClassName = L"HtmlExportDlg";
     RegisterClassW(&wc);
-    
+
     g_htmlResult = 0;
     g_hwndHtmlDlg = CreateWindowExW(0, L"HtmlExportDlg", L"HTML Export Options",
         WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
         30, 25, 250, 175, g_hwndMain, NULL, g_hInst, NULL);
-    
+
     hwndChk = CreateWindowW(L"BUTTON", L"Include header row (<thead>)",
         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
         10, 10, 225, 20, g_hwndHtmlDlg, (HMENU)101, g_hInst, NULL);
     SendMessage(hwndChk, BM_SETCHECK, g_htmlIncludeHeader ? BST_CHECKED : BST_UNCHECKED, 0);
-    
+
     hwndLbl = CreateWindowW(L"STATIC", L"Table ID:",
         WS_CHILD | WS_VISIBLE, 10, 38, 60, 18, g_hwndHtmlDlg, NULL, g_hInst, NULL);
     hwndId = CreateWindowW(L"EDIT", g_htmlTableId,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
         75, 35, 160, 22, g_hwndHtmlDlg, (HMENU)102, g_hInst, NULL);
-    
+
     hwndLbl = CreateWindowW(L"STATIC", L"Table class:",
         WS_CHILD | WS_VISIBLE, 10, 63, 60, 18, g_hwndHtmlDlg, NULL, g_hInst, NULL);
     hwndClass = CreateWindowW(L"EDIT", g_htmlTableClass,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
         75, 60, 160, 22, g_hwndHtmlDlg, (HMENU)103, g_hInst, NULL);
-    
+
     hwndSave = CreateWindowW(L"BUTTON", L"Save to File...",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
         10, 95, 110, 26, g_hwndHtmlDlg, (HMENU)201, g_hInst, NULL);
@@ -1068,26 +1068,26 @@ void DoExportHTMLResults(void) {
     hwndCancel = CreateWindowW(L"BUTTON", L"Cancel",
         WS_CHILD | WS_VISIBLE,
         80, 130, 80, 26, g_hwndHtmlDlg, (HMENU)IDCANCEL, g_hInst, NULL);
-    
+
     EnableWindow(g_hwndMain, FALSE);
-    
+
     while (GetMessageW(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    
+
     EnableWindow(g_hwndMain, TRUE);
     SetForegroundWindow(g_hwndMain);
     UnregisterClassW(L"HtmlExportDlg", g_hInst);
-    
+
     if (!g_htmlResult) return;
-    
+
     /* Estimate buffer size and allocate */
     bufSize = 256 + (g_lastResultRows + 1) * (g_lastResultCols * 80 + 32);
     buf = ALLOC(char, bufSize);
     if (!buf) return;
     bp = buf;
-    
+
     /* Build HTML table opening */
     STR_COPY(bp, "<table");
     if (g_htmlTableId[0]) {
@@ -1145,7 +1145,7 @@ void DoExportHTMLResults(void) {
     STR_COPY(bp, "</tbody>\r\n</table>\r\n");
     *bp = 0;
     len = (int)(bp - buf);
-    
+
     if (g_htmlToClipboard) {
         HLOCAL hMem = LocalAlloc(LMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
         if (hMem) {
@@ -1164,7 +1164,7 @@ void DoExportHTMLResults(void) {
         wchar_t szFile[MAX_PATH] = L"results";
         HANDLE hFile;
         DWORD written;
-        
+
         if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
                 L"Export Results as HTML",
                 L"HTML Files\0*.html\0All Files\0*.*\0",
@@ -1176,7 +1176,7 @@ void DoExportHTMLResults(void) {
             }
         }
     }
-    
+
     LocalFree(buf);
 }
 
@@ -1197,28 +1197,28 @@ static void ExportTableToCSV(const wchar_t *dir, const char *tblName) {
     DWORD written;
     char line[4096];
     char *lp;
-    
+
     /* Build path: dir\tablename.csv */
     wp = path;
     STR_COPY_W(wp, dir);
     *wp++ = '\\';
     for (t = tblName; *t; ) *wp++ = (wchar_t)*t++;
     *wp++ = '.'; *wp++ = 'c'; *wp++ = 's'; *wp++ = 'v'; *wp = 0;
-    
+
     /* Build SELECT */
     p = sql;
     STR_COPY(p, "SELECT * FROM \"");
     STR_COPY(p, tblName);
     *p++ = '"'; *p = 0;
-    
+
     if (sqlite_get_table(g_db, sql, &result, &nRow, &nCol, NULL) != SQLITE_OK) return;
-    
+
     hFile = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
         sqlite_free_table(result);
         return;
     }
-    
+
     /* Write header row */
     lp = line;
     for (j = 0; j < nCol; j++) {
@@ -1273,22 +1273,22 @@ void DoExportDb(void) {
     char sql[4096];
     char *p;
     int csvMode;
-    
+
     if (!g_db) return;
-    
+
     if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Export Database",
             L"SQLite Database\0*.db\0CSV Folder\0*.csv\0",
             L"db", NULL, 1)) return;
-    
+
     /* Detect mode by extension */
     {
         wchar_t *ep = szFile;
         int len;
         while (*ep) ep++;
         len = (int)(ep - szFile);
-        
-        if (len >= 3 && 
+
+        if (len >= 3 &&
             (szFile[len-3] == '.') &&
             (szFile[len-2] == 'd' || szFile[len-2] == 'D') &&
             (szFile[len-1] == 'b' || szFile[len-1] == 'B')) {
@@ -1304,7 +1304,7 @@ void DoExportDb(void) {
             }
         }
     }
-    
+
     if (csvMode) {
         DWORD attr;
         attr = GetFileAttributesW(szFile);
@@ -1313,15 +1313,15 @@ void DoExportDb(void) {
                 DeleteFileW(szFile);
             }
         }
-        
+
         CreateDirectoryW(szFile, NULL);
-        
+
         attr = GetFileAttributesW(szFile);
         if (attr == 0xFFFFFFFF || !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
             MessageBoxW(g_hwndMain, szFile, L"Failed to create folder", MB_OK | MB_ICONERROR);
             return;
         }
-        
+
         if (sqlite_get_table(g_db, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
                 &result, &nRow, &nCol, NULL) == SQLITE_OK) {
             if (nRow == 0) {
@@ -1336,7 +1336,7 @@ void DoExportDb(void) {
         }
         return;
     }
-    
+
     /* Database export mode */
     DeleteFileW(szFile);
     WideCharToMultiByte(CP_ACP, 0, szFile, -1, szDestPath, sizeof(szDestPath), NULL, NULL);
@@ -1346,24 +1346,24 @@ void DoExportDb(void) {
         MessageBoxW(g_hwndMain, L"Could not create database", L"Export Error", MB_OK | MB_ICONERROR);
         return;
     }
-    
+
     /* Get all tables from sqlite_master */
-    if (sqlite_get_table(g_db, "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", 
+    if (sqlite_get_table(g_db, "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
             &result, &nRow, &nCol, NULL) == SQLITE_OK) {
         for (i = 1; i <= nRow; i++) {
             char *tblName = result[i * nCol];
             char *tblSql = result[i * nCol + 1];
             char *t;
-            
+
             if (tblSql) {
                 sqlite_exec(destDb, tblSql, NULL, NULL, NULL);
             }
-            
+
             p = sql;
             STR_COPY(p, "SELECT * FROM \"");
             STR_COPY(p, tblName);
             *p++ = '"'; *p = '\0';
-            
+
             {
                 char **dataResult;
                 int dataRow, dataCol, j, k;
@@ -1398,16 +1398,16 @@ void DoExportDb(void) {
         }
         sqlite_free_table(result);
     }
-    
+
     /* Copy indexes */
-    if (sqlite_get_table(g_db, "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL", 
+    if (sqlite_get_table(g_db, "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL",
             &result, &nRow, &nCol, NULL) == SQLITE_OK) {
         for (i = 1; i <= nRow; i++) {
             if (result[i]) sqlite_exec(destDb, result[i], NULL, NULL, NULL);
         }
         sqlite_free_table(result);
     }
-    
+
     sqlite_close(destDb);
 }
 
@@ -1428,19 +1428,19 @@ void DoBackupDatabase(void) {
     BYTE buf[16384];  /* 16KB buffer for faster backup (was 4KB) */
     DWORD dwRead, dwWritten;
     int ok = 0;
-    
+
     /* Must have a file-based database */
     if (!g_db || g_szDbPath[0] == ':' || g_szDbPath[0] == 0) {
         MessageBoxW(g_hwndMain, L"No database file to backup", L"Backup", MB_OK | MB_ICONINFORMATION);
         return;
     }
-    
+
     /* Extract database name (without extension) */
     fn = GetFilename(g_szDbPath);
     d = szDbName;
     while (*fn && *fn != '.' && d < szDbName + 60) *d++ = *fn++;
     *d = 0;
-    
+
     /* Build backup directory path */
     if (g_useStorageCard && FindStorageCard(szCardPath, MAX_PATH)) {
         wsprintfW(szBackupDir, L"%s%s%s", szCardPath, g_szCardBasePath, g_szDataRelPath);
@@ -1451,27 +1451,27 @@ void DoBackupDatabase(void) {
         CreateDirectoryW(szBackupDir, NULL);
         lstrcatW(szBackupDir, L"\\Backups");
     }
-    
+
     /* Create directory structure: BackupDir\dbname\ */
     CreateDirectoryW(szBackupDir, NULL);
     lstrcatW(szBackupDir, L"\\");
     lstrcatW(szBackupDir, szDbName);
     CreateDirectoryW(szBackupDir, NULL);
-    
+
     /* Build backup filename: BackupDir\dbname\dbname_YYYYMMDD_HHMMSS.bak.db */
     GetLocalTime(&st);
     wsprintfW(szBackup, L"%s\\%s_%04d%02d%02d_%02d%02d%02d.bak.db",
         szBackupDir, szDbName,
         st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-    
+
     /* Show status during backup */
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Backing up...");
     UpdateWindow(g_hwndStatus);
-    
+
     /* Close database to ensure file is flushed */
     sqlite_close(g_db);
     g_db = NULL;
-    
+
     /* Copy file */
     hSrc = CreateFileW(g_szDbPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     if (hSrc != INVALID_HANDLE_VALUE) {
@@ -1489,14 +1489,14 @@ void DoBackupDatabase(void) {
         }
         CloseHandle(hSrc);
     }
-    
+
     /* Reopen database */
     {
         char szPath[MAX_PATH * 2];
         WideCharToMultiByte(CP_ACP, 0, g_szDbPath, -1, szPath, sizeof(szPath), NULL, NULL);
         g_db = sqlite_open(szPath, 0, NULL);
     }
-    
+
     if (ok) {
         fn = GetFilename(szBackup);
         wsprintfW(szStatus, L"Backed up to %s", fn);
@@ -1505,7 +1505,7 @@ void DoBackupDatabase(void) {
         MessageBoxW(g_hwndMain, L"Backup failed", L"Error", MB_OK | MB_ICONERROR);
     }
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)szStatus);
-    
+
     RefreshSchema();
 }
 
@@ -1528,7 +1528,7 @@ void DoRestoreDatabase(void) {
     d = szDbName;
     while (*fn && *fn != '.' && d < szDbName + 60) *d++ = *fn++;
     *d = 0;
-    
+
     /* Build initial directory: Backups\<dbname>\ if exists, else Backups\ */
     if (g_useStorageCard && FindStorageCard(szCardPath, MAX_PATH)) {
         wsprintfW(szInitDir, L"%s%s%s\\Backups\\%s", szCardPath, g_szCardBasePath, g_szDataRelPath, szDbName);
@@ -1544,26 +1544,26 @@ void DoRestoreDatabase(void) {
         if (d > szInitDir) *(d-1) = 0;
     }
     if (hFind != INVALID_HANDLE_VALUE) FindClose(hFind);
-    
+
     /* File picker */
     szFile[0] = 0;
     if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
                           L"Restore Database", L"*.db", L"db",
                           szInitDir, 0)) return;
-    
+
     /* Confirmation */
     fn = GetFilename(szFile);
     wsprintfW(szMsg, L"Replace current database with:\n%s?", fn);
-    if (MessageBoxW(g_hwndMain, szMsg, L"Restore Database", 
+    if (MessageBoxW(g_hwndMain, szMsg, L"Restore Database",
                     MB_YESNO | MB_ICONQUESTION) != IDYES) return;
-    
+
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Restoring...");
     UpdateWindow(g_hwndStatus);
-    
+
     /* Close database */
     sqlite_close(g_db);
     g_db = NULL;
-    
+
     /* Copy backup over current database */
     hSrc = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     if (hSrc != INVALID_HANDLE_VALUE) {
@@ -1580,14 +1580,14 @@ void DoRestoreDatabase(void) {
         }
         CloseHandle(hSrc);
     }
-    
+
     /* Reopen database */
     {
         char szPath[MAX_PATH * 2];
         WideCharToMultiByte(CP_ACP, 0, g_szDbPath, -1, szPath, sizeof(szPath), NULL, NULL);
         g_db = sqlite_open(szPath, 0, NULL);
     }
-    
+
     /* Reset UI to clean state */
     ClearEditMode();
     if (ok) {
@@ -1598,6 +1598,6 @@ void DoRestoreDatabase(void) {
         MessageBoxW(g_hwndMain, L"Restore failed", L"Error", MB_OK | MB_ICONERROR);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Restore failed");
     }
-    
+
     RefreshSchema();
 }

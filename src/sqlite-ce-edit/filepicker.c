@@ -42,7 +42,7 @@ static void GetCurrentFilterExt(wchar_t *ext, int maxLen) {
     wchar_t item[64];
     ext[0] = 0;
     if (!g_hwndFilter) return;
-    
+
     GetWindowTextW(g_hwndFilter, item, 64);
     /* Item is like "*.csv" or "*.*" */
     if (item[0] == '*' && item[1] == '.') {
@@ -63,9 +63,9 @@ static void GetCurrentFilterExt(wchar_t *ext, int maxLen) {
 static void PopulateFilterCombo(const wchar_t *filter) {
     const wchar_t *p = filter;
     if (!filter || !g_hwndFilter) return;
-    
+
     SendMessageW(g_hwndFilter, CB_RESETCONTENT, 0, 0);
-    
+
     /* Filter format: "Desc\0*.ext\0Desc2\0*.ext2\0\0" */
     while (*p) {
         /* Skip description */
@@ -77,10 +77,10 @@ static void PopulateFilterCombo(const wchar_t *filter) {
         while (*p) p++;
         p++;
     }
-    
+
     /* Add "All files" option */
     SendMessageW(g_hwndFilter, CB_ADDSTRING, 0, (LPARAM)L"*.*");
-    
+
     /* Select first item */
     SendMessageW(g_hwndFilter, CB_SETCURSEL, 0, 0);
 }
@@ -123,25 +123,25 @@ static void PopulateFileList(void) {
     int atRoot;
     static wchar_t entries[PICKER_MAX_ENTRIES][MAX_PATH];
     int count;
-    
+
     /* Reset type-ahead on directory change */
     g_typeAheadLen = 0;
     g_typeAhead[0] = 0;
-    
+
     SendMessageW(g_hwndList, LB_RESETCONTENT, 0, 0);
-    
+
     atRoot = (lstrcmpW(g_pickerDir, L"\\") == 0);
-    
+
     /* Add [.] for save mode - confirms with current filename */
     if (g_pickerSaveMode) {
         SendMessageW(g_hwndList, LB_ADDSTRING, 0, (LPARAM)L"[.]");
     }
-    
+
     /* Add parent directory entry if not at root */
     if (!atRoot) {
         SendMessageW(g_hwndList, LB_ADDSTRING, 0, (LPARAM)L"[..]");
     }
-    
+
     /* Collect subdirectories */
     count = 0;
     if (atRoot) {
@@ -160,7 +160,7 @@ static void PopulateFileList(void) {
         FindClose(hFind);
     }
     SortAndAdd(entries, count, 1);
-    
+
     /* Collect files matching filter */
     count = 0;
     GetCurrentFilterExt(ext, 32);
@@ -177,7 +177,7 @@ static void PopulateFileList(void) {
             wsprintfW(pattern, L"%s\\*.*", g_pickerDir);
         }
     }
-    
+
     hFind = FindFirstFileW(pattern, &fd);
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
@@ -188,10 +188,10 @@ static void PopulateFileList(void) {
         FindClose(hFind);
     }
     SortAndAdd(entries, count, 0);
-    
+
     /* Update path display */
     SetWindowTextW(g_hwndPath, g_pickerDir);
-    
+
     /* Select first item */
     if (SendMessageW(g_hwndList, LB_GETCOUNT, 0, 0) > 0) {
         SendMessageW(g_hwndList, LB_SETCURSEL, 0, 0);
@@ -206,12 +206,12 @@ static void OnItemActivate(void) {
     int sel;
     wchar_t item[MAX_PATH];
     wchar_t newPath[MAX_PATH];
-    
+
     sel = (int)SendMessageW(g_hwndList, LB_GETCURSEL, 0, 0);
     if (sel < 0) return;
-    
+
     SendMessageW(g_hwndList, LB_GETTEXT, sel, (LPARAM)item);
-    
+
     if (item[0] == '[') {
         /* Special entries */
         if (lstrcmpW(item, L"[.]") == 0) {
@@ -235,7 +235,7 @@ static void OnItemActivate(void) {
             const wchar_t *p = item + 1;
             while (*p && *p != ']') dirName[i++] = *p++;
             dirName[i] = 0;
-            
+
             if (lstrcmpW(g_pickerDir, L"\\") == 0) {
                 wsprintfW(newPath, L"\\%s", dirName);
             } else {
@@ -247,14 +247,14 @@ static void OnItemActivate(void) {
     } else {
         /* File - put in filename field and build full path */
         SetWindowTextW(g_hwndFilename, item);
-        
+
         /* Build full path in g_pickerResult */
         if (lstrcmpW(g_pickerDir, L"\\") == 0) {
             wsprintfW(g_pickerResult, L"\\%s", item);
         } else {
             wsprintfW(g_pickerResult, L"%s\\%s", g_pickerDir, item);
         }
-        
+
         /* In save mode, confirm overwrite */
         if (g_pickerSaveMode) {
             if (MessageBoxW(g_hwndPicker, L"File exists. Overwrite?",
@@ -263,7 +263,7 @@ static void OnItemActivate(void) {
                 return;
             }
         }
-        
+
         /* File selected - confirm dialog */
         g_pickerOK = 1;
         PostMessage(g_hwndPicker, WM_CLOSE, 0, 0);
@@ -278,10 +278,10 @@ static int MatchPrefix(const wchar_t *item, const wchar_t *prefix, int prefixLen
     const wchar_t *p = item;
     int i;
     wchar_t ic, pc;
-    
+
     /* Skip directory brackets */
     if (*p == '[') p++;
-    
+
     for (i = 0; i < prefixLen && *p; i++, p++) {
         ic = *p; pc = prefix[i];
         if (ic >= 'a' && ic <= 'z') ic -= 32;
@@ -294,21 +294,21 @@ static int MatchPrefix(const wchar_t *item, const wchar_t *prefix, int prefixLen
 static void OnTypeAhead(wchar_t ch) {
     int count, i, start;
     wchar_t item[MAX_PATH];
-    
+
     /* Append to buffer */
     if (g_typeAheadLen < TYPEAHEAD_MAX) {
         g_typeAhead[g_typeAheadLen++] = ch;
         g_typeAhead[g_typeAheadLen] = 0;
     }
-    
+
     /* Reset timer */
     KillTimer(g_hwndPicker, TYPEAHEAD_TIMER_ID);
     SetTimer(g_hwndPicker, TYPEAHEAD_TIMER_ID, TYPEAHEAD_TIMEOUT, NULL);
-    
+
     count = (int)SendMessageW(g_hwndList, LB_GETCOUNT, 0, 0);
     start = (int)SendMessageW(g_hwndList, LB_GETCURSEL, 0, 0);
     if (start < 0) start = 0;
-    
+
     /* Search from start, then wrap */
     for (i = 0; i < count; i++) {
         int idx = (start + i) % count;
@@ -488,11 +488,11 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         case WM_COMMAND: {
             WORD cmd = LOWORD(wParam);
             WORD notify = HIWORD(wParam);
-            
+
             if (cmd == IDOK) {
                 wchar_t filename[MAX_PATH];
                 GetWindowTextW(g_hwndFilename, filename, MAX_PATH);
-                
+
                 if (filename[0]) {
                     /* Build full path */
                     if (lstrcmpW(g_pickerDir, L"\\") == 0) {
@@ -500,7 +500,7 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                     } else {
                         wsprintfW(g_pickerResult, L"%s\\%s", g_pickerDir, filename);
                     }
-                    
+
                     /* Add extension from filter if missing */
                     {
                         wchar_t *p = g_pickerResult + lstrlenW(g_pickerResult);
@@ -521,7 +521,7 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                             }
                         }
                     }
-                    
+
                     /* In save mode, confirm overwrite if file exists */
                     if (g_pickerSaveMode) {
                         HANDLE hTest = CreateFileW(g_pickerResult, 0, 0, NULL,
@@ -535,7 +535,7 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                             }
                         }
                     }
-                    
+
                     g_pickerOK = 1;
                 }
                 PostMessage(hwnd, WM_CLOSE, 0, 0);
@@ -609,7 +609,7 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     RECT rc;
     int dlgW = 360, dlgH = 195;
     int filterW = 70;
-    
+
     /* Initialize state */
     g_pickerResult[0] = 0;
     g_pickerFilter = filter;
@@ -617,14 +617,14 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     g_pickerSaveMode = saveMode;
     g_pickerOK = 0;
     g_pickerDone = 0;
-    
+
     /* Set initial directory */
     if (initialDir && initialDir[0]) {
         lstrcpyW(g_pickerDir, initialDir);
     } else {
         lstrcpyW(g_pickerDir, L"\\");
     }
-    
+
     /* Pre-fill filename if provided */
     if (filePath && filePath[0]) {
         /* Extract just filename if full path given */
@@ -635,7 +635,7 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
             p++;
         }
         lstrcpyW(g_pickerResult, fn);
-        
+
         /* Strip extension from pre-filled filename */
         {
             wchar_t *dot = NULL, *s = g_pickerResult;
@@ -646,7 +646,7 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
             if (dot) *dot = 0;
         }
     }
-    
+
     /* Register window class once */
     {
         static int classRegistered = 0;
@@ -659,7 +659,7 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
             classRegistered = 1;
         }
     }
-    
+
     /* Create dialog */
     GetWindowRect(hwndOwner, &rc);
     g_hwndPicker = CreateWindowExW(0,
@@ -667,37 +667,37 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
         WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
         rc.left + 20, rc.top + 10, dlgW, dlgH,
         hwndOwner, NULL, g_hInst, NULL);
-    
+
     /* Path display (read-only) */
     g_hwndPath = CreateWindowW(L"EDIT", g_pickerDir,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_READONLY | ES_AUTOHSCROLL,
         10, 10, dlgW - 20, 22, g_hwndPicker, NULL, g_hInst, NULL);
-    
+
     /* File listbox */
     g_hwndList = CreateWindowW(L"LISTBOX", NULL,
         WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY,
         10, 34, dlgW - 20, 80, g_hwndPicker, (HMENU)101, g_hInst, NULL);
-    
+
     /* Subclass listbox */
     g_pfnListProc = (WNDPROC)SetWindowLong(g_hwndList, GWL_WNDPROC, (LONG)PickerListProc);
-    
+
     /* Filename edit */
     g_hwndFilename = CreateWindowW(L"EDIT", g_pickerResult,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
         10, 116, dlgW - filterW - 25, 22, g_hwndPicker, (HMENU)102, g_hInst, NULL);
-    
+
     /* Subclass edit */
     g_pfnEditProc = (WNDPROC)SetWindowLong(g_hwndFilename, GWL_WNDPROC, (LONG)PickerEditProc);
-    
+
     /* Filter combobox */
     g_hwndFilter = CreateWindowW(L"COMBOBOX", NULL,
         WS_CHILD | WS_VISIBLE | WS_BORDER | CBS_DROPDOWNLIST,
         dlgW - filterW - 10, 116, filterW, 100, g_hwndPicker, (HMENU)103, g_hInst, NULL);
     PopulateFilterCombo(filter);
-    
+
     /* Subclass combobox */
     g_pfnComboProc = (WNDPROC)SetWindowLong(g_hwndFilter, GWL_WNDPROC, (LONG)PickerComboProc);
-    
+
     /* Buttons */
     g_hwndOK = CreateWindowW(L"BUTTON", saveMode ? L"Save" : L"Open",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
@@ -705,29 +705,29 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     g_hwndCancel = CreateWindowW(L"BUTTON", L"Cancel",
         WS_CHILD | WS_VISIBLE,
         dlgW - 80, 140, 70, 22, g_hwndPicker, (HMENU)IDCANCEL, g_hInst, NULL);
-    
+
     /* Subclass buttons */
     g_pfnBtnProc = (WNDPROC)SetWindowLong(g_hwndOK, GWL_WNDPROC, (LONG)PickerBtnProc);
     SetWindowLong(g_hwndCancel, GWL_WNDPROC, (LONG)PickerBtnProc);
-    
+
     /* Populate list */
     PopulateFileList();
-    
+
     /* Focus listbox */
     SetFocus(g_hwndList);
-    
+
     /* Modal loop */
     EnableWindow(hwndOwner, FALSE);
-    
+
     while (!g_pickerDone && GetMessageW(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    
+
     EnableWindow(hwndOwner, TRUE);
     ShowWindow(hwndOwner, SW_SHOWNORMAL);
     SetForegroundWindow(hwndOwner);
-    
+
     /* Copy result */
     if (g_pickerOK && g_pickerResult[0]) {
         lstrcpyW(filePath, g_pickerResult);

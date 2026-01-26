@@ -35,9 +35,9 @@ void UpdateDbSize(void) {
     wchar_t *p;
     long size = 0;
     int canClose;
-    
+
     if (!g_db) return;
-    
+
     if (g_szDbPath[0] == ':') {
         lstrcpyW(name, L":memory:");
     } else {
@@ -46,17 +46,17 @@ void UpdateDbSize(void) {
         while (*fn && *fn != '.' && p < name + 60) *p++ = *fn++;
         *p = 0;
     }
-    
+
     /* Get file size for file databases */
     if (g_szDbPath[0] != ':') {
-        HANDLE hFile = CreateFileW(g_szDbPath, GENERIC_READ, FILE_SHARE_READ, 
+        HANDLE hFile = CreateFileW(g_szDbPath, GENERIC_READ, FILE_SHARE_READ,
             NULL, OPEN_EXISTING, 0, NULL);
         if (hFile != INVALID_HANDLE_VALUE) {
             size = GetFileSize(hFile, NULL);
             CloseHandle(hFile);
         }
     }
-    
+
     if (size >= 1024 * 1024)
         wsprintfW(buf, L"%s (%ldM)", name, size / (1024 * 1024));
     else if (size >= 1024)
@@ -66,7 +66,7 @@ void UpdateDbSize(void) {
     else
         wsprintfW(buf, L"%s", name);
     SetStatusDb(buf);
-    
+
     /* Enable/disable Close and Backup based on whether we have a real file */
     canClose = (g_szDbPath[0] && g_szDbPath[0] != ':');
     EnableMenuItem(g_hMenu, IDM_CLOSE, canClose ? MF_ENABLED : MF_GRAYED);
@@ -80,14 +80,14 @@ void UpdateTitle(void) {
     wchar_t title[MAX_PATH];
     wchar_t *p = title;
     const wchar_t *fn;
-    
+
     /* Query filename (without extension) */
     if (g_szQueryPath[0]) {
         fn = GetFilename(g_szQueryPath);
         while (*fn && *fn != '.' && p < title + MAX_PATH - 40) *p++ = *fn++;
         *p++ = ' '; *p++ = '-'; *p++ = ' ';
     }
-    
+
     /* Database name (without extension) */
     if (g_szDbPath[0] == ':') {
         lstrcpyW(p, L"(memory) - SQLite/CE");
@@ -125,12 +125,12 @@ void CloseDatabase(void) {
 int OpenDatabase(const wchar_t *path) {
     char szPath[MAX_PATH * 2];
     char *errmsg = NULL;
-    
+
     CloseDatabase();
-    
+
     WideCharToMultiByte(CP_ACP, 0, path, -1, szPath, sizeof(szPath), NULL, NULL);
     g_db = sqlite_open(szPath, 0, &errmsg);
-    
+
     if (!g_db) {
         wchar_t msg[256];
         wsprintfW(msg, L"Cannot open: %s", path);
@@ -139,14 +139,14 @@ int OpenDatabase(const wchar_t *path) {
         SetStatusDb(L"No database");
         return 0;
     }
-    
+
     lstrcpyW(g_szDbPath, path);
     AddRecentFile(path);
     UpdateTitle();
     UpdateDbSize();
     SetStatusResult(L"");
     RefreshSchema();
-    
+
     /* Update hint if still showing */
     if (g_showingHint && path[0] != ':') {
         wchar_t hint[256];
@@ -159,7 +159,7 @@ int OpenDatabase(const wchar_t *path) {
             L"-- SQLite/CEdit " SQLITECEDIT_VERSION L" on SQLite %s.\r\n", ver);
         SetWindowTextW(g_hwndQuery, hint);
     }
-    
+
     /* Show hint for in-memory database in query pane */
     if (path[0] == ':') {
         wchar_t hint[256];

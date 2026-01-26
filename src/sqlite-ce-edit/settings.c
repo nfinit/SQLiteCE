@@ -150,50 +150,50 @@ static void SaveRecentList(HKEY hKey, const wchar_t *prefix, wchar_t list[][MAX_
 void LoadSettings(void) {
     HKEY hKey;
     SettingDef *s;
-    
+
     hKey = OpenSettingsKey(0);  /* Read */
     if (!hKey) return;
-    
+
     /* Load integer settings */
     for (s = g_intSettings; s->name; s++) {
         *(int *)s->pValue = ReadRegInt(hKey, s->name, s->defaultInt);
     }
-    
+
     /* Load string settings */
     for (s = g_strSettings; s->name; s++) {
         ReadRegStr(hKey, s->name, (wchar_t *)s->pValue, MAX_PATH, s->defaultStr);
     }
-    
+
     /* Load recent files */
     LoadRecentList(hKey, L"RecentDb", g_recentFiles, &g_recentCount, MAX_RECENT_FILES);
     LoadRecentList(hKey, L"RecentQuery", g_recentQueries, &g_recentQueryCount, MAX_RECENT_FILES);
-    
+
     RegCloseKey(hKey);
 }
 
 void SaveSettings(void) {
     HKEY hKey;
     SettingDef *s;
-    
+
     if (g_settingsCleared) return;  /* Don't re-save after clear */
-    
+
     hKey = OpenSettingsKey(1);  /* Write */
     if (!hKey) return;
-    
+
     /* Save integer settings */
     for (s = g_intSettings; s->name; s++) {
         WriteRegInt(hKey, s->name, *(int *)s->pValue);
     }
-    
+
     /* Save string settings */
     for (s = g_strSettings; s->name; s++) {
         WriteRegStr(hKey, s->name, (wchar_t *)s->pValue);
     }
-    
+
     /* Save recent files */
     SaveRecentList(hKey, L"RecentDb", g_recentFiles, g_recentCount, MAX_RECENT_FILES);
     SaveRecentList(hKey, L"RecentQuery", g_recentQueries, g_recentQueryCount, MAX_RECENT_FILES);
-    
+
     RegCloseKey(hKey);
 }
 
@@ -203,7 +203,7 @@ void ClearSettings(void) {
     HKEY hKey;
     wchar_t name[256];
     DWORD nameLen;
-    
+
     /* Open and enumerate all values to delete them */
     if (RegOpenKeyExW(HKEY_CURRENT_USER, REG_KEY, 0, 0, &hKey) == ERROR_SUCCESS) {
         /* Delete values one at a time (index 0 each time since list shrinks) */
@@ -215,12 +215,12 @@ void ClearSettings(void) {
         }
         RegCloseKey(hKey);
     }
-    
+
     /* Now delete the empty key */
     RegDeleteKeyW(HKEY_CURRENT_USER, REG_KEY);
-    
+
     /* Try to delete parent if empty (will fail silently if not empty) */
     RegDeleteKeyW(HKEY_CURRENT_USER, REG_PARENT);
-    
+
     g_settingsCleared = 1;  /* Block save on exit */
 }

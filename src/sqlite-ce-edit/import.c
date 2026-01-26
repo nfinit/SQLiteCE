@@ -66,44 +66,44 @@ void DoImportCSV(void) {
     int nCols, i, rowNum;
     char sql[4096];
     char *p, *t;
-    
+
     if (!g_db) {
         MessageBoxW(g_hwndMain, L"No database open", L"Import", MB_OK | MB_ICONERROR);
         return;
     }
-    
+
     if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Import CSV", L"CSV Files (*.csv)\0*.csv\0",
             NULL, NULL, 0)) return;
-    
+
     fn = GetFilename(szFile);
     wp = tblName;
     while (*fn && *fn != '.' && wp < tblName + 60) *wp++ = *fn++;
     *wp = 0;
-    
+
     hFile = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
         MessageBoxW(g_hwndMain, L"Could not open file", L"Import Error", MB_OK | MB_ICONERROR);
         return;
     }
-    
+
     dwSize = GetFileSize(hFile, NULL);
     if (dwSize > CSV_MAX_FILE_SIZE) {
         CloseHandle(hFile);
         MessageBoxW(g_hwndMain, L"File too large (max 1MB)", L"Import Error", MB_OK | MB_ICONERROR);
         return;
     }
-    
+
     buf = ALLOC(char, dwSize + 1);
     if (!buf) {
         CloseHandle(hFile);
         return;
     }
-    
+
     ReadFile(hFile, buf, dwSize, &dwRead, NULL);
     CloseHandle(hFile);
     buf[dwRead] = '\0';
-    
+
     line = buf;
     nextLine = line;
     while (*nextLine && *nextLine != '\r' && *nextLine != '\n') nextLine++;
@@ -111,19 +111,19 @@ void DoImportCSV(void) {
         if (*nextLine == '\r' && nextLine[1] == '\n') { *nextLine = '\0'; nextLine += 2; }
         else { *nextLine = '\0'; nextLine++; }
     }
-    
+
     nCols = ParseCSVLine(line, fields, CSV_MAX_COLS);
     if (nCols == 0) {
         LocalFree(buf);
         MessageBoxW(g_hwndMain, L"No columns found", L"Import Error", MB_OK | MB_ICONERROR);
         return;
     }
-    
+
     for (i = 0; i < nCols; i++) {
         headers[i] = fields[i];
         types[i] = 0;
     }
-    
+
     line = nextLine;
     while (*line) {
         nextLine = line;
@@ -132,7 +132,7 @@ void DoImportCSV(void) {
             if (*nextLine == '\r' && nextLine[1] == '\n') { *nextLine = '\0'; nextLine += 2; }
             else { *nextLine = '\0'; nextLine++; }
         }
-        
+
         if (*line) {
             int n = ParseCSVLine(line, fields, nCols);
             for (i = 0; i < n; i++) {
@@ -144,11 +144,11 @@ void DoImportCSV(void) {
         }
         line = nextLine;
     }
-    
+
     for (i = 0; i < nCols; i++) {
         if (types[i] == 0) types[i] = 3;
     }
-    
+
     p = sql;
     STR_COPY(p, "CREATE TABLE \"");
     for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
@@ -164,23 +164,23 @@ void DoImportCSV(void) {
         else { STR_COPY(p, "TEXT"); }
     }
     *p++ = ')'; *p = '\0';
-    
+
     if (sqlite_exec(g_db, sql, NULL, NULL, NULL) != SQLITE_OK) {
         LocalFree(buf);
         MessageBoxW(g_hwndMain, L"Could not create table (may already exist)", L"Import Error", MB_OK | MB_ICONERROR);
         return;
     }
-    
+
     hFile = CreateFileW(szFile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     ReadFile(hFile, buf, dwSize, &dwRead, NULL);
     CloseHandle(hFile);
     buf[dwRead] = '\0';
-    
+
     line = buf;
     while (*line && *line != '\r' && *line != '\n') line++;
     if (*line == '\r' && line[1] == '\n') line += 2;
     else if (*line) line++;
-    
+
     rowNum = 0;
     while (*line) {
         nextLine = line;
@@ -189,15 +189,15 @@ void DoImportCSV(void) {
             if (*nextLine == '\r' && nextLine[1] == '\n') { *nextLine = '\0'; nextLine += 2; }
             else { *nextLine = '\0'; nextLine++; }
         }
-        
+
         if (*line) {
             int n = ParseCSVLine(line, fields, nCols);
-            
+
             p = sql;
             STR_COPY(p, "INSERT INTO \"");
             for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
             STR_COPY(p, "\" VALUES(");
-            
+
             for (i = 0; i < nCols; i++) {
                 char *val = (i < n) ? fields[i] : "";
                 if (i > 0) *p++ = ',';
@@ -215,16 +215,16 @@ void DoImportCSV(void) {
                 }
             }
             *p++ = ')'; *p = '\0';
-            
+
             sqlite_exec(g_db, sql, NULL, NULL, NULL);
             rowNum++;
         }
         line = nextLine;
     }
-    
+
     LocalFree(buf);
     UpdateDbSize();
-    
+
     /* Show completion in status bar instead of blocking message box */
     {
         wchar_t msg[128];
@@ -352,18 +352,18 @@ void DoImportCEDB(void) {
     char sql[4096];
     char *p;
     wchar_t tblName[64];
-    
+
     if (!g_db) {
         MessageBoxW(g_hwndMain, L"No database open.", L"Import", MB_OK | MB_ICONWARNING);
         return;
     }
-    
+
     hEnum = (HANDLE)CeFindFirstDatabase(0);
     if (hEnum == INVALID_HANDLE_VALUE) {
         MessageBoxW(g_hwndMain, L"Could not enumerate databases.", L"Import", MB_OK | MB_ICONERROR);
         return;
     }
-    
+
     while ((oid = CeFindNextDatabase(hEnum)) != 0 && dbCount < 64) {
         if (CeOidGetInfo(oid, &oidInfo) && oidInfo.wObjType == OBJTYPE_DATABASE) {
             dbNames[dbCount] = ALLOC(wchar_t, 64);
@@ -375,35 +375,35 @@ void DoImportCEDB(void) {
         }
     }
     CloseHandle(hEnum);
-    
+
     if (dbCount == 0) {
         MessageBoxW(g_hwndMain, L"No CE databases found.", L"Import", MB_OK | MB_ICONINFORMATION);
         return;
     }
-    
+
     {
         struct {
             DLGTEMPLATE tmpl;
             WORD menu, wndclass, title;
         } dlg;
-        
+
         g_cedbList = dbNames;
         g_cedbCount = dbCount;
         g_cedbSel = 0;
-        
+
         memset(&dlg, 0, sizeof(dlg));
         dlg.tmpl.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
         dlg.tmpl.cx = 140;
         dlg.tmpl.cy = 100;
         dlg.tmpl.x = 20;
         dlg.tmpl.y = 20;
-        
+
         if (DialogBoxIndirectW(g_hInst, &dlg.tmpl, g_hwndMain, CedbDlgProc) != IDOK) {
             goto cleanup;
         }
         sel = g_cedbSel;
     }
-    
+
     {
         wchar_t *src = dbNames[sel];
         wchar_t *lastSlash = src;
@@ -427,41 +427,41 @@ void DoImportCEDB(void) {
             tblName[len - 2] = 0;
         }
     }
-    
+
     {
         struct {
             DLGTEMPLATE tmpl;
             WORD menu, wndclass, title;
         } dlg;
-        
+
         lstrcpyW(g_cedbTblName, tblName);
-        
+
         memset(&dlg, 0, sizeof(dlg));
         dlg.tmpl.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
         dlg.tmpl.cx = 140;
         dlg.tmpl.cy = 50;
         dlg.tmpl.x = 20;
         dlg.tmpl.y = 20;
-        
+
         if (DialogBoxIndirectW(g_hInst, &dlg.tmpl, g_hwndMain, CedbNameDlgProc) != IDOK) {
             goto cleanup;
         }
         lstrcpyW(tblName, g_cedbTblName);
     }
-    
+
     oid = dbOids[sel];
     hDb = CeOpenDatabase(&oid, NULL, 0, CEDB_AUTOINCREMENT, NULL);
     if (hDb == INVALID_HANDLE_VALUE) {
         MessageBoxW(g_hwndMain, L"Could not open CE database.", L"Import", MB_OK | MB_ICONERROR);
         goto cleanup;
     }
-    
+
     p = sql;
     STR_COPY(p, "CREATE TABLE \"");
     for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
     STR_COPY(p, "\" (ceoid INTEGER PRIMARY KEY, data TEXT)");
     *p = 0;
-    
+
     {
         char *errmsg = NULL;
         int rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
@@ -474,28 +474,28 @@ void DoImportCEDB(void) {
             goto cleanup;
         }
     }
-    
+
     nProps = 0;
     while ((recOid = CeReadRecordProps(hDb, CEDB_ALLOWREALLOC, &nProps, NULL, (LPBYTE*)&pProps, &cbBuf)) != 0) {
         p = sql;
         STR_COPY(p, "INSERT INTO \"");
         for (i = 0; tblName[i]; i++) *p++ = (char)tblName[i];
         STR_COPY(p, "\" (ceoid, data) VALUES (");
-        
-        { 
+
+        {
             char num[16]; char *np = num + 14; DWORD n = recOid;
             num[15] = 0; *np = 0;
             if (n == 0) *--np = '0';
             else while (n > 0) { *--np = (char)('0' + (n % 10)); n /= 10; }
             STR_COPY(p, np);
         }
-        
+
         STR_COPY(p, ", '");
-        
+
         for (i = 0; i < nProps && (p - sql) < 3800; i++) {
             WORD type = LOWORD(pProps[i].propid);
             if (i > 0) *p++ = '|';
-            
+
             if (type == CEVT_LPWSTR && pProps[i].val.lpwstr) {
                 wchar_t *ws = pProps[i].val.lpwstr;
                 while (*ws && (p - sql) < 3800) {
@@ -522,21 +522,21 @@ void DoImportCEDB(void) {
                 STR_COPY(p, np);
             }
         }
-        
+
         STR_COPY(p, "')");
         *p = 0;
-        
+
         sqlite_exec(g_db, sql, NULL, NULL, NULL);
         rowCount++;
-        
+
         FREE(pProps);
         cbBuf = 0;
         nProps = 0;
     }
-    
+
     CloseHandle(hDb);
     UpdateDbSize();
-    
+
     ClearOutput();
     {
         char msg[256];
@@ -558,7 +558,7 @@ void DoImportCEDB(void) {
     g_lastResultRows = 0;
     SwitchView(VIEW_RESULT);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
-    
+
 cleanup:
     for (i = 0; i < dbCount; i++) {
         if (dbNames[i]) LocalFree(dbNames[i]);

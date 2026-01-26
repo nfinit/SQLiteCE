@@ -14,22 +14,22 @@ void DoFindNext(void) {
     int len, findLen, start, i, j;
     wchar_t *buf;
     DWORD sel;
-    
+
     if (!g_findText[0]) return;
-    
+
     findLen = lstrlenW(g_findText);
     len = GetWindowTextLengthW(hwndEdit);
     if (len == 0) return;
-    
+
     buf = ALLOC(wchar_t, len + 1);
     if (!buf) return;
     GetWindowTextW(hwndEdit, buf, len + 1);
-    
+
     /* Get current position */
     SendMessage(hwndEdit, EM_GETSEL, (WPARAM)&sel, 0);
     start = sel + 1;
     if (start > len) start = 0;
-    
+
     /* Search forward from cursor */
     for (i = start; i <= len - findLen; i++) {
         for (j = 0; j < findLen; j++) {
@@ -125,18 +125,18 @@ static LRESULT CALLBACK FindWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 void DoFind(void) {
     WNDCLASSW wc = {0};
     RECT rc;
-    
+
     if (g_hwndFindDlg) {
         SetFocus(g_hwndFindEdit);
         return;
     }
-    
+
     wc.lpfnWndProc = FindWndProc;
     wc.hInstance = g_hInst;
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     wc.lpszClassName = L"SQLiteCEFind";
     RegisterClassW(&wc);
-    
+
     GetWindowRect(g_hwndMain, &rc);
     #ifndef WS_EX_TOOLWINDOW
     #define WS_EX_TOOLWINDOW 0x00000080L
@@ -163,12 +163,12 @@ static wchar_t g_replaceText[128] = L"";
 
 static void DoReplaceOne(void) {
     DWORD selStart, selEnd;
-    
+
     if (!g_findText[0]) return;
     if (g_viewMode != 0) return;  /* Query view only */
-    
+
     SendMessage(g_hwndQuery, EM_GETSEL, (WPARAM)&selStart, (LPARAM)&selEnd);
-    
+
     /* If we have a selection matching find text, replace it */
     if (selEnd > selStart) {
         int selLen = selEnd - selStart;
@@ -201,19 +201,19 @@ static void DoReplaceOne(void) {
 static int DoReplaceAll(void) {
     int len, findLen, replLen, count = 0, i, j;
     wchar_t *buf, *newBuf, *p;
-    
+
     if (!g_findText[0]) return 0;
     if (g_viewMode != 0) return 0;
-    
+
     findLen = lstrlenW(g_findText);
     replLen = lstrlenW(g_replaceText);
     len = GetWindowTextLengthW(g_hwndQuery);
     if (len == 0) return 0;
-    
+
     buf = ALLOC(wchar_t, len + 1);
     if (!buf) return 0;
     GetWindowTextW(g_hwndQuery, buf, len + 1);
-    
+
     /* Count matches first */
     for (i = 0; i <= len - findLen; i++) {
         for (j = 0; j < findLen; j++) {
@@ -224,19 +224,19 @@ static int DoReplaceAll(void) {
         }
         if (j == findLen) count++;
     }
-    
+
     if (count == 0) {
         LocalFree(buf);
         return 0;
     }
-    
+
     /* Build new string */
     newBuf = ALLOC(wchar_t, len + count * (replLen - findLen) + 1);
     if (!newBuf) {
         LocalFree(buf);
         return 0;
     }
-    
+
     p = newBuf;
     for (i = 0; i <= len; i++) {
         if (i <= len - findLen) {
@@ -254,10 +254,10 @@ static int DoReplaceAll(void) {
         }
         *p++ = buf[i];
     }
-    
+
     SetWindowTextW(g_hwndQuery, newBuf);
     g_queryDirty = 1;
-    
+
     LocalFree(newBuf);
     LocalFree(buf);
     return count;
@@ -344,30 +344,30 @@ static LRESULT CALLBACK ReplaceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 void DoReplace(void) {
     WNDCLASSW wc = {0};
     RECT rc;
-    
+
     /* Only available in Query view */
     if (g_viewMode != 0) {
         MessageBoxW(g_hwndMain, L"Replace is only available in Query view.", L"Replace", MB_OK);
         return;
     }
-    
+
     if (g_hwndReplaceDlg) {
         SetFocus(g_hwndReplFind);
         return;
     }
-    
+
     /* Close find dialog if open */
     if (g_hwndFindDlg) {
         DestroyWindow(g_hwndFindDlg);
         g_hwndFindDlg = NULL;
     }
-    
+
     wc.lpfnWndProc = ReplaceWndProc;
     wc.hInstance = g_hInst;
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     wc.lpszClassName = L"SQLiteCEReplace";
     RegisterClassW(&wc);
-    
+
     GetWindowRect(g_hwndMain, &rc);
     g_hwndReplaceDlg = CreateWindowExW(WS_EX_TOOLWINDOW, L"SQLiteCEReplace", L"Replace",
         WS_POPUP | WS_CAPTION | WS_SYSMENU,

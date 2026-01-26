@@ -79,14 +79,14 @@ static void OutputPadded(const char *s, int width) {
 
 static void OutputResults(void) {
     int r, c;
-    
+
     /* Output headers */
     for (c = 0; c < g_nCols; c++) {
         if (c > 0) Output("  ");
         OutputPadded(g_results[0][c] ? g_results[0][c] : "", g_colWidths[c]);
     }
     OutputLine("");
-    
+
     /* Output separator */
     for (c = 0; c < g_nCols; c++) {
         int w = g_colWidths[c];
@@ -94,7 +94,7 @@ static void OutputResults(void) {
         while (w-- > 0) Output("-");
     }
     OutputLine("");
-    
+
     /* Output data rows */
     for (r = 1; r <= g_resultRows; r++) {
         for (c = 0; c < g_nCols; c++) {
@@ -247,15 +247,15 @@ void ExecuteSQL(const char *sql) {
     char *errmsg = NULL;
     DWORD startTick, elapsed;
     wchar_t wbuf[64];
-    
+
     if (!g_db || !sql) return;
-    
+
     /* Clear edit mode - this is a read-only query path */
     ClearEditMode();
-    
+
     /* Clear previous results */
     FreeLastResults();
-    
+
     /* Setup */
     g_abortQuery = 0;
     if (g_clearOnExec) ClearOutput();
@@ -263,15 +263,15 @@ void ExecuteSQL(const char *sql) {
     g_nRows = 0;
     g_nCols = 0;
     g_totalRows = 0;
-    
+
     sqlite_progress_handler(g_db, 1000, ProgressCallback, NULL);
     startTick = GetTickCount();
-    
+
     rc = sqlite_exec(g_db, sql, QueryCallback, NULL, &errmsg);
-    
+
     elapsed = GetTickCount() - startTick;
     g_lastQueryTime = elapsed;
-    
+
     if (rc == SQLITE_OK && g_nRows > 0) {
         FlushResultSet();
     }
@@ -279,16 +279,16 @@ void ExecuteSQL(const char *sql) {
         OutputLine(errmsg);
         sqlite_freemem(errmsg);
     }
-    
+
     if (g_totalRows > 0)
         wsprintfW(wbuf, L"%d row(s) returned (%lums)", g_totalRows, elapsed);
     else
         wsprintfW(wbuf, L"OK (%lums)", elapsed);
     SetStatusResult(wbuf);
-    
+
     FlushOutput();
     sqlite_progress_handler(g_db, 0, NULL, NULL);
-    
+
     /* Switch to results */
     if (g_gridView && g_hwndGrid)
         SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
@@ -317,28 +317,28 @@ void ExecuteQuery(void) {
     wchar_t *wsql;
     wchar_t lastError[256];
     DWORD selStart, selEnd;
-    
+
     if (!g_db) {
         SetWindowTextW(g_hwndResult, L"No database open.");
         return;
     }
-    
+
     /* Clear edit mode - query editor results are read-only */
     ClearEditMode();
-    
+
     /* Clear previous results */
     FreeLastResults();
-    
+
     /* Disable Execute while running, enable Stop */
     EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_GRAYED);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, FALSE);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, TRUE);
     g_abortQuery = 0;
     UpdateWindow(g_hwndCB);
-    
+
     /* Check for selection */
     SendMessage(g_hwndQuery, EM_GETSEL, (WPARAM)&selStart, (LPARAM)&selEnd);
-    
+
     if (selStart != selEnd) {
         /* Execute selected text only */
         len = selEnd - selStart;
@@ -373,7 +373,7 @@ void ExecuteQuery(void) {
         int cursorPos = (int)selStart;
         int stmtStart = 0, stmtEnd = fullLen;
         int i, inStr = 0, inCmt = 0;
-        
+
         if (fullLen == 0) {
             SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Nothing to execute");
             EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
@@ -381,7 +381,7 @@ void ExecuteQuery(void) {
             SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, FALSE);
             return;
         }
-        
+
         full = ALLOC(wchar_t, fullLen + 1);
         if (!full) {
             EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
@@ -390,7 +390,7 @@ void ExecuteQuery(void) {
             return;
         }
         GetWindowTextW(g_hwndQuery, full, fullLen + 1);
-        
+
         /* Find statement boundaries */
         for (i = 0; i < fullLen; i++) {
             wchar_t c = full[i];
@@ -412,9 +412,9 @@ void ExecuteQuery(void) {
             }
         }
         /* Skip leading whitespace */
-        while (stmtStart < stmtEnd && (full[stmtStart] == ' ' || full[stmtStart] == '\t' || 
+        while (stmtStart < stmtEnd && (full[stmtStart] == ' ' || full[stmtStart] == '\t' ||
                full[stmtStart] == '\r' || full[stmtStart] == '\n')) stmtStart++;
-        
+
         len = stmtEnd - stmtStart;
         wsql = ALLOC(wchar_t, len + 1);
         sql = ALLOC(char, (len + 1) * 3);
@@ -441,7 +441,7 @@ void ExecuteQuery(void) {
             SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, FALSE);
             return;
         }
-        
+
         wsql = ALLOC(wchar_t, len + 1);
         sql = ALLOC(char, (len + 1) * 3);
         if (!wsql || !sql) {
@@ -453,24 +453,24 @@ void ExecuteQuery(void) {
         }
         GetWindowTextW(g_hwndQuery, wsql, len + 1);
     }
-    
+
     WideCharToMultiByte(CP_ACP, 0, wsql, -1, sql, (len + 1) * 3, NULL, NULL);
     LocalFree(wsql);
-    
+
     /* Execute */
     if (g_clearOnExec) ClearOutput();
     FreeResults();
     g_nRows = 0;
     g_nCols = 0;
     g_totalRows = 0;
-    
+
     /* Install progress handler for abort support */
     sqlite_progress_handler(g_db, 1000, ProgressCallback, NULL);
-    
+
     SetStatusResult(L"Executing...");
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Executing...");
     UpdateWindow(g_hwndStatus);
-    
+
     {
     DWORD startTick = GetTickCount();
     DWORD elapsed;
@@ -481,7 +481,7 @@ void ExecuteQuery(void) {
     int inTrigger = 0;
     int stmtOffset = 0;
     int errorOffset = 0;
-    
+
     /* Split on semicolons and execute each statement */
     while (*p && !hadError) {
         if (inComment) {
@@ -568,7 +568,7 @@ void ExecuteQuery(void) {
         }
         p++;
     }
-    
+
     /* Execute any remaining statement (no trailing semicolon) */
     if (!hadError && *stmt) {
         rc = sqlite_exec(g_db, stmt, QueryCallback, NULL, &errmsg);
@@ -602,9 +602,9 @@ void ExecuteQuery(void) {
             }
         }
     }
-    
+
     elapsed = GetTickCount() - startTick;
-    
+
     if (g_abortQuery) {
         /* Query was aborted by user */
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Aborted");
@@ -641,17 +641,17 @@ void ExecuteQuery(void) {
         SetStatusResult(wbuf);
     }
     }
-    
+
     LocalFree(sql);
     FlushOutput();
     UpdateDbSize();
-    
+
     /* Remove progress handler and re-enable Execute, disable Stop */
     sqlite_progress_handler(g_db, 0, NULL, NULL);
     EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_STOP, FALSE);
-    
+
     /* Switch to results view (unless error - stay in query to show cursor) */
     if (!hadError) {
         /* Suppress redraw during view switch to avoid flicker */

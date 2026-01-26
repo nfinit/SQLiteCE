@@ -62,16 +62,16 @@ void DoAbout(void) {
     WNDCLASSW wc = {0};
     RECT rc;
     HWND hwndAbout;
-    
+
     if (!g_hLogo)
         g_hLogo = LoadBitmap(g_hInst, MAKEINTRESOURCE(IDB_LOGO));
-    
+
     wc.lpfnWndProc = AboutWndProc;
     wc.hInstance = g_hInst;
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     wc.lpszClassName = L"SQLiteCEAbout";
     RegisterClassW(&wc);
-    
+
     GetWindowRect(g_hwndMain, &rc);
     hwndAbout = CreateWindowW(L"SQLiteCEAbout", L"About",
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
@@ -128,17 +128,17 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
         DLGTEMPLATE tmpl;
         WORD menu, wndclass, title;
     } dlg;
-    
+
     g_szPathTitle = title;
     lstrcpyW(g_szPathBuf, defPath);
-    
+
     memset(&dlg, 0, sizeof(dlg));
     dlg.tmpl.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
     dlg.tmpl.cx = 160;
     dlg.tmpl.cy = 50;
     dlg.tmpl.x = 20;
     dlg.tmpl.y = 20;
-    
+
     return DialogBoxIndirectW(g_hInst, &dlg.tmpl, g_hwndMain, PathDlgProc) == IDOK;
 }
 
@@ -178,7 +178,7 @@ static void UpdatePathDisplay(HWND hwnd) {
     WIN32_FIND_DATAW fd;
     HANDLE hFind;
     int useCard = SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARDDATA), BM_GETCHECK, 0, 0);
-    
+
     if (useCard) {
         /* Try to detect actual storage card */
         hFind = FindFirstFileW(L"\\Storage Card*", &fd);
@@ -217,7 +217,7 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             CreateWindowW(L"BUTTON", L"Use storage card for backups",
                 WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                 10, 120, 190, 20, hwnd, (HMENU)IDC_OPT_STORAGECARD, g_hInst, NULL);
-            
+
             /* Right column - paths */
             CreateWindowW(L"STATIC", L"Data path:",
                 WS_CHILD | WS_VISIBLE,
@@ -225,12 +225,12 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             CreateWindowW(L"EDIT", g_optDbPath,
                 WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
                 210, 28, 230, 22, hwnd, (HMENU)IDC_OPT_DBPATH, g_hInst, NULL);
-            
+
             /* Clear settings button */
             CreateWindowW(L"BUTTON", L"Clear All Settings...",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                 210, 98, 140, 22, hwnd, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
-            
+
             SendMessage(GetDlgItem(hwnd, IDC_OPT_CLEAREXEC), BM_SETCHECK, g_optClearExec, 0);
             SendMessage(GetDlgItem(hwnd, IDC_OPT_EXECATCURSOR), BM_SETCHECK, g_optExecAtCursor, 0);
             SendMessage(GetDlgItem(hwnd, IDC_OPT_LINENUMS), BM_SETCHECK, g_optLineNums, 0);
@@ -251,10 +251,10 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 return 0;
             }
             if (LOWORD(wParam) == IDC_OPT_CLEARREG) {
-                if (MessageBoxW(hwnd, L"Clear all saved settings and recent files?", 
+                if (MessageBoxW(hwnd, L"Clear all saved settings and recent files?",
                                 L"Confirm", MB_YESNO | MB_ICONQUESTION) == IDYES) {
                     ClearSettings();
-                    MessageBoxW(hwnd, L"Settings cleared. Restart to use defaults.", 
+                    MessageBoxW(hwnd, L"Settings cleared. Restart to use defaults.",
                                 L"Settings", MB_OK | MB_ICONINFORMATION);
                 }
                 return 0;
@@ -275,12 +275,12 @@ void DoOptions(void) {
     WNDCLASSW wc = {0};
     RECT rc;
     MSG msg;
-    
+
     if (g_hwndOptions) {
         SetFocus(g_hwndOptions);
         return;
     }
-    
+
     g_optClearExec = g_clearOnExec;
     g_optExecAtCursor = g_execAtCursor;
     g_optLineNums = g_showLineNumbers;
@@ -289,13 +289,13 @@ void DoOptions(void) {
     g_optStorageCardData = g_useStorageCardData;
     lstrcpyW(g_optDbPath, g_szDataRelPath);
     g_optResult = 0;
-    
+
     wc.lpfnWndProc = OptionsWndProc;
     wc.hInstance = g_hInst;
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     wc.lpszClassName = L"SQLiteCEOptions";
     RegisterClassW(&wc);
-    
+
     GetWindowRect(g_hwndMain, &rc);
     g_hwndOptions = CreateWindowExW(WS_EX_CAPTIONOKBTN,
         L"SQLiteCEOptions", L"Options",
@@ -303,7 +303,7 @@ void DoOptions(void) {
         rc.left + 20, rc.top + 30, 460, 170,
         g_hwndMain, NULL, g_hInst, NULL);
     ShowWindow(g_hwndOptions, SW_SHOW);
-    
+
     /* Modal message loop */
     while (g_hwndOptions && GetMessage(&msg, NULL, 0, 0)) {
         if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
@@ -313,7 +313,7 @@ void DoOptions(void) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
-    
+
     if (g_optResult) {
         g_clearOnExec = g_optClearExec;
         g_execAtCursor = g_optExecAtCursor;
@@ -321,10 +321,10 @@ void DoOptions(void) {
         g_useStorageCard = g_optStorageCard;
         g_useStorageCardData = g_optStorageCardData;
         lstrcpyW(g_szDataRelPath, g_optDbPath);
-        
+
         /* Sync toolbar button state */
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
-        
+
         /* Handle line numbers toggle */
         if (g_optLineNums != g_showLineNumbers) {
             g_showLineNumbers = g_optLineNums;

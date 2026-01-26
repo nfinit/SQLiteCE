@@ -20,12 +20,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             int cbHeight;
             HMENU hMenu, hFile, hView;
             TBBUTTON tbButtons[15];
-            
+
             g_hBrushWhite = CreateSolidBrush(RGB(255, 255, 255));
-            
+
             /* Command bar with menus */
             g_hwndCB = CommandBar_Create(g_hInst, hwnd, 1);
-            
+
             hMenu = CreateMenu();
             hFile = CreatePopupMenu();
             {
@@ -68,7 +68,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             AppendMenuW(hMenu, MF_POPUP, (UINT)hFile, L"&File");
             g_hFileMenu = hFile;
-            
+
             /* Create Edit menu */
             g_hEditMenu = CreatePopupMenu();
             AppendMenuW(g_hEditMenu, MF_STRING, IDM_UNDO, L"&Undo\tCtrl+Z");
@@ -85,14 +85,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(g_hEditMenu, MF_STRING, IDM_FINDNEXT, L"Find &Next\tF3");
             AppendMenuW(g_hEditMenu, MF_STRING, IDM_REPLACE, L"&Replace...\tCtrl+H");
             AppendMenuW(hMenu, MF_POPUP, (UINT)g_hEditMenu, L"&Edit");
-            
+
             /* Create all three context menus upfront */
             g_hQueryCtx = CreatePopupMenu();
             AppendMenuW(g_hQueryCtx, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
             AppendMenuW(g_hQueryCtx, MF_STRING, IDM_EXECATCURSOR, L"Execute at &Cursor");
             AppendMenuW(g_hQueryCtx, MF_SEPARATOR, 0, NULL);
             AppendMenuW(g_hQueryCtx, MF_STRING, IDM_CLEAR, L"C&lear Editor");
-            
+
             g_hResultCtx = CreatePopupMenu();
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_VIEWGRID, L"&Grid View\tCtrl+G");
             AppendMenuW(g_hResultCtx, MF_SEPARATOR, 0, NULL);
@@ -101,7 +101,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(g_hResultCtx, MF_SEPARATOR, 0, NULL);
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_EXPORTRESULTS, L"&Export Results...");
             AppendMenuW(g_hResultCtx, MF_STRING, IDM_EXPORTHTMLRES, L"Export &HTML...");
-            
+
             {
                 HMENU hSelObj = CreatePopupMenu();
                 AppendMenuW(hSelObj, MF_STRING, IDM_SCHEMA_SELECT, L"&Select");
@@ -117,10 +117,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 AppendMenuW(g_hSchemaCtx, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(g_hSchemaCtx, MF_STRING, IDM_SHOWSIZES, L"Show &Details");
             }
-            
+
             /* Add only Query context menu initially - others added on view switch */
             AppendMenuW(hMenu, MF_POPUP, (UINT)g_hQueryCtx, L"&Query");
-            
+
             hView = CreatePopupMenu();
             AppendMenuW(hView, MF_STRING, IDM_VIEWQUERY, L"&Query\tCtrl+1, Esc");
             AppendMenuW(hView, MF_STRING, IDM_VIEWRESULT, L"&Results\tCtrl+2, F6");
@@ -130,85 +130,85 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(hView, MF_STRING, IDM_FULLSCREEN, L"&Full Screen\tAlt+Enter");
             g_hViewMenu = hView;
             AppendMenuW(hMenu, MF_POPUP, (UINT)hView, L"&View");
-            
+
             g_hMenu = hMenu;
             CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hMenu, 0);
-            
+
             /* Add toolbar bitmaps */
             CommandBar_AddBitmap(g_hwndCB, g_hInst, IDB_TOOLBAR, 11, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_STD_SMALL_COLOR, 15, 0, 0);
             CommandBar_AddBitmap(g_hwndCB, HINST_COMMCTRL, IDB_VIEW_SMALL_COLOR, 12, 0, 0);
-            
+
             memset(tbButtons, 0, sizeof(tbButtons));
-            
+
             tbButtons[0].fsStyle = TBSTYLE_SEP;
             tbButtons[0].iBitmap = 8;
-            
+
             tbButtons[1].iBitmap = TB_QUERY;
             tbButtons[1].idCommand = IDM_VIEWQUERY;
             tbButtons[1].fsState = TBSTATE_ENABLED | TBSTATE_CHECKED;
             tbButtons[1].fsStyle = TBSTYLE_CHECK | TBSTYLE_GROUP;
-            
+
             tbButtons[2].iBitmap = TB_RESULTS;
             tbButtons[2].idCommand = IDM_VIEWRESULT;
             tbButtons[2].fsState = TBSTATE_ENABLED;
             tbButtons[2].fsStyle = TBSTYLE_CHECK | TBSTYLE_GROUP;
-            
+
             tbButtons[3].iBitmap = TB_SCHEMA;
             tbButtons[3].idCommand = IDM_VIEWSCHEMA;
             tbButtons[3].fsState = TBSTATE_ENABLED;
             tbButtons[3].fsStyle = TBSTYLE_CHECK | TBSTYLE_GROUP;
-            
+
             tbButtons[4].fsStyle = TBSTYLE_SEP;
-            
+
             tbButtons[5].iBitmap = TB_EXECAT;
             tbButtons[5].idCommand = IDM_EXECATCURSOR;
             tbButtons[5].fsState = TBSTATE_ENABLED | (g_execAtCursor ? TBSTATE_CHECKED : 0);
             tbButtons[5].fsStyle = TBSTYLE_CHECK;
-            
+
             tbButtons[6].fsStyle = TBSTYLE_SEP;
-            
+
             tbButtons[7].iBitmap = TB_STD_BASE + STD_FIND;
             tbButtons[7].idCommand = IDM_FONTSIZE;
             tbButtons[7].fsState = TBSTATE_ENABLED;
             tbButtons[7].fsStyle = TBSTYLE_BUTTON;
-            
+
             tbButtons[8].fsStyle = TBSTYLE_SEP;
-            
+
             tbButtons[9].iBitmap = TB_OPEN;
             tbButtons[9].idCommand = IDM_OPEN;
             tbButtons[9].fsState = TBSTATE_ENABLED;
             tbButtons[9].fsStyle = TBSTYLE_BUTTON;
-            
+
             tbButtons[10].iBitmap = TB_CLOSE;
             tbButtons[10].idCommand = IDM_CLOSE;
             tbButtons[10].fsState = TBSTATE_ENABLED;
             tbButtons[10].fsStyle = TBSTYLE_BUTTON;
-            
+
             tbButtons[11].iBitmap = TB_NEW;
             tbButtons[11].idCommand = IDM_NEW;
             tbButtons[11].fsState = TBSTATE_ENABLED;
             tbButtons[11].fsStyle = TBSTYLE_BUTTON;
-            
+
             tbButtons[12].fsStyle = TBSTYLE_SEP;
-            
+
             tbButtons[13].iBitmap = TB_PLAY;
             tbButtons[13].idCommand = IDM_EXECUTE;
             tbButtons[13].fsState = TBSTATE_ENABLED;
             tbButtons[13].fsStyle = TBSTYLE_BUTTON;
-            
+
             tbButtons[14].iBitmap = TB_STOP;
             tbButtons[14].idCommand = IDM_STOP;
             tbButtons[14].fsState = 0;
             tbButtons[14].fsStyle = TBSTYLE_BUTTON;
-            
+
             CommandBar_AddButtons(g_hwndCB, 15, tbButtons);
-            
+
             CommandBar_AddAdornments(g_hwndCB, CMDBAR_HELP, 0);
             cbHeight = CommandBar_Height(g_hwndCB);
-            
+
             GetClientRect(hwnd, &rc);
-            
+
             /* Status bar with two panes */
             g_hwndStatus = CreateWindowW(STATUSCLASSNAMEW, NULL,
                 WS_CHILD | WS_VISIBLE,
@@ -224,7 +224,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 sbHeight = rcStatus.bottom - rcStatus.top;
                 editHeight = rc.bottom - cbHeight - sbHeight;
                 queryLeft = g_showLineNumbers ? g_lineNumWidth : 0;
-            
+
             /* Line number gutter */
             g_hwndLineNum = CreateWindowW(
                 L"EDIT", L"",
@@ -233,7 +233,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 hwnd, (HMENU)1004, g_hInst, NULL);
             SendMessage(g_hwndLineNum, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELONG(0, 2));
             g_pfnLineNumProc = (WNDPROC)SetWindowLong(g_hwndLineNum, GWL_WNDPROC, (LONG)LineNumProc);
-            
+
             /* Query input */
             g_hwndQuery = CreateWindowW(
                 L"EDIT", L"",
@@ -241,9 +241,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_NOHIDESEL,
                 queryLeft, cbHeight, rc.right - queryLeft, editHeight,
                 hwnd, (HMENU)1001, g_hInst, NULL);
-            
+
             g_pfnQueryProc = (WNDPROC)SetWindowLong(g_hwndQuery, GWL_WNDPROC, (LONG)QueryEditProc);
-            
+
             /* Results output */
             g_hwndResult = CreateWindowW(
                 L"EDIT", L"",
@@ -251,44 +251,44 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
                 0, cbHeight, rc.right, editHeight,
                 hwnd, (HMENU)1002, g_hInst, NULL);
-            
+
             /* Grid view */
             CreateGridView(hwnd, 0, cbHeight, rc.right, editHeight);
-            
+
             /* Schema view */
             CreateSchemaView(hwnd, 0, cbHeight, rc.right, editHeight);
             }
-            
+
             g_pfnResultProc = (WNDPROC)SetWindowLong(g_hwndResult, GWL_WNDPROC, (LONG)ResultEditProc);
-            
+
             UpdateQueryFont();
             UpdateResultFont();
-            
+
             g_viewMode = 0;
             CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA, IDM_VIEWQUERY, MF_BYCOMMAND);
             CheckMenuItem(g_hViewMenu, IDM_STATUSBAR, g_showStatusBar ? MF_CHECKED : MF_UNCHECKED);
             UpdateLineNumbers();
             SendMessage(hwnd, WM_SIZE, 0, 0);
-            
+
             return 0;
         }
-        
+
         case WM_SIZE: {
             RECT rc, rcStatus;
             int cbHeight, sbHeight, editHeight, queryLeft;
-            
+
             SendMessage(g_hwndStatus, WM_SIZE, 0, 0);
             GetWindowRect(g_hwndStatus, &rcStatus);
             sbHeight = (g_showStatusBar && !g_fullScreen) ? (rcStatus.bottom - rcStatus.top) : 0;
-            
+
             cbHeight = g_fullScreen ? 0 : CommandBar_Height(g_hwndCB);
             GetClientRect(hwnd, &rc);
             editHeight = rc.bottom - cbHeight - sbHeight;
             queryLeft = g_showLineNumbers ? g_lineNumWidth : 0;
-            
+
             if (g_hwndLineNum)
                 MoveWindow(g_hwndLineNum, 0, cbHeight, g_lineNumWidth, editHeight, TRUE);
-            
+
             MoveWindow(g_hwndQuery, queryLeft, cbHeight, rc.right - queryLeft, editHeight, TRUE);
             MoveWindow(g_hwndResult, 0, cbHeight, rc.right, editHeight, TRUE);
             if (g_hwndGrid)
@@ -297,7 +297,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 MoveWindow(g_hwndSchema, 0, cbHeight, rc.right, editHeight, TRUE);
             return 0;
         }
-        
+
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
                 case IDM_NEW:     DoFileNew(); break;
@@ -504,7 +504,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
             }
             return 0;
-        
+
         case WM_CTLCOLOREDIT:
         case WM_CTLCOLORSTATIC:
             if ((HWND)lParam == g_hwndLineNum || (HWND)lParam == g_hwndQuery || (HWND)lParam == g_hwndResult) {
@@ -512,7 +512,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 return (LRESULT)g_hBrushWhite;
             }
             break;
-        
+
         case WM_SYSKEYDOWN:
         case WM_SYSCHAR:
         case WM_KEYDOWN:
@@ -551,7 +551,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 return 0;
             }
             break;
-        
+
         case WM_NOTIFY: {
             NMHDR *pnm = (NMHDR*)lParam;
             if (pnm->hwndFrom == g_hwndGrid && pnm->code == LVN_GETDISPINFOW) {
@@ -623,7 +623,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             break;
         }
-        
+
         case WM_INITMENUPOPUP: {
             HMENU hMenu = (HMENU)wParam;
             /* Update Edit menu state */
@@ -653,14 +653,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             break;
         }
-        
+
         case WM_HELP:
             DoAbout();
             return TRUE;
-        
+
         case WM_CLOSE:
             if (g_queryDirty) {
-                int r = MessageBoxW(hwnd, L"Save changes to query?", L"SQLite/CE", 
+                int r = MessageBoxW(hwnd, L"Save changes to query?", L"SQLite/CE",
                                     MB_YESNOCANCEL | MB_ICONQUESTION);
                 if (r == IDCANCEL) return 0;
                 if (r == IDYES) DoSaveQuery();
@@ -668,7 +668,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             SaveSettings();
             DestroyWindow(hwnd);
             return 0;
-        
+
         case WM_DESTROY:
             CloseDatabase();
             CleanupExecute();
@@ -693,13 +693,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     RECT rcWork;
     ACCEL accel[15];
     int nAccel = 0;
-    
+
     (void)hPrev; (void)lpCmd; (void)nShow;
-    
+
     g_hInst = hInst;
     InitCommonControls();
     LoadSettings();
-    
+
     /* Build accelerator table */
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'O'; accel[nAccel].cmd = IDM_OPENQUERY; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'S'; accel[nAccel].cmd = IDM_SAVEQUERY; nAccel++;
@@ -714,38 +714,38 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     accel[nAccel].fVirt = FVIRTKEY; accel[nAccel].key = VK_F7; accel[nAccel].cmd = IDM_VIEWSCHEMA; nAccel++;
     accel[nAccel].fVirt = FALT | FVIRTKEY; accel[nAccel].key = 'X'; accel[nAccel].cmd = IDM_EXIT; nAccel++;
     g_hAccel = CreateAcceleratorTableW(accel, nAccel);
-    
+
     SystemParametersInfo(SPI_GETWORKAREA, 0, &rcWork, 0);
-    
+
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInst;
     wc.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_MAIN));
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = L"SQLiteCEdit";
     RegisterClassW(&wc);
-    
+
     g_hwndMain = CreateWindowW(L"SQLiteCEdit", L"SQLite/CE",
         WS_VISIBLE,
         rcWork.left, rcWork.top,
         rcWork.right - rcWork.left, rcWork.bottom - rcWork.top,
         NULL, NULL, hInst, NULL);
-    
-    SendMessage(g_hwndMain, WM_SETICON, ICON_SMALL, 
+
+    SendMessage(g_hwndMain, WM_SETICON, ICON_SMALL,
         (LPARAM)LoadImage(hInst, MAKEINTRESOURCE(IDI_MAIN), IMAGE_ICON, 16, 16, 0));
-    
+
     /* Update menus with loaded recent files */
     UpdateRecentMenu();
     UpdateRecentQueryMenu();
-    
+
     OpenDatabase(L":memory:");
-    
+
     while (GetMessage(&msg, NULL, 0, 0)) {
         if (!TranslateAccelerator(g_hwndMain, g_hAccel, &msg)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
     }
-    
+
     if (g_hAccel) DestroyAcceleratorTable(g_hAccel);
     return (int)msg.wParam;
 }

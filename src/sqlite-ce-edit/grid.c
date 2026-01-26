@@ -48,23 +48,23 @@ static void UndoDelete(void);
 
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     HIMAGELIST hIml;
-    
+
     g_hwndGrid = CreateWindowExW(0, WC_LISTVIEWW, NULL,
         WS_CHILD | WS_BORDER | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA,
         x, y, cx, cy, hwndParent, (HMENU)IDC_GRID, g_hInst, NULL);
-    
+
     /* Enable full row select and grid lines */
-    ListView_SetExtendedListViewStyle(g_hwndGrid, 
+    ListView_SetExtendedListViewStyle(g_hwndGrid,
         LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
-    
+
     /* Create small imagelist to force row height (adds vertical padding) */
     hIml = ImageList_Create(1, 18, ILC_COLOR, 1, 0);
     ListView_SetImageList(g_hwndGrid, hIml, LVSIL_SMALL);
-    
+
     /* Set font to match grid style */
     if (g_hFontGrid)
         SendMessage(g_hwndGrid, WM_SETFONT, (WPARAM)g_hFontGrid, TRUE);
-    
+
     /* Subclass for keyboard shortcuts */
     g_pfnGridProc = (WNDPROC)SetWindowLong(g_hwndGrid, GWL_WNDPROC, (LONG)GridProc);
 }
@@ -76,20 +76,20 @@ static void CopySelectedRow(void) {
     wchar_t *wbuf;
     HLOCAL hMem;
     int startCol;
-    
+
     if (sel < 0 || !g_lastResult || sel >= g_lastResultRows) return;
-    
+
     /* Map through sort index */
     dataRow = g_sortIndex ? g_sortIndex[sel] : sel;
-    
+
     /* In edit mode, skip column 0 (rowid) */
     startCol = g_editMode ? 1 : 0;
-    
+
     /* Build tab-separated string */
     buf = ALLOC(char, 4096);
     if (!buf) return;
     p = buf;
-    
+
     for (j = startCol; j < g_lastResultCols; j++) {
         char *val = g_lastResult[(dataRow + 1) * g_lastResultCols + j];
         if (j > startCol) *p++ = '\t';
@@ -97,7 +97,7 @@ static void CopySelectedRow(void) {
     }
     *p = 0;
     len = (int)(p - buf);
-    
+
     /* Copy to clipboard as Unicode */
     hMem = LocalAlloc(LMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
     if (hMem) {
@@ -126,14 +126,14 @@ LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_KEYDOWN) {
         int ctrl = GetKeyState(VK_CONTROL) < 0;
         int sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
-        
+
         /* Arrow/Enter with no selection - select first row and focus */
         if (sel < 0 && (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_RETURN)) {
             ListView_SetItemState(g_hwndGrid, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
             SetFocus(g_hwndGrid);
             return 0;
         }
-        
+
         /* Ctrl+C - Copy selected row */
         if (ctrl && wParam == 'C') {
             CopySelectedRow();
@@ -353,10 +353,10 @@ void OnGridColumnClick(int col) {
     int i, oldCol = g_sortCol;
     int dataCol;
     if (!g_lastResult || g_lastResultRows < 1) return;
-    
+
     /* Map display column to data column (skip rowid in edit mode) */
     dataCol = g_editMode ? col + 1 : col;
-    
+
     /* Toggle direction if same column, else new sort ascending */
     if (col == g_sortCol) {
         g_sortAsc = !g_sortAsc;
@@ -364,26 +364,26 @@ void OnGridColumnClick(int col) {
         g_sortCol = col;
         g_sortAsc = 1;
     }
-    
+
     /* Allocate/reset index */
     if (!g_sortIndex) {
         g_sortIndex = ALLOC(int, g_lastResultRows);
         if (!g_sortIndex) return;
     }
     for (i = 0; i < g_lastResultRows; i++) g_sortIndex[i] = i;
-    
+
     /* Sort using data column index */
     g_cmpCol = dataCol;
     qsort(g_sortIndex, g_lastResultRows, sizeof(int), CmpRows);
-    
+
     /* Update column headers */
     if (oldCol >= 0 && oldCol != col)
         UpdateColumnHeader(oldCol, 0);
     UpdateColumnHeader(col, 1);
-    
+
     /* Refresh grid */
     InvalidateRect(g_hwndGrid, NULL, TRUE);
-    
+
     /* Update status bar */
     {
         wchar_t colName[128], status[256];
@@ -392,7 +392,7 @@ void OnGridColumnClick(int col) {
         lvc.pszText = colName;
         lvc.cchTextMax = 120;
         ListView_GetColumn(g_hwndGrid, col, &lvc);
-        wsprintfW(status, L"%d row%s (sorted by %s %s)", 
+        wsprintfW(status, L"%d row%s (sorted by %s %s)",
             g_lastResultRows, g_lastResultRows == 1 ? L"" : L"s",
             colName, g_sortAsc ? L"ASC" : L"DESC");
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)status);
@@ -403,26 +403,26 @@ void GridFindNext(void) {
     int r, c, startRow, startCol, findLen, i, j;
     int startDataCol, numDataCols;
     char findBuf[256];
-    
+
     if (!g_findText[0] || !g_lastResult || g_lastResultRows < 1) return;
-    
+
     /* Convert search text to ANSI for comparison */
     for (i = 0; g_findText[i] && i < 255; i++)
         findBuf[i] = (char)g_findText[i];
     findBuf[i] = 0;
     findLen = i;
-    
+
     /* In edit mode, skip column 0 (rowid) when searching */
     startDataCol = g_editMode ? 1 : 0;
     numDataCols = g_lastResultCols;
-    
+
     /* Start from current position + 1 cell */
     startRow = g_gridFindRow;
     startCol = g_gridFindCol + 1;
     if (startCol >= numDataCols) { startCol = startDataCol; startRow++; }
     if (startCol < startDataCol) startCol = startDataCol;
     if (startRow >= g_lastResultRows) startRow = 0;
-    
+
     /* Search from current position to end */
     for (r = startRow; r < g_lastResultRows; r++) {
         int dataRow = g_sortIndex ? g_sortIndex[r] : r;
@@ -481,15 +481,15 @@ static void GetPlaceholderHint(int col, wchar_t *buf, int buflen) {
     const char *t;
     wchar_t *p = buf;
     wchar_t *end = buf + buflen - 1;
-    
+
     if (col >= g_colMetaCount) { buf[0] = '\0'; return; }
     cm = &g_colMeta[col];
-    
+
     if (cm->isAutoInc) {
         lstrcpyW(buf, L"(auto)");
         return;
     }
-    
+
     *p++ = '(';
     t = cm->type;
     /* Shorten INTEGER to INT */
@@ -513,17 +513,17 @@ void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
     static wchar_t wbuf[256];
     static wchar_t hintbuf[32];
     int numDisplayCols;
-    
+
     if (!(pdi->item.mask & LVIF_TEXT)) return;
     if (!g_lastResult) return;
-    
+
     row = pdi->item.iItem;
     col = pdi->item.iSubItem;
-    
+
     /* In edit mode, column 0 is hidden rowid, so shift display columns */
     dataCol = g_editMode ? col + 1 : col;
     numDisplayCols = g_editMode ? g_lastResultCols - 1 : g_lastResultCols;
-    
+
     /* Handle placeholder row (last row in edit mode) */
     if (g_editMode && row == g_lastResultRows) {
         /* Show pending value if in insert mode, otherwise show hints */
@@ -541,15 +541,15 @@ void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
         }
         return;
     }
-    
+
     if (row >= g_lastResultRows || col >= numDisplayCols) {
         pdi->item.pszText = L"";
         return;
     }
-    
+
     /* Map through sort index if sorted */
     dataRow = g_sortIndex ? g_sortIndex[row] : row;
-    
+
     val = g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol];
     if (val) {
         MultiByteToWideChar(CP_ACP, 0, val, -1, wbuf, 256);
@@ -577,57 +577,57 @@ void PopulateGrid(void) {
     RECT rc;
     int totalWidth, colWidth;
     DWORD startTick, elapsed;
-    
+
     if (!g_hwndGrid) return;
-    
+
     startTick = GetTickCount();
-    
+
     /* Reset sort state */
     FREE(g_sortIndex);
     g_sortCol = -1;
     g_sortAsc = 1;
     g_gridFindRow = 0;
     g_gridFindCol = -1;
-    
+
     /* Disable repainting during setup */
     SendMessage(g_hwndGrid, WM_SETREDRAW, FALSE, 0);
-    
+
     /* Clear existing */
     ListView_SetItemCount(g_hwndGrid, 0);
     while (ListView_DeleteColumn(g_hwndGrid, 0)) ;
-    
+
     if (!g_lastResult || g_lastResultCols < 1) {
         SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
         return;
     }
-    
+
     /* Allow 0 data rows in edit mode (placeholder row still shown) */
     if (g_lastResultRows < 1 && !g_editMode) {
         SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
         return;
     }
-    
+
     /* In edit mode, skip column 0 (rowid) */
     startCol = g_editMode ? 1 : 0;
     numDisplayCols = g_editMode ? g_lastResultCols - 1 : g_lastResultCols;
-    
+
     if (numDisplayCols < 1) {
         SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
         return;
     }
-    
+
     /* Calculate column width to fill grid */
     GetClientRect(g_hwndGrid, &rc);
     totalWidth = rc.right - GetSystemMetrics(SM_CXVSCROLL) - 4;
     colWidth = totalWidth / numDisplayCols;
     if (colWidth < 60) colWidth = 60;
-    
+
     /* Add columns from header row */
     memset(&col, 0, sizeof(col));
     col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
     col.fmt = LVCFMT_LEFT;
     col.cx = colWidth;
-    
+
     for (j = 0; j < numDisplayCols; j++) {
         int dataCol = startCol + j;
         if (g_lastResult[dataCol]) {
@@ -642,11 +642,11 @@ void PopulateGrid(void) {
         }
         ListView_InsertColumn(g_hwndGrid, j, &col);
     }
-    
+
     /* Set item count - virtual ListView fetches data on demand */
     /* In edit mode, add one extra row for the placeholder (new row) */
     ListView_SetItemCount(g_hwndGrid, g_lastResultRows + (g_editMode ? 1 : 0));
-    
+
     /* Auto-fit columns (optional - sample first 20 rows for speed) */
     if (g_gridAutoSize) {
         int totalRows = g_lastResultRows + (g_editMode ? 1 : 0);
@@ -679,11 +679,11 @@ void PopulateGrid(void) {
         }
         ListView_SetItemCount(g_hwndGrid, totalRows);
     }
-    
+
     /* Re-enable repainting and refresh */
     SendMessage(g_hwndGrid, WM_SETREDRAW, TRUE, 0);
     InvalidateRect(g_hwndGrid, NULL, TRUE);
-    
+
     /* Update status bar with query and draw time (unless edit mode set its own) */
     if (!g_editMode) {
         elapsed = GetTickCount() - startTick;
@@ -718,7 +718,7 @@ static int HandleEditKey(UINT msg, WPARAM wParam) {
     int ctrl = GetKeyState(VK_CONTROL) < 0;
     int shift = GetKeyState(VK_SHIFT) < 0;
     int nextCol, row, wasInsertMode;
-    
+
     /* Ctrl+Delete - set NULL and advance */
     if (msg == WM_KEYDOWN && ctrl && wParam == VK_DELETE) {
         nextCol = NextEditableColumn(g_editCol, 1);
@@ -728,7 +728,7 @@ static int HandleEditKey(UINT msg, WPARAM wParam) {
         if (nextCol >= 0) StartCellEdit(row, nextCol);
         return 1;
     }
-    
+
     /* Ctrl+0 - set NULL and advance (WM_KEYDOWN or WM_CHAR) */
     if (ctrl && wParam == '0' && (msg == WM_KEYDOWN || msg == WM_CHAR)) {
         nextCol = NextEditableColumn(g_editCol, 1);
@@ -738,7 +738,7 @@ static int HandleEditKey(UINT msg, WPARAM wParam) {
         if (nextCol >= 0) StartCellEdit(row, nextCol);
         return 1;
     }
-    
+
     /* Tab / Shift+Tab - move between columns */
     if (msg == WM_KEYDOWN && wParam == VK_TAB) {
         nextCol = NextEditableColumn(g_editCol, shift ? -1 : 1);
@@ -751,7 +751,7 @@ static int HandleEditKey(UINT msg, WPARAM wParam) {
         }
         return 1;
     }
-    
+
     /* Enter - commit cell (and row if in insert mode) */
     if (msg == WM_KEYDOWN && wParam == VK_RETURN) {
         wasInsertMode = g_insertMode;
@@ -762,13 +762,13 @@ static int HandleEditKey(UINT msg, WPARAM wParam) {
         }
         return 1;
     }
-    
+
     /* Escape - cancel edit */
     if (msg == WM_KEYDOWN && wParam == VK_ESCAPE) {
         CancelCellEdit();
         return 1;
     }
-    
+
     return 0;
 }
 
@@ -777,7 +777,7 @@ static LRESULT CALLBACK EditOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
     if (msg == WM_KEYDOWN || msg == WM_CHAR) {
         if (HandleEditKey(msg, wParam)) return 0;
     }
-    
+
     /* Track dirty state - user typed something */
     if (msg == WM_CHAR && wParam >= 32) {
         g_cellDirty = 1;
@@ -786,13 +786,13 @@ static LRESULT CALLBACK EditOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
     if (msg == WM_KEYDOWN && (wParam == VK_BACK || wParam == VK_DELETE)) {
         g_cellDirty = 1;
     }
-    
+
     /* Commit on focus loss */
     if (msg == WM_KILLFOCUS && g_hwndEditOverlay) {
         CommitCellEdit();
         return 0;
     }
-    
+
     return CallWindowProc(g_pfnEditOverlayProc, hwnd, msg, wParam, lParam);
 }
 
@@ -802,32 +802,32 @@ static void StartCellEdit(int row, int col) {
     char *val;
     wchar_t wval[256];
     int i, x, width;
-    
+
     if (!g_editMode || !g_hwndGrid || row < 0) return;
     if (g_hwndEditOverlay) CancelCellEdit();  /* Close any existing edit */
-    
+
     /* Reset dirty flag for new edit */
     g_cellDirty = 0;
-    
+
     /* Placeholder row (new row) - enter insert mode */
     if (row == g_lastResultRows) {
         /* Don't allow editing autoincrement columns */
         if (col < g_colMetaCount && g_colMeta[col].isAutoInc) {
             return;
         }
-        
+
         /* Initialize insert mode if not already */
         if (!g_insertMode) {
             InitInsertMode();
             if (!g_insertMode) return;  /* Allocation failed */
         }
-        
+
         /* Get cell rectangle */
         GetClientRect(g_hwndGrid, &rcGrid);
         rcItem.top = row;
         rcItem.left = LVIR_BOUNDS;
         ListView_GetItemRect(g_hwndGrid, row, &rcItem, LVIR_BOUNDS);
-        
+
         x = rcItem.left;
         for (i = 0; i < col; i++) {
             x += ListView_GetColumnWidth(g_hwndGrid, i);
@@ -835,7 +835,7 @@ static void StartCellEdit(int row, int col) {
         width = ListView_GetColumnWidth(g_hwndGrid, col);
         rcItem.left = x;
         rcItem.right = x + width;
-        
+
         /* Get pending value if any (show empty for NULL marker) */
         wval[0] = 0;
         if (g_pendingValues && g_pendingValues[col]) {
@@ -843,46 +843,46 @@ static void StartCellEdit(int row, int col) {
                 MultiByteToWideChar(CP_ACP, 0, g_pendingValues[col], -1, wval, 256);
             }
         }
-        
+
         /* Create edit control */
         g_hwndEditOverlay = CreateWindowExW(0, L"EDIT", wval,
             WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             rcItem.left, rcItem.top, rcItem.right - rcItem.left, rcItem.bottom - rcItem.top,
             g_hwndGrid, NULL, g_hInst, NULL);
-        
+
         if (!g_hwndEditOverlay) return;
-        
+
         if (g_hFontGrid)
             SendMessage(g_hwndEditOverlay, WM_SETFONT, (WPARAM)g_hFontGrid, TRUE);
         SendMessage(g_hwndEditOverlay, EM_SETSEL, 0, -1);
         g_pfnEditOverlayProc = (WNDPROC)SetWindowLong(g_hwndEditOverlay, GWL_WNDPROC, (LONG)EditOverlayProc);
-        
+
         g_editRow = row;
         g_editCol = col;
         SetFocus(g_hwndEditOverlay);
         return;
     }
-    
+
     /* Get cell rectangle - need to calculate from column positions */
     GetClientRect(g_hwndGrid, &rcGrid);
     rcItem.top = row;
     rcItem.left = LVIR_BOUNDS;
     ListView_GetItemRect(g_hwndGrid, row, &rcItem, LVIR_BOUNDS);
-    
+
     /* Calculate column X position and width */
     x = rcItem.left;
     for (i = 0; i < col; i++) {
         x += ListView_GetColumnWidth(g_hwndGrid, i);
     }
     width = ListView_GetColumnWidth(g_hwndGrid, col);
-    
+
     rcItem.left = x;
     rcItem.right = x + width;
-    
+
     /* Map display column to data column (skip rowid in column 0) */
     dataCol = col + 1;  /* +1 because column 0 is hidden rowid */
     dataRow = g_sortIndex ? g_sortIndex[row] : row;
-    
+
     /* Get current value */
     val = g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol];
     if (val) {
@@ -890,27 +890,27 @@ static void StartCellEdit(int row, int col) {
     } else {
         wval[0] = 0;  /* NULL becomes empty for editing */
     }
-    
+
     /* Create edit control */
     g_hwndEditOverlay = CreateWindowExW(0, L"EDIT", wval,
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
         rcItem.left, rcItem.top, rcItem.right - rcItem.left, rcItem.bottom - rcItem.top,
         g_hwndGrid, NULL, g_hInst, NULL);
-    
+
     if (!g_hwndEditOverlay) return;
-    
+
     /* Set font and select all text */
     if (g_hFontGrid)
         SendMessage(g_hwndEditOverlay, WM_SETFONT, (WPARAM)g_hFontGrid, TRUE);
     SendMessage(g_hwndEditOverlay, EM_SETSEL, 0, -1);
-    
+
     /* Subclass for Enter/Escape handling */
     g_pfnEditOverlayProc = (WNDPROC)SetWindowLong(g_hwndEditOverlay, GWL_WNDPROC, (LONG)EditOverlayProc);
-    
+
     /* Store edit position */
     g_editRow = row;
     g_editCol = col;
-    
+
     SetFocus(g_hwndEditOverlay);
 }
 
@@ -1064,9 +1064,9 @@ static void UndoDelete(void) {
     int i, rc;
     char *errmsg = NULL;
     char tableName[128];
-    
+
     if (g_undoCount < 1 || !g_editMode) return;
-    
+
     /* Save table name */
     p = tableName;
     STR_COPY(p, g_editTableName);
@@ -1089,7 +1089,7 @@ static void UndoDelete(void) {
     }
 
     STR_COPY(p, ") VALUES (");
-    
+
     /* Values (skip rowid at index 0) */
     for (i = 1; i < row->numCols; i++) {
         if (i > 1) *p++ = ',';
@@ -1108,7 +1108,7 @@ static void UndoDelete(void) {
     *p++ = ')';
     *p++ = ';';
     *p = '\0';
-    
+
     rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
     if (rc != SQLITE_OK) {
         wchar_t wmsg[256];
@@ -1117,7 +1117,7 @@ static void UndoDelete(void) {
         if (errmsg) sqlite_freemem(errmsg);
         return;
     }
-    
+
     /* Remove from undo stack */
     g_undoBytes -= row->dataBytes;
     if (g_undoBytes < 0) g_undoBytes = 0;
@@ -1141,7 +1141,7 @@ static void DeleteSelectedRow(void) {
     wchar_t msg[64];
     char **rowids;
     int *selRows;
-    
+
     /* Count selected rows (excluding placeholder) */
     count = 0;
     sel = -1;
@@ -1149,7 +1149,7 @@ static void DeleteSelectedRow(void) {
         if (sel < g_lastResultRows) count++;
     }
     if (count < 1) return;
-    
+
     /* Collect selection indices BEFORE dialog (dialog may clear selection) */
     selRows = ALLOC(int, count);
     if (!selRows) return;
@@ -1159,12 +1159,12 @@ static void DeleteSelectedRow(void) {
         if (sel < g_lastResultRows && i < count) selRows[i++] = sel;
     }
     count = i;
-    
+
     /* Save table name before it gets cleared */
     p = tableName;
     STR_COPY(p, g_editTableName);
     *p = '\0';
-    
+
     /* Confirm deletion */
     if (count == 1)
         lstrcpyW(msg, L"Delete this row?");
@@ -1175,11 +1175,11 @@ static void DeleteSelectedRow(void) {
         LocalFree(selRows);
         return;
     }
-    
+
     /* Collect rowids and save row data for undo */
     rowids = ALLOC(char *, count);
     if (!rowids) { LocalFree(selRows); return; }
-    
+
     for (i = 0; i < count; i++) {
         int j, len;
         sel = selRows[i];
@@ -1189,7 +1189,7 @@ static void DeleteSelectedRow(void) {
         if (rowid) {
             /* Save row data for undo (entire row including rowid) */
             PushUndo(&g_lastResult[rowidIdx], g_lastResultCols);
-            
+
             len = 0;
             while (rowid[len]) len++;
             rowids[i] = ALLOC(char, len + 1);
@@ -1201,7 +1201,7 @@ static void DeleteSelectedRow(void) {
         }
     }
     LocalFree(selRows);
-    
+
     /* Delete by rowid */
     deleted = 0;
     for (i = 0; i < count; i++) {
@@ -1213,7 +1213,7 @@ static void DeleteSelectedRow(void) {
         STR_COPY(p, rowids[i]);
         *p++ = ';';
         *p = '\0';
-        
+
         rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
         if (rc != SQLITE_OK) {
             wchar_t wmsg[256];
@@ -1224,16 +1224,16 @@ static void DeleteSelectedRow(void) {
         }
         deleted++;
     }
-    
+
     /* Free rowid copies */
     for (i = 0; i < count; i++) {
         if (rowids[i]) LocalFree(rowids[i]);
     }
     LocalFree(rowids);
-    
+
     /* Re-query to refresh grid */
     OpenTableForEditing(tableName);
-    
+
     /* Status feedback */
     if (deleted > 0) {
         wsprintfW(msg, L"%d row%s deleted", deleted, deleted == 1 ? L"" : L"s");
@@ -1250,7 +1250,7 @@ static void ClearInsertMode(void) {
         FREE(g_pendingValues);
     }
     g_insertMode = 0;
-    
+
     /* Refresh placeholder row display */
     if (g_hwndGrid && g_editMode) {
         ListView_RedrawItems(g_hwndGrid, g_lastResultRows, g_lastResultRows);
@@ -1260,11 +1260,11 @@ static void ClearInsertMode(void) {
 static void InitInsertMode(void) {
     if (g_insertMode) return;  /* Already in insert mode */
     if (g_colMetaCount < 1) return;
-    
+
     /* Allocate pending values array */
     g_pendingValues = ALLOC_ZERO(char *, g_colMetaCount);
     if (!g_pendingValues) return;
-    
+
     g_insertMode = 1;
 }
 
@@ -1272,12 +1272,12 @@ static void StorePendingValue(int col, const char *value) {
     int len;
     const char *s;
     char *d;
-    
+
     if (!g_pendingValues || col < 0 || col >= g_colMetaCount) return;
-    
+
     /* Free old value */
     FREE(g_pendingValues[col]);
-    
+
     /* Store new value */
     /* NULL pointer = not set, "\x01" = explicit NULL, "" = empty string, else = value */
     if (value) {
@@ -1301,9 +1301,9 @@ static void CommitInsert(void) {
     char *errmsg = NULL;
     int rc, i, first;
     char tableName[128];
-    
+
     if (!g_insertMode || !g_pendingValues) return;
-    
+
     /* Save table name */
     p = tableName;
     STR_COPY(p, g_editTableName);
@@ -1359,13 +1359,13 @@ static void CommitInsert(void) {
             *p++ = '\'';
         }
     }
-    
+
     STR_COPY(p, ");");
     *p = '\0';
 
     /* Execute INSERT */
     rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
-    
+
     if (rc != SQLITE_OK) {
         wchar_t wmsg[256];
         MultiByteToWideChar(CP_ACP, 0, errmsg ? errmsg : "Unknown error", -1, wmsg, 256);
@@ -1374,11 +1374,11 @@ static void CommitInsert(void) {
         if (errmsg) sqlite_freemem(errmsg);
         return;
     }
-    
+
     /* Clear insert mode and refresh */
     ClearInsertMode();
     OpenTableForEditing(tableName);
-    
+
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Row inserted");
 }
 
@@ -1407,25 +1407,25 @@ static void CommitCellEdit(void) {
     int rc, len;
     int setNull;
     int clearedToEmpty = 0;  /* Track NULL->empty fallback */
-    
+
     /* Guard against re-entry from WM_KILLFOCUS */
     if (g_inCommit) return;
     g_inCommit = 1;
-    
+
     if (!g_hwndEditOverlay || g_editRow < 0 || g_editCol < 0) {
         g_inCommit = 0;
         CancelCellEdit();
         return;
     }
-    
+
     /* Check and reset NULL flag */
     setNull = g_commitNull;
     g_commitNull = 0;
-    
+
     /* Get new value */
     GetWindowTextW(g_hwndEditOverlay, wval, 256);
     WideCharToMultiByte(CP_ACP, 0, wval, -1, newVal, 512, NULL, NULL);
-    
+
     /* Insert mode - store to pending values, don't execute UPDATE */
     if (g_insertMode && g_editRow == g_lastResultRows) {
         if (setNull) {
@@ -1438,10 +1438,10 @@ static void CommitCellEdit(void) {
             /* Store value (including empty string if user typed then deleted) */
             StorePendingValue(g_editCol, newVal);
         }
-        
+
         /* Refresh the cell display */
         ListView_RedrawItems(g_hwndGrid, g_editRow, g_editRow);
-        
+
         /* Close edit overlay */
         DestroyWindow(g_hwndEditOverlay);
         g_hwndEditOverlay = NULL;
@@ -1451,25 +1451,25 @@ static void CommitCellEdit(void) {
         SetFocus(g_hwndGrid);
         return;
     }
-    
+
     /* For existing rows: empty string = NULL unless explicit */
     if (newVal[0] == '\0' && !setNull) {
         setNull = 1;
     }
-    
+
     /* Map to data indices */
     dataRow = g_sortIndex ? g_sortIndex[g_editRow] : g_editRow;
     dataCol = g_editCol + 1;  /* +1 for hidden rowid */
     rowidIdx = (dataRow + 1) * g_lastResultCols;  /* rowid is column 0 */
-    
+
     rowid = g_lastResult[rowidIdx];
     colName = g_lastResult[dataCol];  /* Column name from header row */
-    
+
     if (!rowid || !colName) {
         CancelCellEdit();
         return;
     }
-    
+
     /* Build UPDATE statement */
     p = sql;
     STR_COPY(p, "UPDATE \"");
@@ -1494,14 +1494,14 @@ static void CommitCellEdit(void) {
     STR_COPY(p, rowid);
     *p++ = ';';
     *p = 0;
-    
+
     /* Execute UPDATE */
     rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
-    
+
     /* If NULL failed (likely NOT NULL constraint), retry with empty string */
     if (rc != SQLITE_OK && setNull) {
         if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
-        
+
         /* Rebuild as empty string: SET "col" = '' WHERE rowid = N */
         p = sql;
         STR_COPY(p, "UPDATE \"");
@@ -1512,19 +1512,19 @@ static void CommitCellEdit(void) {
         STR_COPY(p, rowid);
         *p++ = ';';
         *p = 0;
-        
+
         rc = sqlite_exec(g_db, sql, NULL, NULL, &errmsg);
         if (rc == SQLITE_OK) {
             setNull = 0;  /* Actually stored empty string */
             clearedToEmpty = 1;
         }
     }
-    
+
     if (rc == SQLITE_OK) {
         /* Free old value */
         if (g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol])
             LocalFree(g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol]);
-        
+
         if (setNull) {
             /* Store NULL */
             g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol] = NULL;
@@ -1533,7 +1533,7 @@ static void CommitCellEdit(void) {
             len = 0;
             s = newVal;
             while (*s++) len++;
-            
+
             g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol] =
                 ALLOC(char, len + 1);
             if (g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol]) {
@@ -1542,10 +1542,10 @@ static void CommitCellEdit(void) {
                     g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol][i] = newVal[i];
             }
         }
-        
+
         /* Refresh the cell display */
         ListView_RedrawItems(g_hwndGrid, g_editRow, g_editRow);
-        
+
         /* Update status */
         {
             const wchar_t *msg;
@@ -1568,7 +1568,7 @@ static void CommitCellEdit(void) {
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)wstatus);
         MessageBoxW(g_hwndMain, werr, L"Error", MB_OK | MB_ICONERROR);
     }
-    
+
     /* Close edit overlay */
     DestroyWindow(g_hwndEditOverlay);
     g_hwndEditOverlay = NULL;

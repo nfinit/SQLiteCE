@@ -34,10 +34,10 @@ struct TrigEvent { int a; IdList * b; };
 /* Next is all token values, in a form suitable for use by makeheaders.
 ** This section will be null unless lemon is run with the -m switch.
 */
-/* 
+/*
 ** These constants (all generated automatically by the parser generator)
 ** specify the various kinds of tokens (terminals) that the parser
-** understands. 
+** understands.
 **
 ** Each symbol here is a terminal symbol in the grammar.
 */
@@ -54,7 +54,7 @@ struct TrigEvent { int a; IdList * b; };
 **                       and nonterminals.  "int" is used otherwise.
 **    YYNOCODE           is a number of type YYCODETYPE which corresponds
 **                       to no legal terminal or nonterminal number.  This
-**                       number is used to fill in empty slots of the hash 
+**                       number is used to fill in empty slots of the hash
 **                       table.
 **    YYFALLBACK         If defined, this indicates that one or more tokens
 **                       have fall-back values which should be used if the
@@ -63,7 +63,7 @@ struct TrigEvent { int a; IdList * b; };
 **                       and nonterminal numbers.  "unsigned char" is
 **                       used if there are fewer than 250 rules and
 **                       states combined.  "int" is used otherwise.
-**    sqliteParserTOKENTYPE     is the data type used for minor tokens given 
+**    sqliteParserTOKENTYPE     is the data type used for minor tokens given
 **                       directly to the parser from the tokenizer.
 **    YYMINORTYPE        is the data type used for all minor tokens.
 **                       This is typically a union of many types, one of
@@ -117,7 +117,7 @@ typedef union {
 /* Next are that tables used to determine what action to take based on the
 ** current state and lookahead token.  These tables are used to implement
 ** functions that take a state number and lookahead value and return an
-** action integer.  
+** action integer.
 **
 ** Suppose the action integer is N.  Then the action is determined as
 ** follows
@@ -142,7 +142,7 @@ typedef union {
 ** If the index value yy_shift_ofst[S]+X is out of range or if the value
 ** yy_lookahead[yy_shift_ofst[S]+X] is not equal to X or if yy_shift_ofst[S]
 ** is equal to YY_SHIFT_USE_DFLT, it means that the action is not in the table
-** and that yy_default[S] should be used instead.  
+** and that yy_default[S] should be used instead.
 **
 ** The formula above is for computing the action when the lookahead is
 ** a terminal symbol.  If the lookahead is a non-terminal (as occurs after
@@ -606,7 +606,7 @@ static YYACTIONTYPE yy_default[] = {
 
 /* The next table maps tokens into fallback tokens.  If a construct
 ** like the following:
-** 
+**
 **      %fallback ID X Y Z.
 **
 ** appears in the grammer, then ID becomes a fallback token for X, Y,
@@ -788,10 +788,10 @@ static char *yyTracePrompt = 0;
 #endif /* NDEBUG */
 
 #ifndef NDEBUG
-/* 
+/*
 ** Turn parser tracing on by giving a stream to which to write the trace
 ** and a prompt to preface each trace message.  Tracing is turned off
-** by making either argument NULL 
+** by making either argument NULL
 **
 ** Inputs:
 ** <ul>
@@ -816,62 +816,62 @@ void sqliteParserTrace(FILE *TraceFILE, char *zTracePrompt){
 #ifndef NDEBUG
 /* For tracing shifts, the names of all terminals and nonterminals
 ** are required.  The following table supplies these names */
-static const char *yyTokenName[] = { 
-  "$",             "END_OF_FILE",   "ILLEGAL",       "SPACE",       
-  "UNCLOSED_STRING",  "COMMENT",       "FUNCTION",      "COLUMN",      
-  "AGG_FUNCTION",  "SEMI",          "EXPLAIN",       "BEGIN",       
-  "TRANSACTION",   "COMMIT",        "END",           "ROLLBACK",    
-  "CREATE",        "TABLE",         "TEMP",          "LP",          
-  "RP",            "AS",            "COMMA",         "ID",          
-  "ABORT",         "AFTER",         "ASC",           "ATTACH",      
-  "BEFORE",        "CASCADE",       "CLUSTER",       "CONFLICT",    
-  "COPY",          "DATABASE",      "DEFERRED",      "DELIMITERS",  
-  "DESC",          "DETACH",        "EACH",          "FAIL",        
-  "FOR",           "GLOB",          "IGNORE",        "IMMEDIATE",   
-  "INITIALLY",     "INSTEAD",       "LIKE",          "MATCH",       
-  "KEY",           "OF",            "OFFSET",        "PRAGMA",      
-  "RAISE",         "REPLACE",       "RESTRICT",      "ROW",         
-  "STATEMENT",     "TRIGGER",       "VACUUM",        "VIEW",        
-  "OR",            "AND",           "NOT",           "EQ",          
-  "NE",            "ISNULL",        "NOTNULL",       "IS",          
-  "BETWEEN",       "IN",            "GT",            "GE",          
-  "LT",            "LE",            "BITAND",        "BITOR",       
-  "LSHIFT",        "RSHIFT",        "PLUS",          "MINUS",       
-  "STAR",          "SLASH",         "REM",           "CONCAT",      
-  "UMINUS",        "UPLUS",         "BITNOT",        "STRING",      
-  "JOIN_KW",       "INTEGER",       "CONSTRAINT",    "DEFAULT",     
-  "FLOAT",         "NULL",          "PRIMARY",       "UNIQUE",      
-  "CHECK",         "REFERENCES",    "COLLATE",       "ON",          
-  "DELETE",        "UPDATE",        "INSERT",        "SET",         
-  "DEFERRABLE",    "FOREIGN",       "DROP",          "UNION",       
-  "ALL",           "INTERSECT",     "EXCEPT",        "SELECT",      
-  "DISTINCT",      "DOT",           "FROM",          "JOIN",        
-  "USING",         "ORDER",         "BY",            "GROUP",       
-  "HAVING",        "LIMIT",         "WHERE",         "INTO",        
-  "VALUES",        "VARIABLE",      "CASE",          "WHEN",        
-  "THEN",          "ELSE",          "INDEX",         "error",       
-  "input",         "cmdlist",       "ecmd",          "explain",     
-  "cmdx",          "cmd",           "trans_opt",     "onconf",      
-  "nm",            "create_table",  "create_table_args",  "temp",        
-  "columnlist",    "conslist_opt",  "select",        "column",      
-  "columnid",      "type",          "carglist",      "id",          
-  "ids",           "typename",      "signed",        "carg",        
-  "ccons",         "sortorder",     "expr",          "idxlist_opt", 
-  "refargs",       "defer_subclause",  "refarg",        "refact",      
-  "init_deferred_pred_opt",  "conslist",      "tcons",         "idxlist",     
-  "defer_subclause_opt",  "orconf",        "resolvetype",   "oneselect",   
-  "multiselect_op",  "distinct",      "selcollist",    "from",        
-  "where_opt",     "groupby_opt",   "having_opt",    "orderby_opt", 
-  "limit_opt",     "sclp",          "as",            "seltablist",  
-  "stl_prefix",    "joinop",        "dbnm",          "on_opt",      
-  "using_opt",     "seltablist_paren",  "joinop2",       "sortlist",    
-  "sortitem",      "collate",       "exprlist",      "setlist",     
-  "insert_cmd",    "inscollist_opt",  "itemlist",      "inscollist",  
-  "likeop",        "case_operand",  "case_exprlist",  "case_else",   
-  "expritem",      "uniqueflag",    "idxitem",       "plus_num",    
+static const char *yyTokenName[] = {
+  "$",             "END_OF_FILE",   "ILLEGAL",       "SPACE",
+  "UNCLOSED_STRING",  "COMMENT",       "FUNCTION",      "COLUMN",
+  "AGG_FUNCTION",  "SEMI",          "EXPLAIN",       "BEGIN",
+  "TRANSACTION",   "COMMIT",        "END",           "ROLLBACK",
+  "CREATE",        "TABLE",         "TEMP",          "LP",
+  "RP",            "AS",            "COMMA",         "ID",
+  "ABORT",         "AFTER",         "ASC",           "ATTACH",
+  "BEFORE",        "CASCADE",       "CLUSTER",       "CONFLICT",
+  "COPY",          "DATABASE",      "DEFERRED",      "DELIMITERS",
+  "DESC",          "DETACH",        "EACH",          "FAIL",
+  "FOR",           "GLOB",          "IGNORE",        "IMMEDIATE",
+  "INITIALLY",     "INSTEAD",       "LIKE",          "MATCH",
+  "KEY",           "OF",            "OFFSET",        "PRAGMA",
+  "RAISE",         "REPLACE",       "RESTRICT",      "ROW",
+  "STATEMENT",     "TRIGGER",       "VACUUM",        "VIEW",
+  "OR",            "AND",           "NOT",           "EQ",
+  "NE",            "ISNULL",        "NOTNULL",       "IS",
+  "BETWEEN",       "IN",            "GT",            "GE",
+  "LT",            "LE",            "BITAND",        "BITOR",
+  "LSHIFT",        "RSHIFT",        "PLUS",          "MINUS",
+  "STAR",          "SLASH",         "REM",           "CONCAT",
+  "UMINUS",        "UPLUS",         "BITNOT",        "STRING",
+  "JOIN_KW",       "INTEGER",       "CONSTRAINT",    "DEFAULT",
+  "FLOAT",         "NULL",          "PRIMARY",       "UNIQUE",
+  "CHECK",         "REFERENCES",    "COLLATE",       "ON",
+  "DELETE",        "UPDATE",        "INSERT",        "SET",
+  "DEFERRABLE",    "FOREIGN",       "DROP",          "UNION",
+  "ALL",           "INTERSECT",     "EXCEPT",        "SELECT",
+  "DISTINCT",      "DOT",           "FROM",          "JOIN",
+  "USING",         "ORDER",         "BY",            "GROUP",
+  "HAVING",        "LIMIT",         "WHERE",         "INTO",
+  "VALUES",        "VARIABLE",      "CASE",          "WHEN",
+  "THEN",          "ELSE",          "INDEX",         "error",
+  "input",         "cmdlist",       "ecmd",          "explain",
+  "cmdx",          "cmd",           "trans_opt",     "onconf",
+  "nm",            "create_table",  "create_table_args",  "temp",
+  "columnlist",    "conslist_opt",  "select",        "column",
+  "columnid",      "type",          "carglist",      "id",
+  "ids",           "typename",      "signed",        "carg",
+  "ccons",         "sortorder",     "expr",          "idxlist_opt",
+  "refargs",       "defer_subclause",  "refarg",        "refact",
+  "init_deferred_pred_opt",  "conslist",      "tcons",         "idxlist",
+  "defer_subclause_opt",  "orconf",        "resolvetype",   "oneselect",
+  "multiselect_op",  "distinct",      "selcollist",    "from",
+  "where_opt",     "groupby_opt",   "having_opt",    "orderby_opt",
+  "limit_opt",     "sclp",          "as",            "seltablist",
+  "stl_prefix",    "joinop",        "dbnm",          "on_opt",
+  "using_opt",     "seltablist_paren",  "joinop2",       "sortlist",
+  "sortitem",      "collate",       "exprlist",      "setlist",
+  "insert_cmd",    "inscollist_opt",  "itemlist",      "inscollist",
+  "likeop",        "case_operand",  "case_exprlist",  "case_else",
+  "expritem",      "uniqueflag",    "idxitem",       "plus_num",
   "minus_num",     "plus_opt",      "number",        "trigger_decl",
   "trigger_cmd_list",  "trigger_time",  "trigger_event",  "foreach_clause",
-  "when_clause",   "trigger_cmd",   "database_kw_opt",  "key_opt",     
+  "when_clause",   "trigger_cmd",   "database_kw_opt",  "key_opt",
 };
 #endif /* NDEBUG */
 
@@ -1191,7 +1191,7 @@ const char *sqliteParserTokenName(int tokenType){
 #endif
 }
 
-/* 
+/*
 ** This function allocates a new parser.
 ** The only argument is a pointer to a function which works like
 ** malloc.
@@ -1222,7 +1222,7 @@ static void yy_destructor(YYCODETYPE yymajor, YYMINORTYPE *yypminor){
     /* Here is inserted the actions which take place when a
     ** terminal or non-terminal is destroyed.  This can happen
     ** when the symbol is popped from the stack during a
-    ** reduce or during error processing or when a parser is 
+    ** reduce or during error processing or when a parser is
     ** being destroyed before it is finished parsing.
     **
     ** Note: during a reduce, the only symbols destroyed are those
@@ -1404,7 +1404,7 @@ static int yy_pop_parser_stack(yyParser *pParser){
   return yymajor;
 }
 
-/* 
+/*
 ** Deallocate and destroy a parser.  Destructors are all called for
 ** all stack elements before shutting the parser down.
 **
@@ -1440,7 +1440,7 @@ static int yy_find_shift_action(
 ){
   int i;
   int stateno = pParser->yystack[pParser->yyidx].stateno;
- 
+
   /* if( pParser->yyidx<0 ) return YY_NO_ACTION;  */
   i = yy_shift_ofst[stateno];
   if( i==YY_SHIFT_USE_DFLT ){
@@ -1484,7 +1484,7 @@ static int yy_find_reduce_action(
 ){
   int i;
   int stateno = pParser->yystack[pParser->yyidx].stateno;
- 
+
   i = yy_reduce_ofst[stateno];
   if( i==YY_REDUCE_USE_DFLT ){
     return yy_default[stateno];
@@ -1861,7 +1861,7 @@ static void yy_reduce(
   sqliteParserARG_FETCH;
   yymsp = &yypParser->yystack[yypParser->yyidx];
 #ifndef NDEBUG
-  if( yyTraceFILE && yyruleno>=0 
+  if( yyTraceFILE && yyruleno>=0
         && yyruleno<sizeof(yyRuleName)/sizeof(yyRuleName[0]) ){
     fprintf(yyTraceFILE, "%sReduce [%s].\n", yyTracePrompt,
       yyRuleName[yyruleno]);
@@ -3724,7 +3724,7 @@ static void yy_reduce(
       case 282:
 #line 857 "parse.y"
 {
-  yygotominor.yy242 = sqliteExpr(TK_RAISE, 0, 0, 0); 
+  yygotominor.yy242 = sqliteExpr(TK_RAISE, 0, 0, 0);
   yygotominor.yy242->iColumn = OE_Ignore;
   sqliteExprSpan(yygotominor.yy242, &yymsp[-3].minor.yy0, &yymsp[0].minor.yy0);
 }
@@ -3735,7 +3735,7 @@ static void yy_reduce(
       case 283:
 #line 862 "parse.y"
 {
-  yygotominor.yy242 = sqliteExpr(TK_RAISE, 0, 0, &yymsp[-1].minor.yy298); 
+  yygotominor.yy242 = sqliteExpr(TK_RAISE, 0, 0, &yymsp[-1].minor.yy298);
   yygotominor.yy242->iColumn = OE_Rollback;
   sqliteExprSpan(yygotominor.yy242, &yymsp[-5].minor.yy0, &yymsp[0].minor.yy0);
 }
@@ -3747,7 +3747,7 @@ static void yy_reduce(
       case 284:
 #line 867 "parse.y"
 {
-  yygotominor.yy242 = sqliteExpr(TK_RAISE, 0, 0, &yymsp[-1].minor.yy298); 
+  yygotominor.yy242 = sqliteExpr(TK_RAISE, 0, 0, &yymsp[-1].minor.yy298);
   yygotominor.yy242->iColumn = OE_Abort;
   sqliteExprSpan(yygotominor.yy242, &yymsp[-5].minor.yy0, &yymsp[0].minor.yy0);
 }
@@ -3759,7 +3759,7 @@ static void yy_reduce(
       case 285:
 #line 872 "parse.y"
 {
-  yygotominor.yy242 = sqliteExpr(TK_RAISE, 0, 0, &yymsp[-1].minor.yy298); 
+  yygotominor.yy242 = sqliteExpr(TK_RAISE, 0, 0, &yymsp[-1].minor.yy298);
   yygotominor.yy242->iColumn = OE_Fail;
   sqliteExprSpan(yygotominor.yy242, &yymsp[-5].minor.yy0, &yymsp[0].minor.yy0);
 }
@@ -3956,7 +3956,7 @@ void sqliteParser(
 #ifdef YYERRORSYMBOL
       /* A syntax error has occurred.
       ** The response to an error depends upon whether or not the
-      ** grammar defines an error token "ERROR".  
+      ** grammar defines an error token "ERROR".
       **
       ** This is what we do if the grammar does define ERROR:
       **

@@ -1,5 +1,5 @@
 /* Automatically generated. Do not edit */
-char *sqliteOpcodeNames[] = { "???", 
+char *sqliteOpcodeNames[] = { "???",
   "Goto",
   "Gosub",
   "Return",

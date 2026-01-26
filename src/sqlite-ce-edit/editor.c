@@ -12,7 +12,7 @@
 int HandleGlobalKeys(UINT msg, WPARAM wParam) {
     int ctrl = GetKeyState(VK_CONTROL) < 0;
     int alt = GetKeyState(VK_MENU) < 0;
-    
+
     if (msg == WM_SYSKEYDOWN || msg == WM_SYSCHAR) {
         if ((wParam == 'X' || wParam == 'x') && alt) {
             if (msg == WM_SYSKEYDOWN)
@@ -53,7 +53,7 @@ void UpdateLineCount(void) {
     }
     SendMessage(g_hwndQuery, EM_GETSEL, (WPARAM)&sel, 0);
     textLen = GetWindowTextLengthW(g_hwndQuery);
-    
+
     /* Count logical lines by counting newlines */
     cur = 1;
     total = 1;
@@ -181,13 +181,13 @@ static int g_lastMenuMode = 0;  /* Start with Query menu (mode 0) */
 
 static void UpdateContextMenu(int mode) {
     HMENU hNewMenu, hCtx, hOldMenu;
-    
+
     /* Only update if mode changed */
     if (mode == g_lastMenuMode) return;
-    
+
     /* Get old menu - we'll detach submenus before destroying */
     hOldMenu = CommandBar_GetMenu(g_hwndCB, 0);
-    
+
     /* Detach reusable submenus from old menu so DestroyMenu won't kill them */
     if (hOldMenu) {
         RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* File */
@@ -195,12 +195,12 @@ static void UpdateContextMenu(int mode) {
         RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* Context (Query/Results/Schema) */
         RemoveMenu(hOldMenu, 0, MF_BYPOSITION);  /* View */
     }
-    
+
     /* Build a fresh menu bar */
     hNewMenu = CreateMenu();
     AppendMenuW(hNewMenu, MF_POPUP, (UINT)g_hFileMenu, L"&File");
     AppendMenuW(hNewMenu, MF_POPUP, (UINT)g_hEditMenu, L"&Edit");
-    
+
     /* Add only the active context menu */
     if (mode == 0) {
         hCtx = g_hQueryCtx;
@@ -215,26 +215,26 @@ static void UpdateContextMenu(int mode) {
         CheckMenuItem(hCtx, IDM_SHOWSIZES, g_showSizes ? MF_CHECKED : MF_UNCHECKED);
         AppendMenuW(hNewMenu, MF_POPUP, (UINT)hCtx, L"&Schema");
     }
-    
+
     AppendMenuW(hNewMenu, MF_POPUP, (UINT)g_hViewMenu, L"&View");
     CheckMenuRadioItem(g_hViewMenu, IDM_VIEWQUERY, IDM_VIEWSCHEMA,
         mode == 0 ? IDM_VIEWQUERY : (mode == 1 ? IDM_VIEWRESULT : IDM_VIEWSCHEMA), MF_BYCOMMAND);
-    
+
     /* Update Edit menu state - basic state on view switch, WM_INITMENUPOPUP refines */
     EnableMenuItem(g_hEditMenu, IDM_REPLACE, (mode == VIEW_QUERY) ? MF_ENABLED : MF_GRAYED);
-    
+
     /* Remove old menu from CommandBar (index 0) */
     SendMessage(g_hwndCB, TB_DELETEBUTTON, 0, 0);
-    
+
     /* Insert new menu */
     CommandBar_InsertMenubarEx(g_hwndCB, NULL, (LPTSTR)hNewMenu, 0);
-    
+
     /* Force CommandBar to recalculate layout */
     CommandBar_DrawMenuBar(g_hwndCB, 0);
-    
+
     /* Now safe to destroy old shell (submenus already detached) */
     if (hOldMenu) DestroyMenu(hOldMenu);
-    
+
     g_lastMenuMode = mode;
     g_hMenu = hNewMenu;
 }
@@ -251,15 +251,15 @@ void SwitchView(int mode) {
     ShowWindow(g_hwndResult, mode == VIEW_RESULT && !g_gridView ? SW_SHOW : SW_HIDE);
     if (g_hwndGrid) ShowWindow(g_hwndGrid, mode == VIEW_RESULT && g_gridView ? SW_SHOW : SW_HIDE);
     if (g_hwndSchema) ShowWindow(g_hwndSchema, mode == VIEW_SCHEMA ? SW_SHOW : SW_HIDE);
-    
+
     /* Update context menu first, before toolbar changes */
     UpdateContextMenu(mode);
-    
+
     /* Update view toggle buttons */
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWQUERY, mode == VIEW_QUERY);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWRESULT, mode == VIEW_RESULT);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_VIEWSCHEMA, mode == VIEW_SCHEMA);
-    
+
     /* Swap button bitmap/state based on view mode */
     if (mode == VIEW_QUERY) {
         /* Query view: exec-at-cursor toggle */
@@ -277,7 +277,7 @@ void SwitchView(int mode) {
         SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_showSizes);
     }
-    
+
     if (mode == VIEW_QUERY) {
         SetFocus(g_hwndQuery);
         UpdateLineCount();
@@ -312,7 +312,7 @@ void UpdateResultFont(void) {
     HFONT hOld = g_hFontResult;
     HFONT hOldGrid = g_hFontGrid;
     LOGFONTW lf;
-    
+
     /* Text results - Courier New */
     memset(&lf, 0, sizeof(lf));
     lf.lfHeight = g_fontSizes[g_fontSizeResult];
@@ -320,7 +320,7 @@ void UpdateResultFont(void) {
     lstrcpyW(lf.lfFaceName, L"Courier New");
     g_hFontResult = CreateFontIndirectW(&lf);
     SendMessage(g_hwndResult, WM_SETFONT, (WPARAM)g_hFontResult, TRUE);
-    
+
     /* Grid - Tahoma */
     memset(&lf, 0, sizeof(lf));
     lf.lfHeight = g_fontSizes[g_fontSizeResult];
@@ -328,7 +328,7 @@ void UpdateResultFont(void) {
     g_hFontGrid = CreateFontIndirectW(&lf);
     if (g_hwndGrid)
         SendMessage(g_hwndGrid, WM_SETFONT, (WPARAM)g_hFontGrid, TRUE);
-    
+
     if (hOld) DeleteObject(hOld);
     if (hOldGrid) DeleteObject(hOldGrid);
 }
@@ -363,7 +363,7 @@ void CycleFontSize(void) {
 
 /* Subclass proc for line number gutter - blocks all input */
 LRESULT CALLBACK LineNumProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_CHAR || msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN || 
+    if (msg == WM_CHAR || msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN ||
         msg == WM_RBUTTONDOWN || msg == WM_LBUTTONDBLCLK)
         return 0;
     return CallWindowProc(g_pfnLineNumProc, hwnd, msg, wParam, lParam);

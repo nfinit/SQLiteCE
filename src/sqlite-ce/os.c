@@ -47,14 +47,14 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
     char tmp[64];
     int flag_minus, flag_plus, flag_space, flag_hash, flag_zero;
     int width, precision, is_long;
-    
+
     while (*f) {
         if (*f != '%') {
             *p++ = *f++;
             continue;
         }
         f++; /* skip '%' */
-        
+
         /* Parse flags */
         flag_minus = flag_plus = flag_space = flag_hash = flag_zero = 0;
         while (1) {
@@ -67,7 +67,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
         }
         if (flag_minus) flag_zero = 0;  /* - overrides 0 */
         if (flag_plus) flag_space = 0;  /* + overrides space */
-        
+
         /* Parse width */
         width = 0;
         if (*f == '*') {
@@ -80,7 +80,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 f++;
             }
         }
-        
+
         /* Parse precision */
         precision = -1;
         if (*f == '.') {
@@ -97,12 +97,12 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 }
             }
         }
-        
+
         /* Parse length modifier */
         is_long = 0;
         if (*f == 'l') { is_long = 1; f++; }
         if (*f == 'l') { f++; }  /* ll treated as l on 32-bit */
-        
+
         /* Format specifier */
         switch (*f) {
             case 'd': case 'i': {
@@ -112,28 +112,28 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 unsigned long uval;
                 int len, pad;
                 char sign = 0;
-                
+
                 *t = '\0';
                 if (val < 0) { neg = 1; uval = (unsigned long)(-(val + 1)) + 1; }
                 else { uval = (unsigned long)val; }
                 if (uval == 0) *--t = '0';
                 while (uval > 0) { *--t = '0' + (uval % 10); uval /= 10; }
-                
+
                 /* Apply precision (minimum digits) */
                 len = (int)((tmp + sizeof(tmp) - 1) - t);
                 if (precision > 0) {
                     while (len < precision) { *--t = '0'; len++; }
                 }
-                
+
                 /* Determine sign character */
                 if (neg) sign = '-';
                 else if (flag_plus) sign = '+';
                 else if (flag_space) sign = ' ';
-                
+
                 len = (int)((tmp + sizeof(tmp) - 1) - t);
                 if (sign) len++;
                 pad = (width > len) ? width - len : 0;
-                
+
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (sign) *p++ = sign;
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
@@ -145,19 +145,19 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned);
                 char *t = tmp + sizeof(tmp) - 1;
                 int len, pad;
-                
+
                 *t = '\0';
                 if (val == 0) *--t = '0';
                 while (val > 0) { *--t = '0' + (val % 10); val /= 10; }
-                
+
                 if (precision > 0) {
                     len = (int)((tmp + sizeof(tmp) - 1) - t);
                     while (len < precision) { *--t = '0'; len++; }
                 }
-                
+
                 len = (int)((tmp + sizeof(tmp) - 1) - t);
                 pad = (width > len) ? width - len : 0;
-                
+
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
                 STR_COPY(p, t);
@@ -168,21 +168,21 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned);
                 char *t = tmp + sizeof(tmp) - 1;
                 int len, pad, need_prefix;
-                
+
                 *t = '\0';
                 need_prefix = (flag_hash && val != 0);
                 if (val == 0) *--t = '0';
                 while (val > 0) { *--t = '0' + (val & 7); val >>= 3; }
-                
+
                 if (precision > 0) {
                     len = (int)((tmp + sizeof(tmp) - 1) - t);
                     while (len < precision) { *--t = '0'; len++; }
                 }
                 if (need_prefix && *t != '0') *--t = '0';
-                
+
                 len = (int)((tmp + sizeof(tmp) - 1) - t);
                 pad = (width > len) ? width - len : 0;
-                
+
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
                 STR_COPY(p, t);
@@ -194,21 +194,21 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 char *t = tmp + sizeof(tmp) - 1;
                 const char *hex = (*f == 'X') ? "0123456789ABCDEF" : "0123456789abcdef";
                 int len, pad, need_prefix;
-                
+
                 *t = '\0';
                 need_prefix = (flag_hash && val != 0);
                 if (val == 0) *--t = '0';
                 while (val > 0) { *--t = hex[val & 0xF]; val >>= 4; }
-                
+
                 if (precision > 0) {
                     len = (int)((tmp + sizeof(tmp) - 1) - t);
                     while (len < precision) { *--t = '0'; len++; }
                 }
-                
+
                 len = (int)((tmp + sizeof(tmp) - 1) - t);
                 if (need_prefix) len += 2;
                 pad = (width > len) ? width - len : 0;
-                
+
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (need_prefix) { *p++ = '0'; *p++ = (*f == 'X') ? 'X' : 'x'; }
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
@@ -220,14 +220,14 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 unsigned long val = (unsigned long)va_arg(ap, void*);
                 char *t = tmp + sizeof(tmp) - 1;
                 int len, pad;
-                
+
                 *t = '\0';
                 if (val == 0) *--t = '0';
                 while (val > 0) { *--t = "0123456789abcdef"[val & 0xF]; val >>= 4; }
-                
+
                 len = (int)((tmp + sizeof(tmp) - 1) - t) + 2;
                 pad = (width > len) ? width - len : 0;
-                
+
                 if (!flag_minus) while (pad-- > 0) *p++ = ' ';
                 *p++ = '0'; *p++ = 'x';
                 STR_COPY(p, t);
@@ -238,13 +238,13 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 const char *s = va_arg(ap, const char*);
                 int len = 0, pad;
                 const char *t;
-                
+
                 if (!s) s = "(null)";
                 t = s;
                 while (*t) { len++; t++; }
                 if (precision >= 0 && len > precision) len = precision;
                 pad = (width > len) ? width - len : 0;
-                
+
                 if (!flag_minus) while (pad-- > 0) *p++ = ' ';
                 while (len-- > 0) *p++ = *s++;
                 if (flag_minus) while (pad-- > 0) *p++ = ' ';
@@ -253,7 +253,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
             case 'c': {
                 char c = (char)va_arg(ap, int);
                 int pad = (width > 1) ? width - 1 : 0;
-                
+
                 if (!flag_minus) while (pad-- > 0) *p++ = ' ';
                 *p++ = c;
                 if (flag_minus) while (pad-- > 0) *p++ = ' ';
@@ -271,31 +271,31 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 int len, pad;
                 char sign = 0;
                 char expchar = *f;
-                
+
                 if (val < 0) { neg = 1; val = -val; }
-                
+
                 /* Normalize to 1.xxx * 10^exp */
                 if (val != 0) {
                     while (val >= 10) { val /= 10; exp++; }
                     while (val < 1) { val *= 10; exp--; }
                 }
-                
+
                 /* Apply rounding */
                 rounder = 0.5;
                 for (i = 0; i < prec; i++) rounder *= 0.1;
                 val += rounder;
                 if (val >= 10) { val /= 10; exp++; }
-                
+
                 /* Build number in tmp */
                 t = tmp;
                 if (neg) sign = '-';
                 else if (flag_plus) sign = '+';
                 else if (flag_space) sign = ' ';
-                
+
                 /* Integer part (single digit) */
                 *t++ = '0' + (int)val;
                 val -= (int)val;
-                
+
                 /* Fractional part */
                 if (prec > 0 || flag_hash) {
                     *t++ = '.';
@@ -305,7 +305,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                         val -= (int)val;
                     }
                 }
-                
+
                 /* Exponent */
                 *t++ = expchar;
                 *t++ = (exp < 0) ? '-' : '+';
@@ -315,11 +315,11 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 if (exp >= 10) { *t++ = '0' + (exp / 10); exp %= 10; }
                 *t++ = '0' + exp;
                 *t = '\0';
-                
+
                 len = (int)(t - tmp);
                 if (sign) len++;
                 pad = (width > len) ? width - len : 0;
-                
+
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (sign) *p++ = sign;
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
@@ -337,38 +337,38 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 double rounder;
                 int len, pad;
                 char sign = 0;
-                
+
                 if (val < 0) { neg = 1; val = -val; }
-                
+
                 /* Apply rounding */
                 rounder = 0.5;
                 for (i = 0; i < prec; i++) rounder *= 0.1;
                 val += rounder;
-                
+
                 intpart = (int)val;
-                
+
                 /* Build number in tmp */
                 t = tmp + 30;  /* Start in middle, build int part backwards */
                 *t = '\0';
                 if (intpart == 0) *--t = '0';
                 while (intpart > 0) { *--t = '0' + (intpart % 10); intpart /= 10; }
-                
+
                 if (neg) sign = '-';
                 else if (flag_plus) sign = '+';
                 else if (flag_space) sign = ' ';
-                
+
                 /* Calculate length */
                 len = (int)((tmp + 30) - t);
                 if (prec > 0 || flag_hash) len += 1 + prec;
                 if (sign) len++;
                 pad = (width > len) ? width - len : 0;
-                
+
                 /* Output */
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (sign) *p++ = sign;
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
                 STR_COPY(p, t);
-                
+
                 if (prec > 0 || flag_hash) {
                     *p++ = '.';
                     val = val - (int)(val + rounder);
@@ -524,10 +524,10 @@ int sqliteOsDelete(const char *zFilename) {
 int sqliteOsFileExists(const char *zFilename) {
     wchar_t wzFilename[SQLITE_CE_MAX_PATH];
     DWORD attrs;
-    
+
     ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
     attrs = GetFileAttributesW(wzFilename);
-    
+
     return (attrs != 0xFFFFFFFF);
 }
 
@@ -543,7 +543,7 @@ int sqliteOsOpenReadWrite(
     wchar_t wzFilename[SQLITE_CE_MAX_PATH];
     HANDLE h;
     DWORD err;
-    
+
     CE_TRACE("sqliteOsOpenReadWrite");
     if (zFilename) {
         CE_TRACE(zFilename);
@@ -551,7 +551,7 @@ int sqliteOsOpenReadWrite(
         CE_TRACE("(null filename)");
     }
     ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
-    
+
     /* Try read-write first */
     h = CreateFileW(wzFilename,
         GENERIC_READ | GENERIC_WRITE,
@@ -560,7 +560,7 @@ int sqliteOsOpenReadWrite(
         OPEN_ALWAYS,
         FILE_ATTRIBUTE_NORMAL,
         NULL);
-    
+
     if (h == INVALID_HANDLE_VALUE) {
         err = GetLastError();
         CE_TRACE("CreateFileW RW failed");
@@ -572,7 +572,7 @@ int sqliteOsOpenReadWrite(
             OPEN_ALWAYS,
             FILE_ATTRIBUTE_NORMAL,
             NULL);
-        
+
         if (h == INVALID_HANDLE_VALUE) {
             CE_TRACE("sqliteOsOpenReadWrite: CANTOPEN");
             return SQLITE_CANTOPEN;
@@ -581,11 +581,11 @@ int sqliteOsOpenReadWrite(
     } else {
         *pReadonly = 0;
     }
-    
+
     id->h = h;
     id->locked = 0;
     CE_TRACE("sqliteOsOpenReadWrite: OK");
-    
+
     return SQLITE_OK;
 }
 
@@ -596,16 +596,16 @@ int sqliteOsOpenExclusive(const char *zFilename, OsFile *id, int delFlag) {
     wchar_t wzFilename[SQLITE_CE_MAX_PATH];
     HANDLE h;
     DWORD fileflags;
-    
+
     CE_TRACE("sqliteOsOpenExclusive");
     ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
-    
+
     if (delFlag) {
         fileflags = FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE;
     } else {
         fileflags = FILE_ATTRIBUTE_NORMAL;
     }
-    
+
     h = CreateFileW(wzFilename,
         GENERIC_READ | GENERIC_WRITE,
         0,  /* No sharing - exclusive */
@@ -613,15 +613,15 @@ int sqliteOsOpenExclusive(const char *zFilename, OsFile *id, int delFlag) {
         CREATE_ALWAYS,
         fileflags,
         NULL);
-    
+
     if (h == INVALID_HANDLE_VALUE) {
         CE_TRACE("sqliteOsOpenExclusive: CANTOPEN");
         return SQLITE_CANTOPEN;
     }
-    
+
     id->h = h;
     id->locked = 0;
-    
+
     return SQLITE_OK;
 }
 
@@ -631,10 +631,10 @@ int sqliteOsOpenExclusive(const char *zFilename, OsFile *id, int delFlag) {
 int sqliteOsOpenReadOnly(const char *zFilename, OsFile *id) {
     wchar_t wzFilename[SQLITE_CE_MAX_PATH];
     HANDLE h;
-    
+
     CE_TRACE("sqliteOsOpenReadOnly");
     ce_utf8_to_wide(zFilename, wzFilename, SQLITE_CE_MAX_PATH);
-    
+
     h = CreateFileW(wzFilename,
         GENERIC_READ,
         FILE_SHARE_READ,
@@ -642,15 +642,15 @@ int sqliteOsOpenReadOnly(const char *zFilename, OsFile *id) {
         OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL,
         NULL);
-    
+
     if (h == INVALID_HANDLE_VALUE) {
         CE_TRACE("sqliteOsOpenReadOnly: CANTOPEN");
         return SQLITE_CANTOPEN;
     }
-    
+
     id->h = h;
     id->locked = 0;
-    
+
     return SQLITE_OK;
 }
 
@@ -673,15 +673,15 @@ int sqliteOsTempFileName(char *zBuf) {
         "0123456789";
     int i, j;
     char zDir[SQLITE_CE_MAX_PATH];
-    
+
     CE_TRACE("sqliteOsTempFileName");
-    
+
 #if CE_HAS_GETTEMPPATH
     {
         wchar_t wzTempPath[SQLITE_CE_MAX_PATH];
         GetTempPathW(SQLITE_CE_MAX_PATH - 30, wzTempPath);
         ce_wide_to_utf8(wzTempPath, zDir, SQLITE_CE_MAX_PATH);
-        
+
         /* Remove trailing backslash */
         for (i = strlen(zDir); i > 0 && zDir[i-1] == '\\'; i--) {}
         zDir[i] = 0;
@@ -698,7 +698,7 @@ int sqliteOsTempFileName(char *zBuf) {
         zDir[n] = 0;
     }
 #endif
-    
+
     /* Generate random filename, retry until we find one that doesn't exist */
     for (;;) {
         sprintf(zBuf, "%s\\" TEMP_FILE_PREFIX, zDir);
@@ -708,10 +708,10 @@ int sqliteOsTempFileName(char *zBuf) {
             zBuf[j] = zChars[((unsigned char)zBuf[j]) % (sizeof(zChars) - 1)];
         }
         zBuf[j] = 0;
-        
+
         if (!sqliteOsFileExists(zBuf)) break;
     }
-    
+
     return SQLITE_OK;
 }
 
@@ -729,12 +729,12 @@ int sqliteOsClose(OsFile *id) {
 */
 int sqliteOsRead(OsFile *id, void *pBuf, int amt) {
     DWORD got;
-    
+
     if (!ReadFile(id->h, pBuf, amt, &got, NULL)) {
         CE_TRACE("sqliteOsRead: ReadFile failed");
         got = 0;
     }
-    
+
     if (got == (DWORD)amt) {
         return SQLITE_OK;
     } else {
@@ -749,7 +749,7 @@ int sqliteOsRead(OsFile *id, void *pBuf, int amt) {
 int sqliteOsWrite(OsFile *id, const void *pBuf, int amt) {
     DWORD wrote;
     int rc;
-    
+
     while (amt > 0) {
         rc = WriteFile(id->h, pBuf, amt, &wrote, NULL);
         if (!rc || wrote == 0) {
@@ -759,7 +759,7 @@ int sqliteOsWrite(OsFile *id, const void *pBuf, int amt) {
         amt -= wrote;
         pBuf = &((const char *)pBuf)[wrote];
     }
-    
+
     return SQLITE_OK;
 }
 
@@ -770,14 +770,14 @@ int sqliteOsSeek(OsFile *id, off_t offset) {
     LONG upperBits = (LONG)(offset >> 32);
     LONG lowerBits = (LONG)(offset & 0xFFFFFFFF);
     DWORD result;
-    
+
     result = SetFilePointer(id->h, lowerBits, &upperBits, FILE_BEGIN);
-    
+
     if (result == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR) {
         CE_TRACE("sqliteOsSeek: SetFilePointer failed");
         return SQLITE_IOERR;
     }
-    
+
     return SQLITE_OK;
 }
 
@@ -824,14 +824,14 @@ int sqliteOsTruncate(OsFile *id, off_t nByte) {
 int sqliteOsFileSize(OsFile *id, off_t *pSize) {
     DWORD upperBits;
     DWORD lowerBits;
-    
+
     lowerBits = GetFileSize(id->h, &upperBits);
-    
+
     if (lowerBits == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) {
         CE_TRACE("sqliteOsFileSize: IOERR");
         return SQLITE_IOERR;
     }
-    
+
     *pSize = (((off_t)upperBits) << 32) + lowerBits;
     return SQLITE_OK;
 }
@@ -861,38 +861,38 @@ int sqliteOsReadLock(OsFile *id) {
     int lk;
     int cnt = 100;
     OVERLAPPED ovlp;
-    
+
     CE_TRACE("sqliteOsReadLock (LockFileEx path)");
-    
+
     if (id->locked > 0) {
         /* Already have a read lock */
         return SQLITE_OK;
     }
-    
+
     /* Get a random lock byte */
     sqliteRandomness(sizeof(lk), &lk);
     lk = (lk & 0x7FFFFFFF) % N_LOCKBYTE + 1;
-    
+
     /* Acquire coordination lock */
     while (cnt-- > 0 && (res = LockFile(id->h, FIRST_LOCKBYTE, 0, 1, 0)) == 0) {
         Sleep(1);
     }
-    
+
     if (res) {
         /* Release any existing write lock */
         UnlockFile(id->h, FIRST_LOCKBYTE + 1, 0, N_LOCKBYTE, 0);
-        
+
         /* Acquire shared read lock */
         memset(&ovlp, 0, sizeof(ovlp));
         ovlp.Offset = FIRST_LOCKBYTE + 1;
         ovlp.OffsetHigh = 0;
-        
+
         res = LockFileEx(id->h, LOCKFILE_FAIL_IMMEDIATELY, 0, N_LOCKBYTE, 0, &ovlp);
-        
+
         /* Release coordination lock */
         UnlockFile(id->h, FIRST_LOCKBYTE, 0, 1, 0);
     }
-    
+
     if (res) {
         id->locked = lk;
         return SQLITE_OK;
@@ -905,32 +905,32 @@ int sqliteOsReadLock(OsFile *id) {
 int sqliteOsWriteLock(OsFile *id) {
     int res;
     int cnt = 100;
-    
+
     CE_TRACE("sqliteOsWriteLock (LockFileEx path)");
-    
+
     if (id->locked < 0) {
         /* Already have a write lock */
         return SQLITE_OK;
     }
-    
+
     /* Acquire coordination lock */
     while (cnt-- > 0 && (res = LockFile(id->h, FIRST_LOCKBYTE, 0, 1, 0)) == 0) {
         Sleep(1);
     }
-    
+
     if (res) {
         /* Release any existing read lock */
         if (id->locked > 0) {
             UnlockFile(id->h, FIRST_LOCKBYTE + 1, 0, N_LOCKBYTE, 0);
         }
-        
+
         /* Acquire exclusive write lock */
         res = LockFile(id->h, FIRST_LOCKBYTE + 1, 0, N_LOCKBYTE, 0);
-        
+
         /* Release coordination lock */
         UnlockFile(id->h, FIRST_LOCKBYTE, 0, 1, 0);
     }
-    
+
     if (res) {
         id->locked = -1;
         return SQLITE_OK;
@@ -942,14 +942,14 @@ int sqliteOsWriteLock(OsFile *id) {
 
 int sqliteOsUnlock(OsFile *id) {
     CE_TRACE("sqliteOsUnlock (LockFileEx path)");
-    
+
     if (id->locked == 0) {
         return SQLITE_OK;
     }
-    
+
     UnlockFile(id->h, FIRST_LOCKBYTE + 1, 0, N_LOCKBYTE, 0);
     id->locked = 0;
-    
+
     return SQLITE_OK;
 }
 
@@ -963,7 +963,7 @@ int sqliteOsUnlock(OsFile *id) {
 
 int sqliteOsReadLock(OsFile *id) {
     CE_TRACE("sqliteOsReadLock (no-op path)");
-    
+
     if (id->locked < 0) {
         /* Downgrade from write to read */
         id->locked = 1;
@@ -999,23 +999,23 @@ int sqliteOsUnlock(OsFile *id) {
 int sqliteOsRandomSeed(char *zBuf) {
     SYSTEMTIME st;
     DWORD ticks;
-    
+
     /* Initialize buffer to zero (required - see SQLite comments) */
     memset(zBuf, 0, 256);
-    
+
 #ifndef SQLITE_TEST
     /* Get system time */
     GetSystemTime(&st);
     memcpy(zBuf, &st, sizeof(st));
-    
+
     /* Add tick count for additional entropy */
     ticks = GetTickCount();
     memcpy(&zBuf[sizeof(SYSTEMTIME)], &ticks, sizeof(ticks));
-    
+
     /* On CE we could also use CeGenRandom if available (CE 3.0+) */
     /* but GetTickCount provides reasonable entropy for SQLite's needs */
 #endif
-    
+
     return SQLITE_OK;
 }
 
@@ -1036,9 +1036,9 @@ int sqliteOsCurrentTime(double *prNow) {
 #if CE_HAS_GETSYSTEMTIMEASFILETIME
     FILETIME ft;
     double now;
-    
+
     GetSystemTimeAsFileTime(&ft);
-    
+
     /* FILETIME: 100-nanosecond intervals since January 1, 1601 (JD 2305813.5) */
     now = ((double)ft.dwHighDateTime) * 4294967296.0;
     *prNow = (now + ft.dwLowDateTime) / 864000000000.0 + 2305813.5;
@@ -1048,13 +1048,13 @@ int sqliteOsCurrentTime(double *prNow) {
     int Y, M, D;
     int A, B;
     double JD;
-    
+
     GetSystemTime(&st);
-    
+
     Y = st.wYear;
     M = st.wMonth;
     D = st.wDay;
-    
+
     /* Julian Day calculation algorithm */
     if (M <= 2) {
         Y -= 1;
@@ -1062,18 +1062,18 @@ int sqliteOsCurrentTime(double *prNow) {
     }
     A = Y / 100;
     B = 2 - A + (A / 4);
-    
+
     JD = (int)(365.25 * (Y + 4716)) + (int)(30.6001 * (M + 1)) + D + B - 1524.5;
-    
+
     /* Add time of day as fraction */
     JD += st.wHour / 24.0
         + st.wMinute / 1440.0
         + st.wSecond / 86400.0
         + st.wMilliseconds / 86400000.0;
-    
+
     *prNow = JD;
 #endif
-    
+
 #ifdef SQLITE_TEST
     {
         extern int sqlite_current_time;
@@ -1082,7 +1082,7 @@ int sqliteOsCurrentTime(double *prNow) {
         }
     }
 #endif
-    
+
     return 0;
 }
 
@@ -1133,7 +1133,7 @@ void sqliteOsLeaveMutex(void) {
 char *sqliteOsFullPathname(const char *zRelative) {
     char *zFull;
     int nByte;
-    
+
     /*
     ** On CE, we don't have a true "current directory" concept in the
     ** same way as desktop Windows. Paths starting with \ are absolute.
@@ -1162,7 +1162,7 @@ char *sqliteOsFullPathname(const char *zRelative) {
             strcpy(&zFull[1], zRelative);
         }
     }
-    
+
     /* Convert forward slashes to backslashes for consistency */
     if (zFull) {
         char *p;
@@ -1170,7 +1170,7 @@ char *sqliteOsFullPathname(const char *zRelative) {
             if (*p == '/') *p = '\\';
         }
     }
-    
+
     return zFull;
 }
 

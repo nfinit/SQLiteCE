@@ -26,9 +26,9 @@ static int g_nTriggers = 0;
 DWORD GetDatabaseSize(void) {
     HANDLE hFile;
     DWORD dwSize = 0;
-    
+
     if (!g_db || !g_szDbPath[0]) return 0;  /* :memory: returns 0 */
-    
+
     hFile = CreateFileW(g_szDbPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
         NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile != INVALID_HANDLE_VALUE) {
@@ -44,12 +44,12 @@ DWORD GetDatabaseSize(void) {
 
 void GetSchemaStatus(wchar_t *buf, int bufLen) {
     DWORD dwSize;
-    
+
     if (!g_db) {
         lstrcpyW(buf, L"No database");
         return;
     }
-    
+
     dwSize = GetDatabaseSize();
     if (dwSize > 0) {
         if (dwSize >= 1048576)
@@ -95,14 +95,14 @@ static LRESULT CALLBACK SchemaSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, L
 
 void CreateSchemaView(HWND hwndParent, int x, int y, int cx, int cy) {
     HBITMAP hBmp;
-    
+
     g_hwndSchema = CreateWindowExW(0, WC_TREEVIEWW, NULL,
         WS_CHILD | WS_BORDER | TVS_HASLINES | TVS_HASBUTTONS | TVS_LINESATROOT,
         x, y, cx, cy, hwndParent, (HMENU)1005, g_hInst, NULL);
-    
+
     /* Subclass to suppress Enter beep */
     g_pfnSchemaProc = (WNDPROC)SetWindowLong(g_hwndSchema, GWL_WNDPROC, (LONG)SchemaSubclassProc);
-    
+
     /* Create image list from schema.bmp */
     hBmp = LoadBitmapW(g_hInst, MAKEINTRESOURCEW(IDB_SCHEMA));
     if (hBmp) {
@@ -140,7 +140,7 @@ static int GetRowCount(const char *tblname) {
     STR_COPY(p, "SELECT COUNT(*) FROM ");
     STR_COPY(p, tblname);
     *p = 0;
-    
+
     sqlite_get_table(g_db, sql, &results, &nRows, &nCols, NULL);
     if (results && nRows > 0 && results[1])
         count = atoi(results[1]);
@@ -158,7 +158,7 @@ static int GetTableSize(const char *tblname) {
     STR_COPY(p, "SELECT * FROM ");
     STR_COPY(p, tblname);
     *p = 0;
-    
+
     sqlite_get_table(g_db, sql, &results, &nRows, &nCols, NULL);
     if (results) {
         for (i = 1; i <= nRows; i++) {
@@ -179,17 +179,17 @@ void RefreshSchema(void) {
     char **results = NULL;
     int nRows = 0, nCols = 0, i;
     char *errmsg = NULL;
-    
+
     if (!g_hwndSchema) return;
-    
+
     /* Clear existing items and counts */
     TreeView_DeleteAllItems(g_hwndSchema);
     g_nTables = 0;
     g_nViews = 0;
     g_nTriggers = 0;
-    
+
     if (!g_db) return;
-    
+
     /* Get database name for root */
     if (g_szDbPath[0]) {
         wchar_t *p = g_szDbPath + lstrlenW(g_szDbPath);
@@ -201,17 +201,17 @@ void RefreshSchema(void) {
     } else {
         lstrcpyW(dbname, L":memory:");
     }
-    
+
     /* Add root node */
     hRoot = AddTreeItem(TVI_ROOT, dbname, IMG_DATABASE);
-    
+
     /* Get all tables */
-    sqlite_get_table(g_db, 
+    sqlite_get_table(g_db,
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
         &results, &nRows, &nCols, &errmsg);
     if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
     g_nTables = nRows;
-    
+
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {
             if (g_showSizes) {
@@ -235,14 +235,14 @@ void RefreshSchema(void) {
         }
     }
     if (results) { sqlite_free_table(results); results = NULL; }
-    
+
     /* Get all views */
-    sqlite_get_table(g_db, 
+    sqlite_get_table(g_db,
         "SELECT name FROM sqlite_master WHERE type='view' ORDER BY name",
         &results, &nRows, &nCols, &errmsg);
     if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
     g_nViews = nRows;
-    
+
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {
             MultiByteToWideChar(CP_ACP, 0, results[i], -1, wname, 128);
@@ -251,14 +251,14 @@ void RefreshSchema(void) {
         }
     }
     if (results) { sqlite_free_table(results); results = NULL; }
-    
+
     /* Get all triggers */
-    sqlite_get_table(g_db, 
+    sqlite_get_table(g_db,
         "SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name",
         &results, &nRows, &nCols, &errmsg);
     if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
     g_nTriggers = nRows;
-    
+
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {
             MultiByteToWideChar(CP_ACP, 0, results[i], -1, wname, 128);
@@ -266,11 +266,11 @@ void RefreshSchema(void) {
         }
     }
     if (results) sqlite_free_table(results);
-    
+
     /* Expand and select root */
     TreeView_Expand(g_hwndSchema, hRoot, TVE_EXPAND);
     TreeView_SelectItem(g_hwndSchema, hRoot);
-    
+
     /* Update status bar if in schema view */
     if (g_viewMode == 2) {
         wchar_t statusBuf[64];
@@ -298,7 +298,7 @@ static int ColumnCallback(void *pArg, int argc, char **argv, char **cols) {
     int isPK = (argv[5] && argv[5][0] != '0' && argv[5][0] != '\0');
     int i = 0;
     (void)argc; (void)cols;
-    
+
     /* Build display string: "name (TYPE) PK" or "name (TYPE) NN" */
     while (*name && i < 200) wtext[i++] = (wchar_t)(unsigned char)*name++;
     if (type[0]) {
@@ -306,13 +306,13 @@ static int ColumnCallback(void *pArg, int argc, char **argv, char **cols) {
         while (*type && i < 220) wtext[i++] = (wchar_t)(unsigned char)*type++;
         wtext[i++] = ')';
     }
-    if (isPK) { 
-        wtext[i++] = ' '; wtext[i++] = 'P'; wtext[i++] = 'K'; 
-    } else if (notNull) { 
-        wtext[i++] = ' '; wtext[i++] = 'N'; wtext[i++] = 'N'; 
+    if (isPK) {
+        wtext[i++] = ' '; wtext[i++] = 'P'; wtext[i++] = 'K';
+    } else if (notNull) {
+        wtext[i++] = ' '; wtext[i++] = 'N'; wtext[i++] = 'N';
     }
     wtext[i] = 0;
-    
+
     AddTreeItem(ctx->hParent, wtext, isPK ? IMG_KEY : IMG_COLUMN);
     ctx->count++;
     return 0;
@@ -329,26 +329,26 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
     ColumnCtx ctx;
     char *errmsg = NULL;
     HTREEITEM hPlaceholder;
-    
+
     if (pnm->action != TVE_EXPAND) return;
-    
+
     /* Get item text */
     item.mask = TVIF_TEXT | TVIF_IMAGE;
     item.hItem = pnm->itemNew.hItem;
     item.pszText = text;
     item.cchTextMax = 128;
     TreeView_GetItem(g_hwndSchema, &item);
-    
+
     /* Only expand tables or views */
     if (item.iImage != IMG_TABLE && item.iImage != IMG_VIEW) return;
-    
+
     /* Strip size info if present */
     {
         wchar_t *p = text;
         while (*p && *p != ' ' && *p != '(') p++;
         *p = 0;
     }
-    
+
     /* Check if placeholder child exists (means not yet populated) */
     hPlaceholder = TreeView_GetChild(g_hwndSchema, pnm->itemNew.hItem);
     if (hPlaceholder) {
@@ -363,10 +363,10 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
         /* Delete placeholder */
         TreeView_DeleteItem(g_hwndSchema, hPlaceholder);
     }
-    
+
     /* Get table name */
     WideCharToMultiByte(CP_ACP, 0, text, -1, tblname, 128, NULL, NULL);
-    
+
     /* Query columns */
     {
         char *p = sql;
@@ -378,7 +378,7 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
     ctx.count = 0;
     sqlite_exec(g_db, sql, ColumnCallback, &ctx, &errmsg);
     if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
-    
+
     /* Query indexes for this table */
     {
         char *p = sql;
@@ -388,7 +388,7 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
     }
     sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
     if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
-    
+
     for (i = 1; i <= nRows && results; i++) {
         if (results[i]) {
             /* sqlite_autoindex_* = primary key, others = user index */
@@ -406,15 +406,15 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
 
 void ClearEditMode(void) {
     int i;
-    
+
     if (!g_editMode) return;
-    
+
     g_editMode = 0;
     g_editTableName[0] = '\0';
-    
+
     /* Clear undo stack */
     ClearUndoStack();
-    
+
     /* Free insert mode state */
     if (g_pendingValues) {
         for (i = 0; i < g_colMetaCount; i++) {
@@ -423,15 +423,15 @@ void ClearEditMode(void) {
         FREE(g_pendingValues);
     }
     g_insertMode = 0;
-    
+
     /* Free column metadata */
     FreeColumnMetadata();
-    
+
     /* Restore previous grid/text view state */
     g_gridView = g_gridViewBeforeEdit;
     ShowWindow(g_hwndResult, g_gridView ? SW_HIDE : SW_SHOW);
     if (g_hwndGrid) ShowWindow(g_hwndGrid, g_gridView ? SW_SHOW : SW_HIDE);
-    
+
     /* Re-enable the grid toggle button */
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, TRUE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
@@ -459,11 +459,11 @@ static int ColMetaCallback(void *pArg, int argc, char **argv, char **cols) {
     char *d;
     int i;
     (void)argc; (void)cols;
-    
+
     if (ctx->count >= ctx->capacity) return 0;
-    
+
     col = &g_colMeta[ctx->count];
-    
+
     /* name (argv[1]) */
     col->name[0] = '\0';
     if (argv[1]) {
@@ -471,7 +471,7 @@ static int ColMetaCallback(void *pArg, int argc, char **argv, char **cols) {
         while (*s && i < 63) { *d++ = *s++; i++; }
         *d = '\0';
     }
-    
+
     /* type (argv[2]) */
     col->type[0] = '\0';
     if (argv[2]) {
@@ -479,16 +479,16 @@ static int ColMetaCallback(void *pArg, int argc, char **argv, char **cols) {
         while (*s && i < 31) { *d++ = *s++; i++; }
         *d = '\0';
     }
-    
+
     /* notnull (argv[3]) - non-zero means NOT NULL */
     col->notNull = (argv[3] && argv[3][0] != '0' && argv[3][0] != '\0') ? 1 : 0;
-    
+
     /* dflt_value (argv[4]) - hasDefault if non-NULL */
     col->hasDefault = (argv[4] != NULL) ? 1 : 0;
-    
+
     /* pk (argv[5]) - non-zero means PRIMARY KEY */
     col->isPK = (argv[5] && argv[5][0] != '0' && argv[5][0] != '\0') ? 1 : 0;
-    
+
     /* isAutoInc: INTEGER PRIMARY KEY is alias for rowid in SQLite 2.x */
     col->isAutoInc = 0;
     if (col->isPK && col->type[0]) {
@@ -501,7 +501,7 @@ static int ColMetaCallback(void *pArg, int argc, char **argv, char **cols) {
             col->isAutoInc = 1;
         }
     }
-    
+
     ctx->count++;
     return 0;
 }
@@ -512,40 +512,40 @@ int LoadColumnMetadata(const char *tablename) {
     const char *s;
     char *errmsg = NULL;
     ColMetaCtx ctx;
-    
+
     /* Free any existing metadata */
     FreeColumnMetadata();
-    
+
     if (!g_db || !tablename) return 0;
-    
+
     /* First pass: count columns */
     {
         char **results = NULL;
         int nRows = 0, nCols = 0;
-        
+
         p = sql;
         STR_COPY(p, "PRAGMA table_info('");
         STR_COPY(p, tablename);
         *p++ = '\''; *p++ = ')'; *p = '\0';
-        
+
         sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
         if (errmsg) { sqlite_freemem(errmsg); errmsg = NULL; }
         if (results) sqlite_free_table(results);
-        
+
         if (nRows < 1) return 0;
-        
+
         /* Allocate array */
         g_colMeta = ALLOC_ZERO(ColumnMeta, nRows);
         if (!g_colMeta) return 0;
-        
+
         ctx.capacity = nRows;
         ctx.count = 0;
     }
-    
+
     /* Second pass: populate metadata */
     sqlite_exec(g_db, sql, ColMetaCallback, &ctx, &errmsg);
     if (errmsg) sqlite_freemem(errmsg);
-    
+
     g_colMetaCount = ctx.count;
     return g_colMetaCount;
 }
@@ -566,9 +566,9 @@ void OpenTableForEditing(const char *tablename) {
     int nRows = 0, nCols = 0;
     int i, total;
     int sameTable = 0;
-    
+
     if (!g_db || !tablename) return;
-    
+
     /* Check if re-opening same table (preserve undo stack) */
     if (g_editMode && g_editTableName[0]) {
         const char *a = tablename;
@@ -579,7 +579,7 @@ void OpenTableForEditing(const char *tablename) {
         }
         if (*a || *b) sameTable = 0;
     }
-    
+
     /* Clear previous edit state (but preserve undo if same table) */
     if (!sameTable) {
         ClearEditMode();
@@ -594,30 +594,30 @@ void OpenTableForEditing(const char *tablename) {
         g_insertMode = 0;
         FreeColumnMetadata();
     }
-    
+
     /* Load column metadata first - needed for empty tables */
     LoadColumnMetadata(tablename);
     if (g_colMetaCount < 1) {
         SetStatusResult(L"Error: no columns found");
         return;
     }
-    
+
     /* Build SELECT rowid, * FROM tablename */
     STR_COPY(p, "SELECT rowid, * FROM ");
     STR_COPY(p, tablename);
     *p++ = ';'; *p = 0;
-    
+
     /* Setup for query */
     g_abortQuery = 0;
     if (g_clearOnExec) ClearOutput();
-    
+
     startTick = GetTickCount();
-    
+
     rc = sqlite_get_table(g_db, sql, &results, &nRows, &nCols, &errmsg);
-    
+
     elapsed = GetTickCount() - startTick;
     g_lastQueryTime = elapsed;
-    
+
     if (rc != SQLITE_OK) {
         if (errmsg) {
             OutputLine(errmsg);
@@ -627,20 +627,20 @@ void OpenTableForEditing(const char *tablename) {
         SetStatusResult(L"Error opening table");
         return;
     }
-    
+
     /* Free previous results */
     FreeLastResults();
-    
+
     /* Handle empty table: nCols=0 from sqlite_get_table, use metadata */
     if (nCols == 0) {
         nCols = g_colMetaCount + 1;  /* +1 for rowid */
     }
-    
+
     /* Store results - includes rowid as column 0 */
     g_lastResultRows = nRows;
     g_lastResultCols = nCols;
     total = (nRows + 1) * nCols;
-    
+
     g_lastResult = ALLOC_ZERO(char *, total);
     if (g_lastResult) {
         /* Build header row from column metadata if no results */
@@ -680,17 +680,17 @@ void OpenTableForEditing(const char *tablename) {
         }
     }
     if (results) sqlite_free_table(results);
-    
+
     /* Save current grid view state before entering edit mode */
     g_gridViewBeforeEdit = g_gridView;
-    
+
     /* Set edit mode */
     g_editMode = 1;
     s = tablename;
     p = g_editTableName;
     while (*s && (p - g_editTableName) < 127) *p++ = *s++;
     *p = '\0';
-    
+
     /* Update status */
     {
         wchar_t wtbl[128];
@@ -698,12 +698,12 @@ void OpenTableForEditing(const char *tablename) {
         wsprintfW(wbuf, L"Editing: %s (%d rows)", wtbl, nRows);
     }
     SetStatusResult(wbuf);
-    
+
     /* Populate grid and switch to grid view */
     g_gridView = 1;
     PopulateGrid();
     SwitchView(VIEW_RESULT);
-    
+
     /* Disable grid/text toggle button while in edit mode */
     SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, FALSE);
     SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, TRUE);
@@ -718,28 +718,28 @@ void OnSchemaDoubleClick(void) {
     TV_ITEMW item;
     wchar_t text[128];
     char name[128];
-    
+
     hItem = TreeView_GetSelection(g_hwndSchema);
     if (!hItem) return;
-    
+
     item.mask = TVIF_TEXT | TVIF_IMAGE;
     item.hItem = hItem;
     item.pszText = text;
     item.cchTextMax = 128;
     TreeView_GetItem(g_hwndSchema, &item);
-    
+
     /* Only for tables and views */
     if (item.iImage != IMG_TABLE && item.iImage != IMG_VIEW) return;
-    
+
     /* Strip size info if present (e.g., "tablename (10, 2 KB)" -> "tablename") */
     {
         wchar_t *p = text;
         while (*p && *p != ' ' && *p != '(') p++;
         *p = 0;
     }
-    
+
     WideCharToMultiByte(CP_ACP, 0, text, -1, name, 128, NULL, NULL);
-    
+
     if (item.iImage == IMG_TABLE) {
         /* Tables open in editable grid mode */
         OpenTableForEditing(name);
@@ -769,34 +769,34 @@ void OnSchemaDelete(void) {
     const char *type;
     char *p;
     const char *s;
-    
+
     hItem = TreeView_GetSelection(g_hwndSchema);
     if (!hItem) return;
-    
+
     item.mask = TVIF_TEXT | TVIF_IMAGE;
     item.hItem = hItem;
     item.pszText = text;
     item.cchTextMax = 128;
     TreeView_GetItem(g_hwndSchema, &item);
-    
+
     /* Only tables, views, triggers can be dropped */
     if (item.iImage == IMG_TABLE) type = "DROP TABLE ";
     else if (item.iImage == IMG_VIEW) type = "DROP VIEW ";
     else if (item.iImage == IMG_TRIGGER) type = "DROP TRIGGER ";
     else return;
-    
+
     /* Strip size info if present */
     {
         wchar_t *wp = text;
         while (*wp && *wp != ' ' && *wp != '(') wp++;
         *wp = 0;
     }
-    
+
     /* Confirm */
     wsprintfW(msg, L"Drop '%s'?", text);
     if (MessageBoxW(g_hwndMain, msg, L"Confirm", MB_YESNO | MB_ICONQUESTION) != IDYES)
         return;
-    
+
     /* Build and execute DROP */
     WideCharToMultiByte(CP_ACP, 0, text, -1, name, 128, NULL, NULL);
     p = sql;
@@ -816,22 +816,22 @@ int GetSelectedObjectType(void) {
     HTREEITEM hItem;
     TV_ITEMW item;
     wchar_t text[128];
-    
+
     if (!g_hwndSchema) return -1;
-    
+
     hItem = TreeView_GetSelection(g_hwndSchema);
     if (!hItem) return -1;
-    
+
     item.mask = TVIF_IMAGE;
     item.hItem = hItem;
     item.pszText = text;
     item.cchTextMax = 128;
     TreeView_GetItem(g_hwndSchema, &item);
-    
+
     /* Return type for tables, views, triggers only */
     if (item.iImage == IMG_TABLE || item.iImage == IMG_VIEW || item.iImage == IMG_TRIGGER)
         return item.iImage;
-    
+
     return -1;
 }
 
@@ -850,20 +850,20 @@ void ExportSelectedDDL(void) {
     int nRows = 0, nCols = 0;
     HANDLE hFile;
     DWORD dwWritten;
-    
+
     hItem = TreeView_GetSelection(g_hwndSchema);
     if (!hItem) return;
-    
+
     item.mask = TVIF_TEXT | TVIF_IMAGE;
     item.hItem = hItem;
     item.pszText = text;
     item.cchTextMax = 128;
     TreeView_GetItem(g_hwndSchema, &item);
-    
+
     /* Only tables, views, triggers have DDL */
     if (item.iImage != IMG_TABLE && item.iImage != IMG_VIEW && item.iImage != IMG_TRIGGER)
         return;
-    
+
     /* Get object name (strip size info if present) */
     {
         wchar_t *p = text;
@@ -871,7 +871,7 @@ void ExportSelectedDDL(void) {
         *p = 0;
     }
     WideCharToMultiByte(CP_ACP, 0, text, -1, name, 128, NULL, NULL);
-    
+
     /* Query DDL from sqlite_master */
     {
         char *p = sql;
@@ -879,16 +879,16 @@ void ExportSelectedDDL(void) {
         STR_COPY(p, name);
         *p++ = '\''; *p = 0;
     }
-    
+
     sqlite_get_table(g_db, sql, &results, &nRows, &nCols, NULL);
     if (!results || nRows < 1 || !results[1]) {
         if (results) sqlite_free_table(results);
         return;
     }
-    
+
     /* Default filename */
     wsprintfW(szFile, L"%s.sql", text);
-    
+
     if (CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Export DDL", L"SQL Files (*.sql)\0*.sql\0",
             L"sql", NULL, 1)) {
@@ -899,7 +899,7 @@ void ExportSelectedDDL(void) {
             CloseHandle(hFile);
         }
     }
-    
+
     sqlite_free_table(results);
 }
 
@@ -916,9 +916,9 @@ void ExportAllDDL(void) {
     HANDLE hFile;
     DWORD dwWritten;
     SYSTEMTIME st;
-    
+
     if (!g_db) return;
-    
+
     /* Get database name for default filename */
     if (g_szDbPath[0] && g_szDbPath[0] != ':') {
         wchar_t *p = g_szDbPath + lstrlenW(g_szDbPath);
@@ -930,22 +930,22 @@ void ExportAllDDL(void) {
         lstrcpyW(dbname, L"memory");
     }
     wsprintfW(szFile, L"%s.sql", dbname);
-    
+
     if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
             L"Export All DDL", L"SQL Files (*.sql)\0*.sql\0",
             L"sql", NULL, 1)) return;
-    
+
     /* Get all DDL ordered: tables first, then views, then triggers, then indexes */
     sqlite_get_table(g_db,
         "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL "
         "ORDER BY CASE type WHEN 'table' THEN 1 WHEN 'view' THEN 2 WHEN 'trigger' THEN 3 WHEN 'index' THEN 4 END, name",
         &results, &nRows, &nCols, NULL);
-    
+
     if (!results || nRows < 1) {
         if (results) sqlite_free_table(results);
         return;
     }
-    
+
     hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile != INVALID_HANDLE_VALUE) {
         /* Write header with database name and timestamp */
@@ -967,7 +967,7 @@ void ExportAllDDL(void) {
             *p++ = '\r'; *p++ = '\n'; *p++ = '\r'; *p++ = '\n'; *p = 0;
         }
         WriteFile(hFile, header, strlen(header), &dwWritten, NULL);
-        
+
         for (i = 1; i <= nRows; i++) {
             if (results[i]) {
                 WriteFile(hFile, results[i], strlen(results[i]), &dwWritten, NULL);
@@ -976,6 +976,6 @@ void ExportAllDDL(void) {
         }
         CloseHandle(hFile);
     }
-    
+
     sqlite_free_table(results);
 }
