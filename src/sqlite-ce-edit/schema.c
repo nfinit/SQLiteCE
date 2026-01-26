@@ -418,10 +418,9 @@ void ClearEditMode(void) {
     /* Free insert mode state */
     if (g_pendingValues) {
         for (i = 0; i < g_colMetaCount; i++) {
-            if (g_pendingValues[i]) LocalFree(g_pendingValues[i]);
+            FREE(g_pendingValues[i]);
         }
-        LocalFree(g_pendingValues);
-        g_pendingValues = NULL;
+        FREE(g_pendingValues);
     }
     g_insertMode = 0;
     
@@ -443,10 +442,7 @@ void ClearEditMode(void) {
 **============================================================================*/
 
 void FreeColumnMetadata(void) {
-    if (g_colMeta) {
-        LocalFree(g_colMeta);
-        g_colMeta = NULL;
-    }
+    FREE(g_colMeta);
     g_colMetaCount = 0;
 }
 
@@ -591,10 +587,9 @@ void OpenTableForEditing(const char *tablename) {
         /* Just clear insert mode, keep undo stack */
         if (g_pendingValues) {
             for (i = 0; i < g_colMetaCount; i++) {
-                if (g_pendingValues[i]) LocalFree(g_pendingValues[i]);
+                FREE(g_pendingValues[i]);
             }
-            LocalFree(g_pendingValues);
-            g_pendingValues = NULL;
+            FREE(g_pendingValues);
         }
         g_insertMode = 0;
         FreeColumnMetadata();

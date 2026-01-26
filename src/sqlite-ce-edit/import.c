@@ -529,7 +529,7 @@ void DoImportCEDB(void) {
         sqlite_exec(g_db, sql, NULL, NULL, NULL);
         rowCount++;
         
-        if (pProps) { LocalFree(pProps); pProps = NULL; }
+        FREE(pProps);
         cbBuf = 0;
         nProps = 0;
     }

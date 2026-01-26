@@ -583,7 +583,7 @@ void PopulateGrid(void) {
     startTick = GetTickCount();
     
     /* Reset sort state */
-    if (g_sortIndex) { LocalFree(g_sortIndex); g_sortIndex = NULL; }
+    FREE(g_sortIndex);
     g_sortCol = -1;
     g_sortAsc = 1;
     g_gridFindRow = 0;
@@ -944,8 +944,7 @@ void ClearUndoStack(void) {
     for (i = 0; i < g_undoCount; i++) {
         FreeUndoRow(&g_undoStack[i]);
     }
-    if (g_undoStack) LocalFree(g_undoStack);
-    g_undoStack = NULL;
+    FREE(g_undoStack);
     g_undoCount = 0;
     g_undoCapacity = 0;
     g_undoBytes = 0;
@@ -1246,12 +1245,9 @@ static void ClearInsertMode(void) {
     int i;
     if (g_pendingValues) {
         for (i = 0; i < g_colMetaCount; i++) {
-            if (g_pendingValues[i]) {
-                LocalFree(g_pendingValues[i]);
-            }
+            FREE(g_pendingValues[i]);
         }
-        LocalFree(g_pendingValues);
-        g_pendingValues = NULL;
+        FREE(g_pendingValues);
     }
     g_insertMode = 0;
     
@@ -1280,10 +1276,7 @@ static void StorePendingValue(int col, const char *value) {
     if (!g_pendingValues || col < 0 || col >= g_colMetaCount) return;
     
     /* Free old value */
-    if (g_pendingValues[col]) {
-        LocalFree(g_pendingValues[col]);
-        g_pendingValues[col] = NULL;
-    }
+    FREE(g_pendingValues[col]);
     
     /* Store new value */
     /* NULL pointer = not set, "\x01" = explicit NULL, "" = empty string, else = value */

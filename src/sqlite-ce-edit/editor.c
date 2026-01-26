@@ -98,10 +98,7 @@ void UpdateLineNumbers(void) {
     /* Check if text changed (invalidate cache) */
     if (textLen != g_lineNumTextLen) {
         textChanged = 1;
-        if (g_lineNumTextCache) {
-            LocalFree(g_lineNumTextCache);
-            g_lineNumTextCache = NULL;
-        }
+        FREE(g_lineNumTextCache);
         g_lineNumTextLen = textLen;
     }
 
@@ -170,10 +167,7 @@ void UpdateLineNumbers(void) {
 
 /* Free line number cache (call on shutdown) */
 void CleanupLineNumCache(void) {
-    if (g_lineNumTextCache) {
-        LocalFree(g_lineNumTextCache);
-        g_lineNumTextCache = NULL;
-    }
+    FREE(g_lineNumTextCache);
     g_lineNumTextLen = -1;
     g_lineNumLogicalTotal = 0;
 }

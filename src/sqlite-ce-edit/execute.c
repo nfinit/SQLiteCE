@@ -106,11 +106,8 @@ static void OutputResults(void) {
 }
 
 void FreeLastResults(void) {
-    if (g_lastResult) {
-        /* Free the pointer array only - strings are in the intern table */
-        LocalFree(g_lastResult);
-        g_lastResult = NULL;
-    }
+    /* Free the pointer array only - strings are in the intern table */
+    FREE(g_lastResult);
     g_lastResultRows = 0;
     g_lastResultCols = 0;
 
