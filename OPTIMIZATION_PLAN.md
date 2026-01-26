@@ -1013,6 +1013,26 @@ These 5 items require careful implementation in core SQLite code:
 | `Makefile` | Added `make check` and `make verify` targets |
 | `scripts/build-verify.sh` | **NEW** - Automated build verification script |
 
+### Modernization (Post-Optimization)
+| File | Change |
+|------|--------|
+| `src/sqlite-ce-edit/allocators.h` | **NEW** - Type-safe ALLOC/ALLOC_ZERO/FREE macros |
+| `src/sqlite-ce-edit/strutils.h` | **NEW** - Safe string utilities (StrLenSafe, StrCopySafe, STR_COPY) |
+| `src/sqlite-ce-edit/strutils.c` | **NEW** - String utilities implementation |
+| `src/sqlite-ce-edit/wince-compat.h` | **NEW** - Windows CE SDK compatibility defines |
+| `src/sqlite-ce-edit/globals.h` | Reduced by ~60 lines via wince-compat.h include |
+| `src/sqlite-ce-edit/settings.c` | Type-safe INT_SETTING/STR_SETTING macros |
+| `src/sqlite-ce-edit/dialogs.c` | Fixed TODO: title parameter now used |
+| `src/sqlite-ce-edit/grid.c` | ~11 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/execute.c` | ~9 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/schema.c` | ~5 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/fileops.c` | ~12 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/editor.c` | ~2 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/output.c` | ~2 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/find.c` | ~4 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/import.c` | ~2 LocalAlloc → ALLOC conversions, STR_COPY usage |
+| `src/sqlite-ce/os.c` | Return value checks (DeleteFileW, SetFilePointer), safer strings |
+
 ---
 
 *This document serves as the master tracking document for all SQLite/CE optimization work. Update the Status field for each item as work progresses.*
