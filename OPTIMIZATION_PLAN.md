@@ -1025,12 +1025,12 @@ These 5 items require careful implementation in core SQLite code:
 | `src/sqlite-ce-edit/dialogs.c` | Fixed TODO: title parameter now used |
 | `src/sqlite-ce-edit/grid.c` | ~11 ALLOC conversions, ~32 STR_COPY conversions |
 | `src/sqlite-ce-edit/execute.c` | ~9 LocalAlloc → ALLOC conversions |
-| `src/sqlite-ce-edit/schema.c` | ~5 ALLOC conversions, ~9 STR_COPY conversions |
-| `src/sqlite-ce-edit/fileops.c` | ~12 ALLOC conversions, ~4 STR_COPY conversions |
+| `src/sqlite-ce-edit/schema.c` | ~5 ALLOC conversions, ~12 STR_COPY conversions |
+| `src/sqlite-ce-edit/fileops.c` | ~12 ALLOC conversions, ~55 STR_COPY conversions (SQL/HTML export) |
 | `src/sqlite-ce-edit/editor.c` | ~2 LocalAlloc → ALLOC conversions |
 | `src/sqlite-ce-edit/output.c` | ~2 LocalAlloc → ALLOC conversions |
 | `src/sqlite-ce-edit/find.c` | ~4 LocalAlloc → ALLOC conversions |
-| `src/sqlite-ce-edit/import.c` | ~2 ALLOC conversions, ~12 STR_COPY conversions |
+| `src/sqlite-ce-edit/import.c` | ~2 ALLOC conversions, ~18 STR_COPY conversions |
 | `src/sqlite-ce/os.c` | Return value checks, 7 STR_COPY conversions in sprintf |
 | `src/sqlite-ce/log.c` | 2 STR_COPY conversions |
 | `src/sqlite-ce-test/test_main.c` | 1 STR_COPY conversion |
@@ -1038,8 +1038,10 @@ These 5 items require careful implementation in core SQLite code:
 
 **Modernization Summary:**
 - **ALLOC macros**: ~47 LocalAlloc calls converted to type-safe macros
-- **STR_COPY macro**: ~65 string copy patterns converted across all source files
+- **STR_COPY macro**: ~120 string copy patterns converted across all source files
+  - Includes both `while (*s) *p++ = *s++;` and `for (t = ...; *t; ) *p++ = *t++;` patterns
 - Quote-escaping loops retained (need special handling for escaping)
+- Wide-to-narrow char conversions retained (intentional type truncation)
 - LMEM_MOVEABLE allocations retained (required by Windows clipboard API)
 
 ---
