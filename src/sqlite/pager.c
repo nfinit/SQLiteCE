@@ -1269,17 +1269,31 @@ static int pager_write_pagelist(PgHdr *pList){
 }
 
 /*
-** Collect every dirty page into a dirty list and
-** return a pointer to the head of that list.  All pages are
+** Collect every dirty page into a dirty list sorted by page number
+** and return a pointer to the head of that list.  All pages are
 ** collected even if they are still in use.
+**
+** Sorting by page number reduces seek overhead during commit,
+** especially beneficial for flash storage on Windows CE devices.
 */
 static PgHdr *pager_get_all_dirty_pages(Pager *pPager){
-  PgHdr *p, *pList;
+  PgHdr *p, *pList, *pInsert, *pPrev;
   pList = 0;
   for(p=pPager->pAll; p; p=p->pNextAll){
     if( p->dirty ){
-      p->pDirty = pList;
-      pList = p;
+      /* Insert into sorted position by pgno (ascending order) */
+      pPrev = 0;
+      pInsert = pList;
+      while( pInsert && pInsert->pgno < p->pgno ){
+        pPrev = pInsert;
+        pInsert = pInsert->pDirty;
+      }
+      p->pDirty = pInsert;
+      if( pPrev ){
+        pPrev->pDirty = p;
+      }else{
+        pList = p;
+      }
     }
   }
   return pList;
