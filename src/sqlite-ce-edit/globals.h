@@ -154,6 +154,7 @@ extern char **g_lastResult;
 extern int g_lastResultRows;
 extern int g_lastResultCols;
 void FreeLastResults(void);
+void CleanupExecute(void);
 extern HFONT g_hFontQuery;
 extern HFONT g_hFontResult;
 extern HFONT g_hFontSchema;

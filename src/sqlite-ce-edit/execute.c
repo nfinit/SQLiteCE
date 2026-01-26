@@ -5,6 +5,7 @@
 #include "globals.h"
 #include "constants.h"
 #include "strpool.h"
+#include "strintern.h"
 #include "allocators.h"
 
 /*============================================================================
@@ -43,8 +44,8 @@ static int g_resultRows;
 /* String pool for result data - reduces LocalAlloc calls by ~95% */
 static StrPool *g_resultPool = NULL;
 
-/* String pool for last result storage */
-static StrPool *g_lastResultPool = NULL;
+/* String intern table for last result storage - deduplicates repeated values */
+static StringIntern *g_lastResultIntern = NULL;
 
 static int strlen_safe(const char *s) {
     int n = 0;
@@ -106,16 +107,16 @@ static void OutputResults(void) {
 
 void FreeLastResults(void) {
     if (g_lastResult) {
-        /* Free the pointer array only - strings are in the pool */
+        /* Free the pointer array only - strings are in the intern table */
         LocalFree(g_lastResult);
         g_lastResult = NULL;
     }
     g_lastResultRows = 0;
     g_lastResultCols = 0;
 
-    /* Reset the last result pool */
-    if (g_lastResultPool) {
-        StrPoolReset(g_lastResultPool);
+    /* Reset the intern table - keeps allocated memory for reuse */
+    if (g_lastResultIntern) {
+        StringInternReset(g_lastResultIntern);
     }
 }
 
@@ -126,10 +127,10 @@ static void StoreLastResults(void) {
     FreeLastResults();
     if (g_nCols == 0 || g_resultRows == 0) return;
 
-    /* Create or reset the pool - 32KB chunks for typical result sets */
-    if (!g_lastResultPool) {
-        g_lastResultPool = StrPoolCreate(32 * 1024);
-        if (!g_lastResultPool) return;
+    /* Create or reset the intern table - 1024 buckets for good distribution */
+    if (!g_lastResultIntern) {
+        g_lastResultIntern = StringInternCreate(1024);
+        if (!g_lastResultIntern) return;
     }
 
     /* Allocate flat array like sqlite_get_table: (nRows+1) * nCols pointers */
@@ -139,21 +140,21 @@ static void StoreLastResults(void) {
     g_lastResultRows = g_resultRows;
     g_lastResultCols = g_nCols;
 
-    /* Copy header row - use string pool */
+    /* Copy header row - use string interning (headers often repeat across queries) */
     for (c = 0; c < g_nCols; c++) {
         if (g_results[0][c]) {
-            g_lastResult[c] = StrPoolDup(g_lastResultPool, g_results[0][c]);
+            g_lastResult[c] = StringInternGet(g_lastResultIntern, g_results[0][c]);
         } else {
             g_lastResult[c] = NULL;
         }
     }
 
-    /* Copy data rows - use string pool */
+    /* Copy data rows - use string interning (deduplicates repeated values) */
     for (r = 1; r <= g_resultRows; r++) {
         for (c = 0; c < g_nCols; c++) {
             int idx = r * g_nCols + c;
             if (g_results[r][c]) {
-                g_lastResult[idx] = StrPoolDup(g_lastResultPool, g_results[r][c]);
+                g_lastResult[idx] = StringInternGet(g_lastResultIntern, g_results[r][c]);
             } else {
                 g_lastResult[idx] = NULL;
             }
@@ -676,5 +677,26 @@ void ExecuteQuery(void) {
             InvalidateRect(g_hwndGrid, NULL, TRUE);
         }
         RefreshSchema();  /* Update schema in case CREATE/DROP was executed */
+    }
+}
+
+/*============================================================================
+** Cleanup function - call on application exit
+**============================================================================*/
+
+void CleanupExecute(void) {
+    /* Free last results */
+    FreeLastResults();
+
+    /* Destroy intern table */
+    if (g_lastResultIntern) {
+        StringInternDestroy(g_lastResultIntern);
+        g_lastResultIntern = NULL;
+    }
+
+    /* Destroy result pool */
+    if (g_resultPool) {
+        StrPoolDestroy(g_resultPool);
+        g_resultPool = NULL;
     }
 }
