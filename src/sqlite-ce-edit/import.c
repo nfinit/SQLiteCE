@@ -156,12 +156,12 @@ void DoImportCSV(void) {
     for (i = 0; i < nCols; i++) {
         if (i > 0) { *p++ = ','; *p++ = ' '; }
         *p++ = '"';
-        for (t = headers[i]; *t; ) *p++ = *t++;
+        STR_COPY(p, headers[i]);
         *p++ = '"';
         *p++ = ' ';
-        if (types[i] == 1) { for (t = "INTEGER"; *t; ) *p++ = *t++; }
-        else if (types[i] == 2) { for (t = "REAL"; *t; ) *p++ = *t++; }
-        else { for (t = "TEXT"; *t; ) *p++ = *t++; }
+        if (types[i] == 1) { STR_COPY(p, "INTEGER"); }
+        else if (types[i] == 2) { STR_COPY(p, "REAL"); }
+        else { STR_COPY(p, "TEXT"); }
     }
     *p++ = ')'; *p = '\0';
     

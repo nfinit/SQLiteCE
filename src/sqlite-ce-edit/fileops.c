@@ -729,8 +729,8 @@ void DoExportTable(void) {
             char **ddlRes;
             int ddlRow, ddlCol;
             p = sql;
-            for (t = "SELECT sql FROM sqlite_master WHERE type='table' AND name='"; *t; ) *p++ = *t++;
-            for (t = tblName; *t; ) *p++ = *t++;
+            STR_COPY(p, "SELECT sql FROM sqlite_master WHERE type='table' AND name='");
+            STR_COPY(p, tblName);
             *p++ = '\''; *p = 0;
             if (sqlite_get_table(g_db, sql, &ddlRes, &ddlRow, &ddlCol, NULL) == SQLITE_OK) {
                 if (ddlRow > 0 && ddlRes[1]) {
@@ -744,14 +744,14 @@ void DoExportTable(void) {
         /* Write INSERT statements */
         for (i = 1; i <= nRow; i++) {
             lp = line;
-            for (t = "INSERT INTO \""; *t; ) *lp++ = *t++;
-            for (t = tblName; *t; ) *lp++ = *t++;
-            for (t = "\" VALUES ("; *t; ) *lp++ = *t++;
+            STR_COPY(lp, "INSERT INTO \"");
+            STR_COPY(lp, tblName);
+            STR_COPY(lp, "\" VALUES (");
             for (j = 0; j < nCol; j++) {
                 char *val = result[i * nCol + j];
                 if (j > 0) { *lp++ = ','; *lp++ = ' '; }
                 if (!val) {
-                    for (t = "NULL"; *t; ) *lp++ = *t++;
+                    STR_COPY(lp, "NULL");
                 } else {
                     *lp++ = '\'';
                     while (*val) {
@@ -913,60 +913,60 @@ void DoExportHTML(void) {
     
     /* Build HTML */
     /* <table> opening tag with optional id/class */
-    for (t = "<table"; *t; ) *bp++ = *t++;
+    STR_COPY(bp, "<table");
     if (g_htmlTableId[0]) {
-        for (t = " id=\""; *t; ) *bp++ = *t++;
+        STR_COPY(bp, " id=\"");
         { wchar_t *w = g_htmlTableId; while (*w) *bp++ = (char)*w++; }
         *bp++ = '"';
     }
     if (g_htmlTableClass[0]) {
-        for (t = " class=\""; *t; ) *bp++ = *t++;
+        STR_COPY(bp, " class=\"");
         { wchar_t *w = g_htmlTableClass; while (*w) *bp++ = (char)*w++; }
         *bp++ = '"';
     }
-    for (t = ">\r\n"; *t; ) *bp++ = *t++;
-    
+    STR_COPY(bp, ">\r\n");
+
     /* Header row */
     if (g_htmlIncludeHeader) {
-        for (t = "<thead><tr>"; *t; ) *bp++ = *t++;
+        STR_COPY(bp, "<thead><tr>");
         for (j = 0; j < nCol; j++) {
-            for (t = "<th>"; *t; ) *bp++ = *t++;
+            STR_COPY(bp, "<th>");
             if (result[j]) {
                 char *v = result[j];
                 while (*v) {
-                    if (*v == '<') { for (t = "&lt;"; *t; ) *bp++ = *t++; }
-                    else if (*v == '>') { for (t = "&gt;"; *t; ) *bp++ = *t++; }
-                    else if (*v == '&') { for (t = "&amp;"; *t; ) *bp++ = *t++; }
+                    if (*v == '<') { STR_COPY(bp, "&lt;"); }
+                    else if (*v == '>') { STR_COPY(bp, "&gt;"); }
+                    else if (*v == '&') { STR_COPY(bp, "&amp;"); }
                     else *bp++ = *v;
                     v++;
                 }
             }
-            for (t = "</th>"; *t; ) *bp++ = *t++;
+            STR_COPY(bp, "</th>");
         }
-        for (t = "</tr></thead>\r\n"; *t; ) *bp++ = *t++;
+        STR_COPY(bp, "</tr></thead>\r\n");
     }
-    
+
     /* Data rows */
-    for (t = "<tbody>\r\n"; *t; ) *bp++ = *t++;
+    STR_COPY(bp, "<tbody>\r\n");
     for (i = 1; i <= nRow; i++) {
-        for (t = "<tr>"; *t; ) *bp++ = *t++;
+        STR_COPY(bp, "<tr>");
         for (j = 0; j < nCol; j++) {
             char *val = result[i * nCol + j];
-            for (t = "<td>"; *t; ) *bp++ = *t++;
+            STR_COPY(bp, "<td>");
             if (val) {
                 while (*val) {
-                    if (*val == '<') { for (t = "&lt;"; *t; ) *bp++ = *t++; }
-                    else if (*val == '>') { for (t = "&gt;"; *t; ) *bp++ = *t++; }
-                    else if (*val == '&') { for (t = "&amp;"; *t; ) *bp++ = *t++; }
+                    if (*val == '<') { STR_COPY(bp, "&lt;"); }
+                    else if (*val == '>') { STR_COPY(bp, "&gt;"); }
+                    else if (*val == '&') { STR_COPY(bp, "&amp;"); }
                     else *bp++ = *val;
                     val++;
                 }
             }
-            for (t = "</td>"; *t; ) *bp++ = *t++;
+            STR_COPY(bp, "</td>");
         }
-        for (t = "</tr>\r\n"; *t; ) *bp++ = *t++;
+        STR_COPY(bp, "</tr>\r\n");
     }
-    for (t = "</tbody>\r\n</table>\r\n"; *t; ) *bp++ = *t++;
+    STR_COPY(bp, "</tbody>\r\n</table>\r\n");
     *bp = 0;
     len = bp - buf;
     
@@ -1089,60 +1089,60 @@ void DoExportHTMLResults(void) {
     bp = buf;
     
     /* Build HTML table opening */
-    for (t = "<table"; *t; ) *bp++ = *t++;
+    STR_COPY(bp, "<table");
     if (g_htmlTableId[0]) {
-        for (t = " id=\""; *t; ) *bp++ = *t++;
+        STR_COPY(bp, " id=\"");
         { wchar_t *w = g_htmlTableId; while (*w) *bp++ = (char)*w++; }
         *bp++ = '"';
     }
     if (g_htmlTableClass[0]) {
-        for (t = " class=\""; *t; ) *bp++ = *t++;
+        STR_COPY(bp, " class=\"");
         { wchar_t *w = g_htmlTableClass; while (*w) *bp++ = (char)*w++; }
         *bp++ = '"';
     }
-    for (t = ">\r\n"; *t; ) *bp++ = *t++;
-    
+    STR_COPY(bp, ">\r\n");
+
     /* Header row */
     if (g_htmlIncludeHeader) {
-        for (t = "<thead><tr>"; *t; ) *bp++ = *t++;
+        STR_COPY(bp, "<thead><tr>");
         for (j = 0; j < g_lastResultCols; j++) {
             char *val = g_lastResult[j];
-            for (t = "<th>"; *t; ) *bp++ = *t++;
+            STR_COPY(bp, "<th>");
             if (val) {
                 while (*val) {
-                    if (*val == '<') { for (t = "&lt;"; *t; ) *bp++ = *t++; }
-                    else if (*val == '>') { for (t = "&gt;"; *t; ) *bp++ = *t++; }
-                    else if (*val == '&') { for (t = "&amp;"; *t; ) *bp++ = *t++; }
+                    if (*val == '<') { STR_COPY(bp, "&lt;"); }
+                    else if (*val == '>') { STR_COPY(bp, "&gt;"); }
+                    else if (*val == '&') { STR_COPY(bp, "&amp;"); }
                     else *bp++ = *val;
                     val++;
                 }
             }
-            for (t = "</th>"; *t; ) *bp++ = *t++;
+            STR_COPY(bp, "</th>");
         }
-        for (t = "</tr></thead>\r\n"; *t; ) *bp++ = *t++;
+        STR_COPY(bp, "</tr></thead>\r\n");
     }
-    
+
     /* Data rows */
-    for (t = "<tbody>\r\n"; *t; ) *bp++ = *t++;
+    STR_COPY(bp, "<tbody>\r\n");
     for (i = 1; i <= g_lastResultRows; i++) {
-        for (t = "<tr>"; *t; ) *bp++ = *t++;
+        STR_COPY(bp, "<tr>");
         for (j = 0; j < g_lastResultCols; j++) {
             char *val = g_lastResult[i * g_lastResultCols + j];
-            for (t = "<td>"; *t; ) *bp++ = *t++;
+            STR_COPY(bp, "<td>");
             if (val) {
                 while (*val) {
-                    if (*val == '<') { for (t = "&lt;"; *t; ) *bp++ = *t++; }
-                    else if (*val == '>') { for (t = "&gt;"; *t; ) *bp++ = *t++; }
-                    else if (*val == '&') { for (t = "&amp;"; *t; ) *bp++ = *t++; }
+                    if (*val == '<') { STR_COPY(bp, "&lt;"); }
+                    else if (*val == '>') { STR_COPY(bp, "&gt;"); }
+                    else if (*val == '&') { STR_COPY(bp, "&amp;"); }
                     else *bp++ = *val;
                     val++;
                 }
             }
-            for (t = "</td>"; *t; ) *bp++ = *t++;
+            STR_COPY(bp, "</td>");
         }
-        for (t = "</tr>\r\n"; *t; ) *bp++ = *t++;
+        STR_COPY(bp, "</tr>\r\n");
     }
-    for (t = "</tbody>\r\n</table>\r\n"; *t; ) *bp++ = *t++;
+    STR_COPY(bp, "</tbody>\r\n</table>\r\n");
     *bp = 0;
     len = (int)(bp - buf);
     
