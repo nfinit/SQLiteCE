@@ -4,6 +4,7 @@
 
 #include "globals.h"
 #include "allocators.h"
+#include "strutils.h"
 
 /*============================================================================
 ** Storage Card Detection Helper
@@ -691,7 +692,7 @@ void DoExportTable(void) {
         for (j = 0; j < nCol; j++) {
             char *val = result[j];
             if (j > 0) *lp++ = ',';
-            if (val) while (*val) *lp++ = *val++;
+            if (val) STR_COPY(lp, val);
         }
         *lp++ = '\r'; *lp++ = '\n';
         WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
@@ -714,7 +715,7 @@ void DoExportTable(void) {
                         }
                         *lp++ = '"';
                     } else {
-                        while (*val) *lp++ = *val++;
+                        STR_COPY(lp, val);
                     }
                 }
             }
@@ -1223,11 +1224,11 @@ static void ExportTableToCSV(const wchar_t *dir, const char *tblName) {
     for (j = 0; j < nCol; j++) {
         char *val = result[j];
         if (j > 0) *lp++ = ',';
-        if (val) while (*val) *lp++ = *val++;
+        if (val) STR_COPY(lp, val);
     }
     *lp++ = '\r'; *lp++ = '\n';
     WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
-    
+
     /* Write data rows */
     for (i = 1; i <= nRow; i++) {
         lp = line;
@@ -1246,14 +1247,14 @@ static void ExportTableToCSV(const wchar_t *dir, const char *tblName) {
                     }
                     *lp++ = '"';
                 } else {
-                    while (*val) *lp++ = *val++;
+                    STR_COPY(lp, val);
                 }
             }
         }
         *lp++ = '\r'; *lp++ = '\n';
         WriteFile(hFile, line, (DWORD)(lp - line), &written, NULL);
     }
-    
+
     CloseHandle(hFile);
     sqlite_free_table(result);
 }

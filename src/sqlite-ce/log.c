@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <stdarg.h>
 #include "log.h"
+#include "../sqlite-ce-edit/strutils.h"
 
 /* Runtime log level (defaults to compile-time level) */
 static int g_logLevel = SQLITE_CE_LOG_LEVEL;
@@ -45,7 +46,7 @@ void sqliteLog(int level, const char *file, int line, const char *fmt, ...) {
     /* Add level tag */
     *p++ = '[';
     s = g_levelNames[level];
-    while (*s) *p++ = *s++;
+    STR_COPY(p, s);
     *p++ = ']';
     *p++ = ' ';
 
@@ -59,7 +60,7 @@ void sqliteLog(int level, const char *file, int line, const char *fmt, ...) {
         }
         s = lastSlash;
     }
-    while (*s) *p++ = *s++;
+    STR_COPY(p, s);
     *p++ = ':';
 
     /* Add line number */

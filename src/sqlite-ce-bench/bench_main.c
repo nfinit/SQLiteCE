@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include "sqlite.h"
+#include "../sqlite-ce-edit/strutils.h"
 
 #define APP_VERSION "1.2.0"
 
@@ -284,20 +285,20 @@ static void SetCurrentPath(int pathType) {
 static void BuildTestPath(char *dest, const char *filename) {
     char *d = dest;
     const char *s = g_testPath;
-    while (*s) *d++ = *s++;
+    STR_COPY(d, s);
     *d++ = '\\';
     s = filename;
-    while (*s) *d++ = *s++;
+    STR_COPY(d, s);
     *d = '\0';
 }
 
 static void BuildTestPathW(wchar_t *dest, const wchar_t *filename) {
     wchar_t *d = dest;
     const wchar_t *s = g_testPathW;
-    while (*s) *d++ = *s++;
+    STR_COPY_W(d, s);
     *d++ = L'\\';
     s = filename;
-    while (*s) *d++ = *s++;
+    STR_COPY_W(d, s);
     *d = L'\0';
 }
 
@@ -337,7 +338,7 @@ static void SetDebugContext(const char *fmt, int val) {
             if (v == 0) *--t = '0';
             while (v > 0) { *--t = '0' + (v % 10); v /= 10; }
             if (neg) *--t = '-';
-            while (*t) *p++ = *t++;
+            STR_COPY(p, t);
             f += 2;
         } else {
             *p++ = *f++;

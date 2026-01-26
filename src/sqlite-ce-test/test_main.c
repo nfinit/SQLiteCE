@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include "sqlite.h"
+#include "../sqlite-ce-edit/strutils.h"
 
 /* Rich Edit message - may not be in CE headers */
 #ifndef EM_SETBKGNDCOLOR
@@ -131,7 +132,7 @@ static void SetDebugContext(const char *fmt, int val) {
             if (v == 0) *--t = '0';
             while (v > 0) { *--t = '0' + (v % 10); v /= 10; }
             if (neg) *--t = '-';
-            while (*t) *p++ = *t++;
+            STR_COPY(p, t);
             f += 2;
         } else {
             *p++ = *f++;

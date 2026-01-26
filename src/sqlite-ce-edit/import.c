@@ -204,7 +204,7 @@ void DoImportCSV(void) {
                 if (!*val) {
                     *p++ = 'N'; *p++ = 'U'; *p++ = 'L'; *p++ = 'L';
                 } else if (types[i] == 1 || types[i] == 2) {
-                    while (*val) *p++ = *val++;
+                    STR_COPY(p, val);
                 } else {
                     *p++ = '\'';
                     while (*val) {
@@ -487,7 +487,7 @@ void DoImportCEDB(void) {
             num[15] = 0; *np = 0;
             if (n == 0) *--np = '0';
             else while (n > 0) { *--np = (char)('0' + (n % 10)); n /= 10; }
-            while (*np) *p++ = *np++;
+            STR_COPY(p, np);
         }
         
         STR_COPY(p, ", '");
@@ -510,7 +510,7 @@ void DoImportCEDB(void) {
                 if (n == 0) *--np = '0';
                 else while (n > 0) { *--np = '0' + (n % 10); n /= 10; }
                 if (neg) *--np = '-';
-                while (*np) *p++ = *np++;
+                STR_COPY(p, np);
             } else if (type == CEVT_I2) {
                 char num[16]; char *np = num + 14; int n = pProps[i].val.iVal;
                 int neg = 0;
@@ -519,7 +519,7 @@ void DoImportCEDB(void) {
                 if (n == 0) *--np = '0';
                 else while (n > 0) { *--np = '0' + (n % 10); n /= 10; }
                 if (neg) *--np = '-';
-                while (*np) *p++ = *np++;
+                STR_COPY(p, np);
             }
         }
         
@@ -541,16 +541,15 @@ void DoImportCEDB(void) {
     {
         char msg[256];
         char *mp = msg;
-        const char *t = "Imported ";
-        while (*t) *mp++ = *t++;
+        STR_COPY(mp, "Imported ");
         { int n = rowCount; char nb[16]; char *np = nb + 14; nb[15] = 0; *np = 0;
           if (n == 0) *--np = '0'; else while (n > 0) { *--np = '0' + (n % 10); n /= 10; }
-          while (*np) *mp++ = *np++; }
-        t = " records from '"; while (*t) *mp++ = *t++;
+          STR_COPY(mp, np); }
+        STR_COPY(mp, " records from '");
         for (i = 0; dbNames[sel][i]; i++) *mp++ = (char)dbNames[sel][i];
-        t = "' to table '"; while (*t) *mp++ = *t++;
+        STR_COPY(mp, "' to table '");
         for (i = 0; tblName[i]; i++) *mp++ = (char)tblName[i];
-        t = "'."; while (*t) *mp++ = *t++;
+        STR_COPY(mp, "'.");
         *mp = 0;
         OutputLine(msg);
     }

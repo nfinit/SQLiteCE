@@ -21,6 +21,7 @@
 
 #include <windows.h>
 #include <stdarg.h>
+#include "../sqlite-ce-edit/strutils.h"
 
 /*
 ** CE 2.0 SDK may be missing some constants. Define them here.
@@ -136,7 +137,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (sign) *p++ = sign;
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
-                while (*t) *p++ = *t++;
+                STR_COPY(p, t);
                 if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
@@ -159,7 +160,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
-                while (*t) *p++ = *t++;
+                STR_COPY(p, t);
                 if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
@@ -184,7 +185,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
-                while (*t) *p++ = *t++;
+                STR_COPY(p, t);
                 if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
@@ -211,7 +212,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (need_prefix) { *p++ = '0'; *p++ = (*f == 'X') ? 'X' : 'x'; }
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
-                while (*t) *p++ = *t++;
+                STR_COPY(p, t);
                 if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
@@ -229,7 +230,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 
                 if (!flag_minus) while (pad-- > 0) *p++ = ' ';
                 *p++ = '0'; *p++ = 'x';
-                while (*t) *p++ = *t++;
+                STR_COPY(p, t);
                 if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
@@ -323,7 +324,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 if (sign) *p++ = sign;
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
                 t = tmp;
-                while (*t) *p++ = *t++;
+                STR_COPY(p, t);
                 if (flag_minus) while (pad-- > 0) *p++ = ' ';
                 break;
             }
@@ -366,7 +367,7 @@ int ce_vsprintf(char *buf, const char *fmt, va_list ap) {
                 if (!flag_minus && !flag_zero) while (pad-- > 0) *p++ = ' ';
                 if (sign) *p++ = sign;
                 if (!flag_minus && flag_zero) while (pad-- > 0) *p++ = '0';
-                while (*t) *p++ = *t++;
+                STR_COPY(p, t);
                 
                 if (prec > 0 || flag_hash) {
                     *p++ = '.';

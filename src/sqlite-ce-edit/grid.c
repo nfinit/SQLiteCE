@@ -93,7 +93,7 @@ static void CopySelectedRow(void) {
     for (j = startCol; j < g_lastResultCols; j++) {
         char *val = g_lastResult[(dataRow + 1) * g_lastResultCols + j];
         if (j > startCol) *p++ = '\t';
-        if (val) while (*val) *p++ = *val++;
+        if (val) STR_COPY(p, val);
     }
     *p = 0;
     len = (int)(p - buf);
@@ -1295,7 +1295,7 @@ static void StorePendingValue(int col, const char *value) {
         if (g_pendingValues[col]) {
             s = value;
             d = g_pendingValues[col];
-            while (*s) *d++ = *s++;
+            STR_COPY(d, s);
             *d = '\0';
         }
     }
