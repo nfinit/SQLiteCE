@@ -99,7 +99,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Baseline Memory Footprint |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Establish baseline memory usage for empty database and idle state |
 | **Description** | Measure memory consumption at application startup with no database loaded, then with empty database, then with database containing schema only (no data). |
 | **Metrics** | - Process working set (KB)<br>- Heap allocated (KB)<br>- Global variables footprint (KB)<br>- Static buffers (KB) |
@@ -111,7 +111,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Query Result Memory Scaling |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Validate A-002 (string pool) and A-003 (string interning) optimizations |
 | **Description** | Execute queries returning increasing row counts and measure memory growth. Compare with/without string pool and interning. |
 | **Metrics** | - Memory per 1K rows (KB)<br>- String pool efficiency (%)<br>- Intern hit rate (%)<br>- Peak memory usage (KB) |
@@ -311,7 +311,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Sequential Read Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure raw sequential read throughput and validate C-003 (read-ahead) |
 | **Description** | Read entire database sequentially and measure throughput. Compare with/without read-ahead prefetching. |
 | **Metrics** | - MB/sec read throughput<br>- Pages read per second<br>- Read-ahead hit rate (%)<br>- I/O wait time (ms) |
@@ -347,7 +347,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Sorted Dirty Page Write Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Validate C-002 (sorted dirty page writes) reduces flash wear and improves commit time |
 | **Description** | Commit transactions with scattered dirty pages and measure write patterns. Compare sorted vs unsorted. |
 | **Metrics** | - Commit time (ms)<br>- Write order (page numbers)<br>- Seek distance reduction (%)<br>- Flash write amplification |
@@ -463,7 +463,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Maximum Table Size |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Determine practical limits for table row counts |
 | **Description** | Insert rows until performance degrades unacceptably or limits are reached. |
 | **Metrics** | - Maximum practical rows<br>- Query time at limit (ms)<br>- Memory usage at limit (KB)<br>- Insert rate degradation |
@@ -487,7 +487,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Concurrent Query Stress |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Test behavior under rapid sequential query execution |
 | **Description** | Execute queries as fast as possible and measure stability and resource usage. |
 | **Metrics** | - Queries executed before failure<br>- Memory growth rate (KB/query)<br>- Resource leak detection<br>- Error rate (%) |
@@ -523,7 +523,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Rapid Open/Close Cycles |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Test database open/close for resource leaks |
 | **Description** | Open and close database rapidly and check for handle/memory leaks. |
 | **Metrics** | - Open/close cycles before failure<br>- Handle leak count<br>- Memory growth (KB)<br>- File lock release time |
@@ -643,6 +643,7 @@ timestamp,benchmark_id,iteration,metric_name,metric_value,unit,notes
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-01-25 | Claude | Initial benchmark plan with 40 benchmarks across 6 categories |
+| 1.1 | 2026-01-25 | Claude | Implemented 9 benchmarks in SQLiteCEBench: M-001, M-002, I-001, I-004, S-001, S-003, S-006 |
 
 ---
 

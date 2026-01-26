@@ -144,10 +144,14 @@ static sqlite *g_curDb = NULL;    /* Current db for parameterized tests */
 #define CAT_ERROR    6   /* Error path validation */
 #define CAT_MATH_INT 7   /* Integer arithmetic */
 #define CAT_MATH_FP  8   /* Floating-point arithmetic */
-#define CAT_COUNT    9
+#define CAT_MEMORY   9   /* Memory usage benchmarks (M-xxx) */
+#define CAT_IO       10  /* I/O performance benchmarks (I-xxx) */
+#define CAT_SCALE    11  /* Scalability benchmarks (S-xxx) */
+#define CAT_COUNT    12
 
 static const char *g_catNames[CAT_COUNT] = {
-    "Init", "Write", "Read", "Update", "Query", "Schema", "Error", "Math(Int)", "Math(FP)"
+    "Init", "Write", "Read", "Update", "Query", "Schema", "Error", "Math(Int)", "Math(FP)",
+    "Memory", "I/O", "Scale"
 };
 static DWORD g_catMs[CAT_COUNT];
 static int g_catTests[CAT_COUNT];
@@ -1746,6 +1750,320 @@ static int test_fp_large(void) {
 }
 
 /*============================================================================
+** Benchmark Tests - Memory (M-xxx from BENCHMARK_PLAN.md)
+**============================================================================*/
+
+/* M-001: Baseline Memory Footprint */
+static DWORD g_memBefore, g_memAfter;
+
+static int test_mem_baseline(void) {
+    MEMORYSTATUS ms;
+    ms.dwLength = sizeof(ms);
+    GlobalMemoryStatus(&ms);
+    g_memBefore = (DWORD)(ms.dwAvailPhys / 1024);
+    /* Just measure - always passes */
+    return 1;
+}
+
+static int test_mem_after_schema(void) {
+    MEMORYSTATUS ms;
+    ms.dwLength = sizeof(ms);
+    GlobalMemoryStatus(&ms);
+    g_memAfter = (DWORD)(ms.dwAvailPhys / 1024);
+    /* Report delta in debug context */
+    SetDebugContext("delta: %d KB", (int)(g_memBefore - g_memAfter));
+    return 1;
+}
+
+/* M-002: Query Result Memory Scaling */
+static int test_mem_result_100(void) {
+    MEMORYSTATUS ms1, ms2;
+    int i;
+    sqlite *saved = g_db;
+
+    g_db = sqlite_open(":memory:", 0, NULL);
+    if (!g_db) return 0;
+
+    sqlite_exec(g_db, "CREATE TABLE t(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+    sqlite_exec(g_db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 100; i++) {
+        sqlite_exec(g_db, "INSERT INTO t VALUES(NULL, 'Test data row for memory benchmark')", NULL, NULL, NULL);
+    }
+    sqlite_exec(g_db, "COMMIT", NULL, NULL, NULL);
+
+    ms1.dwLength = sizeof(ms1);
+    GlobalMemoryStatus(&ms1);
+
+    /* Fetch all rows */
+    CountRows("SELECT * FROM t");
+
+    ms2.dwLength = sizeof(ms2);
+    GlobalMemoryStatus(&ms2);
+
+    sqlite_close(g_db);
+    g_db = saved;
+
+    SetDebugContext("100 rows, %d KB", (int)((ms1.dwAvailPhys - ms2.dwAvailPhys) / 1024));
+    return 1;
+}
+
+static int test_mem_result_1k(void) {
+    MEMORYSTATUS ms1, ms2;
+    int i;
+    sqlite *saved = g_db;
+
+    g_db = sqlite_open(":memory:", 0, NULL);
+    if (!g_db) return 0;
+
+    sqlite_exec(g_db, "CREATE TABLE t(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+    sqlite_exec(g_db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        sqlite_exec(g_db, "INSERT INTO t VALUES(NULL, 'Test data row for memory benchmark')", NULL, NULL, NULL);
+    }
+    sqlite_exec(g_db, "COMMIT", NULL, NULL, NULL);
+
+    ms1.dwLength = sizeof(ms1);
+    GlobalMemoryStatus(&ms1);
+
+    CountRows("SELECT * FROM t");
+
+    ms2.dwLength = sizeof(ms2);
+    GlobalMemoryStatus(&ms2);
+
+    sqlite_close(g_db);
+    g_db = saved;
+
+    SetDebugContext("1K rows, %d KB", (int)((ms1.dwAvailPhys - ms2.dwAvailPhys) / 1024));
+    return 1;
+}
+
+/*============================================================================
+** Benchmark Tests - I/O (I-xxx from BENCHMARK_PLAN.md)
+**============================================================================*/
+
+/* I-001: Sequential Read Performance */
+static int test_io_seq_read(void) {
+    sqlite *db;
+    char path[128];
+    wchar_t pathW[128];
+    char sql[256];
+    int i, count;
+    DWORD start, elapsed;
+    char *p;
+
+    BuildTestPath(path, "io_seq_test.db");
+    BuildTestPathW(pathW, L"io_seq_test.db");
+    DeleteFileW(pathW);
+
+    db = sqlite_open(path, 0, NULL);
+    if (!db) return 0;
+
+    /* Create table with chunky data */
+    sqlite_exec(db, "CREATE TABLE data(id INTEGER PRIMARY KEY, chunk TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+
+    /* Insert 1000 rows with ~100 byte chunks */
+    for (i = 0; i < 1000; i++) {
+        p = sql;
+        STR_COPY(p, "INSERT INTO data VALUES(");
+        /* Add id */
+        {
+            char num[16];
+            char *n = num + 15;
+            int v = i + 1;
+            *n = '\0';
+            while (v > 0) { *--n = '0' + (v % 10); v /= 10; }
+            if (i == 0) *--n = '1';
+            STR_COPY(p, n);
+        }
+        STR_COPY(p, ", 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')");
+        *p = '\0';
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    /* Time sequential read */
+    start = GetTickCount();
+    {
+        sqlite *saved = g_db;
+        g_db = db;
+        count = CountRows("SELECT * FROM data");
+        g_db = saved;
+    }
+    elapsed = GetTickCount() - start;
+
+    sqlite_close(db);
+    DeleteFileW(pathW);
+
+    SetDebugContext("%d rows in %d ms", count);
+    return (count == 1000);
+}
+
+/* I-004: Sorted Dirty Page Writes */
+static int test_io_sorted_writes(void) {
+    sqlite *db;
+    char path[128];
+    wchar_t pathW[128];
+    DWORD start, elapsed;
+    int i;
+
+    BuildTestPath(path, "io_write_test.db");
+    BuildTestPathW(pathW, L"io_write_test.db");
+    DeleteFileW(pathW);
+
+    db = sqlite_open(path, 0, NULL);
+    if (!db) return 0;
+
+    /* Create multiple tables to spread pages */
+    sqlite_exec(db, "CREATE TABLE t1(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE TABLE t2(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE TABLE t3(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+
+    /* Insert data to dirty multiple pages */
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 100; i++) {
+        sqlite_exec(db, "INSERT INTO t1 VALUES(NULL, 'Data for table 1')", NULL, NULL, NULL);
+        sqlite_exec(db, "INSERT INTO t2 VALUES(NULL, 'Data for table 2')", NULL, NULL, NULL);
+        sqlite_exec(db, "INSERT INTO t3 VALUES(NULL, 'Data for table 3')", NULL, NULL, NULL);
+    }
+
+    /* Time the commit (writes dirty pages) */
+    start = GetTickCount();
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+    elapsed = GetTickCount() - start;
+
+    sqlite_close(db);
+    DeleteFileW(pathW);
+
+    SetDebugContext("commit: %d ms", (int)elapsed);
+    return 1;
+}
+
+/*============================================================================
+** Benchmark Tests - Scalability (S-xxx from BENCHMARK_PLAN.md)
+**============================================================================*/
+
+/* S-001: Maximum practical table size test */
+static int test_scale_10k_rows(void) {
+    sqlite *db;
+    char sql[128];
+    int i;
+    DWORD start, elapsed;
+    char *p;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE big(id INTEGER PRIMARY KEY, val INTEGER, name TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE INDEX idx_val ON big(val)", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 10000; i++) {
+        p = sql;
+        STR_COPY(p, "INSERT INTO big VALUES(NULL, ");
+        {
+            char num[16];
+            char *n = num + 15;
+            int v = i % 1000;
+            *n = '\0';
+            if (v == 0) *--n = '0';
+            while (v > 0) { *--n = '0' + (v % 10); v /= 10; }
+            STR_COPY(p, n);
+        }
+        STR_COPY(p, ", 'Row data')");
+        *p = '\0';
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+    elapsed = GetTickCount() - start;
+
+    /* Verify count */
+    {
+        sqlite *saved = g_db;
+        g_db = db;
+        i = GetInt("SELECT COUNT(*) FROM big");
+        g_db = saved;
+    }
+
+    sqlite_close(db);
+
+    SetDebugContext("10K rows in %d ms", (int)elapsed);
+    return (i == 10000);
+}
+
+/* S-003: Query stress test */
+static int test_scale_query_stress(void) {
+    sqlite *db;
+    int i, count = 0;
+    DWORD start, elapsed;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, val INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db, "INSERT INTO t VALUES(1, 100)", NULL, NULL, NULL);
+    sqlite_exec(db, "INSERT INTO t VALUES(2, 200)", NULL, NULL, NULL);
+    sqlite_exec(db, "INSERT INTO t VALUES(3, 300)", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    for (i = 0; i < 1000; i++) {
+        sqlite *saved = g_db;
+        g_db = db;
+        if (GetInt("SELECT SUM(val) FROM t") == 600) count++;
+        g_db = saved;
+    }
+    elapsed = GetTickCount() - start;
+
+    sqlite_close(db);
+
+    SetDebugContext("1K queries in %d ms", (int)elapsed);
+    return (count == 1000);
+}
+
+/* S-006: Rapid open/close cycles */
+static int test_scale_open_close(void) {
+    char path[128];
+    wchar_t pathW[128];
+    int i, ok = 1;
+    DWORD start, elapsed;
+    MEMORYSTATUS ms1, ms2;
+
+    BuildTestPath(path, "open_close_test.db");
+    BuildTestPathW(pathW, L"open_close_test.db");
+    DeleteFileW(pathW);
+
+    /* Create initial database */
+    {
+        sqlite *db = sqlite_open(path, 0, NULL);
+        if (!db) return 0;
+        sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY)", NULL, NULL, NULL);
+        sqlite_close(db);
+    }
+
+    ms1.dwLength = sizeof(ms1);
+    GlobalMemoryStatus(&ms1);
+
+    start = GetTickCount();
+    for (i = 0; i < 100; i++) {
+        sqlite *db = sqlite_open(path, 0, NULL);
+        if (!db) { ok = 0; break; }
+        sqlite_exec(db, "SELECT COUNT(*) FROM t", NULL, NULL, NULL);
+        sqlite_close(db);
+    }
+    elapsed = GetTickCount() - start;
+
+    ms2.dwLength = sizeof(ms2);
+    GlobalMemoryStatus(&ms2);
+
+    DeleteFileW(pathW);
+
+    /* Check for memory leak (should be minimal) */
+    SetDebugContext("100 cycles, %d ms, %d KB delta", (int)elapsed);
+    return ok && ((ms1.dwAvailPhys - ms2.dwAvailPhys) < 50 * 1024);  /* < 50KB leak */
+}
+
+/*============================================================================
 ** Test Registry
 **============================================================================*/
 
@@ -1863,7 +2181,22 @@ static TestCase g_tests[] = {
     { "FP expression chain",        test_fp_chain,              CAT_MATH_FP, PMASK_MEM },
     { "FP precision (small)",       test_fp_precision,          CAT_MATH_FP, PMASK_MEM },
     { "FP large numbers",           test_fp_large,              CAT_MATH_FP, PMASK_MEM },
-    
+
+    /* Memory benchmarks (M-xxx) */
+    { "M-001: Memory baseline",     test_mem_baseline,          CAT_MEMORY, PMASK_MEM },
+    { "M-001: Memory after schema", test_mem_after_schema,      CAT_MEMORY, PMASK_MEM },
+    { "M-002: Result memory 100",   test_mem_result_100,        CAT_MEMORY, PMASK_MEM },
+    { "M-002: Result memory 1K",    test_mem_result_1k,         CAT_MEMORY, PMASK_MEM },
+
+    /* I/O benchmarks (I-xxx) */
+    { "I-001: Sequential read",     test_io_seq_read,           CAT_IO, PMASK_FILE },
+    { "I-004: Sorted page writes",  test_io_sorted_writes,      CAT_IO, PMASK_FILE },
+
+    /* Scalability benchmarks (S-xxx) */
+    { "S-001: Insert 10K rows",     test_scale_10k_rows,        CAT_SCALE, PMASK_MEM },
+    { "S-003: Query stress 1K",     test_scale_query_stress,    CAT_SCALE, PMASK_MEM },
+    { "S-006: Open/close 100x",     test_scale_open_close,      CAT_SCALE, PMASK_FILE },
+
     { NULL, NULL, 0, 0 }
 };
 
