@@ -46,6 +46,11 @@ static int NextEditableColumn(int col, int direction);
 static void PushUndo(char **values, int numCols);
 static void UndoDelete(void);
 
+/*
+** Create the grid view (virtual ListView control) for displaying query results.
+** Sets up full row select, grid lines, custom row height via imagelist,
+** and subclasses for keyboard shortcut handling.
+*/
 void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     HIMAGELIST hIml;
 
@@ -69,6 +74,10 @@ void CreateGridView(HWND hwndParent, int x, int y, int cx, int cy) {
     g_pfnGridProc = (WNDPROC)SetWindowLong(g_hwndGrid, GWL_WNDPROC, (LONG)GridProc);
 }
 
+/*
+** Copy the selected row to clipboard as tab-separated values.
+** Skips the hidden rowid column in edit mode.
+*/
 static void CopySelectedRow(void) {
     int sel = ListView_GetNextItem(g_hwndGrid, -1, LVNI_SELECTED);
     int dataRow, j, len;
@@ -115,6 +124,12 @@ static void CopySelectedRow(void) {
     LocalFree(buf);
 }
 
+/*
+** Grid window procedure (subclassed) for keyboard handling.
+** Handles: Ctrl+C copy, Ctrl+A select all, Ctrl+Home/End navigation,
+** Ctrl+Z undo, F2/Enter edit, Delete row, Escape back to query,
+** Ctrl+F find, F3 find next, Ctrl+G toggle view, Ctrl+E execute.
+*/
 LRESULT CALLBACK GridProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     /* Tell Windows we want Enter key */
     if (msg == WM_GETDLGCODE) {
@@ -349,6 +364,11 @@ static void UpdateColumnHeader(int col, int showIndicator) {
     (void)col; (void)showIndicator;
 }
 
+/*
+** Handle column header click for sorting.
+** Toggles ascending/descending if same column clicked again.
+** Uses type-aware comparison (numeric vs string) via CmpValues().
+*/
 void OnGridColumnClick(int col) {
     int i, oldCol = g_sortCol;
     int dataCol;
@@ -399,6 +419,11 @@ void OnGridColumnClick(int col) {
     }
 }
 
+/*
+** Find next occurrence of g_findText in grid cells.
+** Case-insensitive substring search, wraps around at end.
+** Updates selection and scrolls to matching row.
+*/
 void GridFindNext(void) {
     int r, c, startRow, startCol, findLen, i, j;
     int startDataCol, numDataCols;
@@ -507,6 +532,11 @@ static void GetPlaceholderHint(int col, wchar_t *buf, int buflen) {
     *p++ = ')'; *p = '\0';
 }
 
+/*
+** Virtual ListView callback - provides cell text on demand.
+** Maps display row through sort index to data row.
+** In edit mode: skips hidden rowid column, shows placeholder hints for new row.
+*/
 void OnGridGetDispInfo(NMLVDISPINFOW *pdi) {
     int row, dataRow, col, dataCol;
     char *val;
@@ -796,6 +826,12 @@ static LRESULT CALLBACK EditOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
     return CallWindowProc(g_pfnEditOverlayProc, hwnd, msg, wParam, lParam);
 }
 
+/*
+** Start inline editing of a grid cell.
+** Creates an edit control overlay positioned over the cell.
+** For placeholder row: enters insert mode and tracks pending values.
+** For existing rows: pre-fills with current value.
+*/
 static void StartCellEdit(int row, int col) {
     RECT rcItem, rcGrid;
     int dataRow, dataCol;
@@ -914,6 +950,10 @@ static void StartCellEdit(int row, int col) {
     SetFocus(g_hwndEditOverlay);
 }
 
+/*
+** Cancel cell editing without saving changes.
+** Destroys the edit overlay and returns focus to grid.
+*/
 static void CancelCellEdit(void) {
     HWND hwnd = g_hwndEditOverlay;
     /* Clear handle first to prevent WM_KILLFOCUS from committing */
@@ -928,8 +968,15 @@ static void CancelCellEdit(void) {
 
 /*============================================================================
 ** Undo Support for Row Deletion
+**
+** Maintains a stack of deleted rows with their column values for restoration.
+** Uses contiguous memory allocation for efficiency. Memory-limited to
+** UNDO_MAX_BYTES - oldest entries are dropped when limit exceeded.
 **============================================================================*/
 
+/*
+** Free memory for an undo row entry.
+*/
 static void FreeUndoRow(UndoRow *row) {
     /* Single deallocation for values array */
     if (row->values) LocalFree(row->values);
@@ -939,6 +986,10 @@ static void FreeUndoRow(UndoRow *row) {
     row->data = NULL;
 }
 
+/*
+** Clear all entries from the undo stack and free memory.
+** Called when exiting edit mode or closing database.
+*/
 void ClearUndoStack(void) {
     int i;
     for (i = 0; i < g_undoCount; i++) {
@@ -1056,6 +1107,10 @@ static void PushUndo(char **values, int numCols) {
     g_undoBytes += row->dataBytes;
 }
 
+/*
+** Restore the most recently deleted row from the undo stack.
+** Builds INSERT statement from saved values and re-queries table.
+*/
 static void UndoDelete(void) {
     UndoRow *row;
     char sql[2048];
@@ -1129,6 +1184,11 @@ static void UndoDelete(void) {
     SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Row restored");
 }
 
+/*
+** Delete selected rows from the table.
+** Supports multi-row selection. Saves rows to undo stack before deletion.
+** Prompts for confirmation, then executes DELETE by rowid for each.
+*/
 static void DeleteSelectedRow(void) {
     int sel, count, dataRow, rowidIdx, deleted, i;
     char *rowid;
@@ -1241,6 +1301,10 @@ static void DeleteSelectedRow(void) {
     }
 }
 
+/*
+** Exit insert mode and free pending values.
+** Refreshes the placeholder row display.
+*/
 static void ClearInsertMode(void) {
     int i;
     if (g_pendingValues) {
@@ -1257,6 +1321,10 @@ static void ClearInsertMode(void) {
     }
 }
 
+/*
+** Enter insert mode - allocate array for pending column values.
+** Called when user starts editing the placeholder (new) row.
+*/
 static void InitInsertMode(void) {
     if (g_insertMode) return;  /* Already in insert mode */
     if (g_colMetaCount < 1) return;
@@ -1294,6 +1362,11 @@ static void StorePendingValue(int col, const char *value) {
     }
 }
 
+/*
+** Commit the pending insert - build and execute INSERT statement.
+** Skips autoincrement columns. Uses pending values from g_pendingValues.
+** Refreshes grid on success, shows error dialog on failure.
+*/
 static void CommitInsert(void) {
     char sql[2048];
     char *p;
@@ -1582,6 +1655,10 @@ static void CommitCellEdit(void) {
 ** Handle double-click to start cell edit
 **============================================================================*/
 
+/*
+** Handle double-click on grid cell to start inline editing.
+** Only active in edit mode (table editing via schema browser).
+*/
 void OnGridDoubleClick(int row, int col) {
     if (g_editMode && row >= 0 && col >= 0) {
         StartCellEdit(row, col);

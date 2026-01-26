@@ -13,6 +13,11 @@
 ** Progress callback for query abort
 **============================================================================*/
 
+/*
+** Progress callback invoked periodically during query execution.
+** Processes Windows messages to keep UI responsive and checks for Ctrl+C
+** to abort the query. Returns non-zero to abort, zero to continue.
+*/
 static int ProgressCallback(void *arg) {
     MSG msg;
     (void)arg;
@@ -64,12 +69,19 @@ static int CachedExec(const char *sql, int (*callback)(void*,int,char**,char**),
     return StmtCacheExec(g_stmtCache, g_db, sql, callback, arg, errmsg);
 }
 
+/*
+** Safe string length - returns 0 for NULL strings.
+*/
 static int strlen_safe(const char *s) {
     int n = 0;
     if (s) while (*s++) n++;
     return n;
 }
 
+/*
+** Free the result buffer and reset the string pool.
+** Called before each query execution to clear previous results.
+*/
 static void FreeResults(void) {
     int r, c;
 
@@ -88,12 +100,20 @@ static void FreeResults(void) {
     }
 }
 
+/*
+** Output a string padded to the specified width with spaces.
+** Used for aligned column output in text mode results.
+*/
 static void OutputPadded(const char *s, int width) {
     int len = strlen_safe(s);
     Output(s);
     while (len++ < width) Output(" ");
 }
 
+/*
+** Output buffered results in aligned column format.
+** Displays headers, separator line, and data rows.
+*/
 static void OutputResults(void) {
     int r, c;
 
@@ -122,6 +142,11 @@ static void OutputResults(void) {
     }
 }
 
+/*
+** Free the last result set stored for grid display.
+** Only frees the pointer array - strings are owned by the intern table.
+** The intern table is reset (not destroyed) for memory reuse.
+*/
 void FreeLastResults(void) {
     /* Free the pointer array only - strings are in the intern table */
     FREE(g_lastResult);
@@ -134,6 +159,11 @@ void FreeLastResults(void) {
     }
 }
 
+/*
+** Store the current result buffer as the "last result" for grid display.
+** Uses string interning to deduplicate repeated values (e.g., status columns).
+** Result format matches sqlite_get_table: row 0 = headers, rows 1+ = data.
+*/
 static void StoreLastResults(void) {
     int r, c;
 
@@ -176,6 +206,10 @@ static void StoreLastResults(void) {
     }
 }
 
+/*
+** Flush the current result buffer to output and store for grid display.
+** Outputs the results, stores them in g_lastResult, then clears the buffer.
+*/
 static void FlushResultSet(void) {
     char buf[32];
     char *p = buf + 30;
@@ -195,6 +229,12 @@ static void FlushResultSet(void) {
     g_nCols = 0;
 }
 
+/*
+** Callback for sqlite_exec() - receives each result row.
+** Buffers results for aligned output. Detects column changes between
+** statements and flushes results when the schema changes.
+** Returns 0 to continue, non-zero to abort the query.
+*/
 static int QueryCallback(void *arg, int argc, char **argv, char **cols) {
     int i, len;
     int colsChanged = 0;
@@ -259,6 +299,12 @@ static int QueryCallback(void *arg, int argc, char **argv, char **cols) {
 ** Execute a SQL string directly (for schema browser, etc.)
 **============================================================================*/
 
+/*
+** Execute a SQL string directly without going through the query editor.
+** Used by schema browser for SELECT * and other programmatic queries.
+** Clears edit mode, executes with progress handler for abort support,
+** updates grid view with results, and switches to result view.
+*/
 void ExecuteSQL(const char *sql) {
     int rc;
     char *errmsg = NULL;
@@ -327,6 +373,18 @@ void ExecuteSQL(const char *sql) {
     }
 }
 
+/*
+** Execute SQL from the query editor window.
+** Handles three execution modes:
+**   1. Selected text only (if selection exists)
+**   2. Statement at cursor (if g_execAtCursor is set)
+**   3. Entire editor buffer (default)
+**
+** Splits multi-statement SQL on semicolons, handling string literals,
+** comments, and CREATE TRIGGER statements (which contain embedded semicolons).
+** Reports errors with line numbers and positions cursor at error location.
+** Shows results in grid or text view depending on g_gridView setting.
+*/
 void ExecuteQuery(void) {
     int len, rc, hadError = 0;
     char *sql;
@@ -698,6 +756,12 @@ void ExecuteQuery(void) {
 ** Cleanup function - call on application exit
 **============================================================================*/
 
+/*
+** Cleanup all execute module resources on application exit.
+** Frees the last result set, destroys the string intern table,
+** destroys the result string pool, and destroys the statement cache.
+** Must be called before application termination to avoid memory leaks.
+*/
 void CleanupExecute(void) {
     /* Free last results */
     FreeLastResults();
@@ -721,6 +785,11 @@ void CleanupExecute(void) {
     }
 }
 
+/*
+** Invalidate all cached prepared statements.
+** Call after schema changes (CREATE, DROP, ALTER) to ensure
+** cached statements don't reference stale schema information.
+*/
 void InvalidateStmtCache(void) {
     if (g_stmtCache) {
         StmtCacheInvalidate(g_stmtCache);

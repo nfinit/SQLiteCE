@@ -23,6 +23,10 @@ static int g_nTriggers = 0;
 ** Get database file size
 **============================================================================*/
 
+/*
+** Get the size of the current database file in bytes.
+** Returns 0 for in-memory databases or if no database is open.
+*/
 DWORD GetDatabaseSize(void) {
     HANDLE hFile;
     DWORD dwSize = 0;
@@ -42,6 +46,10 @@ DWORD GetDatabaseSize(void) {
 ** Get schema status string
 **============================================================================*/
 
+/*
+** Build a status string showing table/view/trigger counts and database size.
+** Format: "N table(s), M view(s), K trigger(s) (X.X MB)" or "(X KB)".
+*/
 void GetSchemaStatus(wchar_t *buf, int bufLen) {
     DWORD dwSize;
 
@@ -93,6 +101,11 @@ static LRESULT CALLBACK SchemaSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, L
     return CallWindowProc(g_pfnSchemaProc, hwnd, msg, wParam, lParam);
 }
 
+/*
+** Create the schema TreeView control for browsing database objects.
+** Sets up icons for database, tables, views, triggers, columns, keys, indexes.
+** Subclasses for F5 refresh and keyboard navigation.
+*/
 void CreateSchemaView(HWND hwndParent, int x, int y, int cx, int cy) {
     HBITMAP hBmp;
 
@@ -172,6 +185,12 @@ static int GetTableSize(const char *tblname) {
     return size;
 }
 
+/*
+** Refresh the schema tree from the database.
+** Clears existing items and repopulates with tables, views, and triggers.
+** Uses lazy loading - columns are loaded on expand via OnSchemaExpanding().
+** Optionally shows row counts and sizes if g_showSizes is set.
+*/
 void RefreshSchema(void) {
     HTREEITEM hRoot, hItem;
     wchar_t dbname[64];
@@ -318,6 +337,11 @@ static int ColumnCallback(void *pArg, int argc, char **argv, char **cols) {
     return 0;
 }
 
+/*
+** Handle TreeView item expansion to load columns on demand.
+** Queries PRAGMA table_info() for column details and adds child nodes.
+** Also queries indexes for the table/view.
+*/
 void OnSchemaExpanding(NMTREEVIEWW *pnm) {
     TV_ITEMW item;
     wchar_t text[128];
@@ -404,6 +428,11 @@ void OnSchemaExpanding(NMTREEVIEWW *pnm) {
 ** Clear edit mode state
 **============================================================================*/
 
+/*
+** Exit table editing mode and clean up all associated state.
+** Clears undo stack, insert mode, column metadata.
+** Restores previous grid/text view state and re-enables toggle button.
+*/
 void ClearEditMode(void) {
     int i;
 
@@ -506,6 +535,11 @@ static int ColMetaCallback(void *pArg, int argc, char **argv, char **cols) {
     return 0;
 }
 
+/*
+** Load column metadata for a table using PRAGMA table_info().
+** Populates g_colMeta array with name, type, notNull, hasDefault, isPK, isAutoInc.
+** Returns the number of columns loaded, or 0 on failure.
+*/
 int LoadColumnMetadata(const char *tablename) {
     char sql[256];
     char *p;
@@ -554,6 +588,12 @@ int LoadColumnMetadata(const char *tablename) {
 ** Open a table for editing in grid view
 **============================================================================*/
 
+/*
+** Open a table in editable grid mode with SELECT rowid, * FROM table.
+** Loads column metadata, fetches all rows, enables edit mode.
+** Preserves undo stack if re-opening the same table.
+** Disables grid/text toggle while in edit mode.
+*/
 void OpenTableForEditing(const char *tablename) {
     char sql[256];
     char *p = sql;
@@ -713,6 +753,11 @@ void OpenTableForEditing(const char *tablename) {
 ** Handle double-click - open table for editing or view read-only
 **============================================================================*/
 
+/*
+** Handle double-click on schema tree item.
+** Tables open in editable grid mode via OpenTableForEditing().
+** Views open read-only via ExecuteSQL("SELECT * FROM view").
+*/
 void OnSchemaDoubleClick(void) {
     HTREEITEM hItem;
     TV_ITEMW item;
@@ -759,6 +804,11 @@ void OnSchemaDoubleClick(void) {
 ** Handle Delete key - drop selected object
 **============================================================================*/
 
+/*
+** Handle Delete key to drop the selected table/view/trigger.
+** Prompts for confirmation, then executes DROP statement.
+** Refreshes schema tree on success.
+*/
 void OnSchemaDelete(void) {
     HTREEITEM hItem;
     TV_ITEMW item;
@@ -839,6 +889,10 @@ int GetSelectedObjectType(void) {
 ** Export DDL for selected object
 **============================================================================*/
 
+/*
+** Export the CREATE statement for the selected table/view/trigger to a .sql file.
+** Queries sqlite_master for the DDL and prompts for save location.
+*/
 void ExportSelectedDDL(void) {
     HTREEITEM hItem;
     TV_ITEMW item;
@@ -907,6 +961,11 @@ void ExportSelectedDDL(void) {
 ** Export DDL for entire database
 **============================================================================*/
 
+/*
+** Export all CREATE statements from the database to a .sql file.
+** Orders output: tables, views, triggers, indexes.
+** Includes header with database name and export timestamp.
+*/
 void ExportAllDDL(void) {
     wchar_t szFile[MAX_PATH];
     wchar_t dbname[64];
