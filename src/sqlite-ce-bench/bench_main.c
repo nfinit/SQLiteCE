@@ -2064,6 +2064,705 @@ static int test_scale_open_close(void) {
 }
 
 /*============================================================================
+** Benchmark Tests - Query Performance (Q-xxx from BENCHMARK_PLAN.md)
+**============================================================================*/
+
+/* Q-002: Complex JOIN Performance */
+static int test_query_join_2way(void) {
+    sqlite *db;
+    int count;
+    DWORD start, elapsed;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    /* Create related tables */
+    sqlite_exec(db, "CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT, region TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE TABLE orders(id INTEGER PRIMARY KEY, cust_id INTEGER, amount REAL)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE INDEX idx_orders_cust ON orders(cust_id)", NULL, NULL, NULL);
+
+    /* Insert test data */
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    {
+        int i;
+        char sql[128];
+        for (i = 0; i < 100; i++) {
+            char *p = sql;
+            STR_COPY(p, "INSERT INTO customers VALUES(");
+            { char n[8]; int v=i+1; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+            STR_COPY(p, ", 'Customer', 'Region')");
+            *p = 0;
+            sqlite_exec(db, sql, NULL, NULL, NULL);
+        }
+        for (i = 0; i < 1000; i++) {
+            char *p = sql;
+            STR_COPY(p, "INSERT INTO orders VALUES(");
+            { char n[8]; int v=i+1; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+            STR_COPY(p, ", ");
+            { char n[8]; int v=(i%100)+1; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+            STR_COPY(p, ", 99.99)");
+            *p = 0;
+            sqlite_exec(db, sql, NULL, NULL, NULL);
+        }
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = CountRows("SELECT c.name, o.amount FROM customers c JOIN orders o ON c.id = o.cust_id");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("2-way JOIN %d rows, %d ms", count);
+    return (count == 1000);
+}
+
+static int test_query_join_3way(void) {
+    sqlite *db;
+    int count;
+    DWORD start, elapsed;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE a(id INTEGER PRIMARY KEY, val TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE TABLE b(id INTEGER PRIMARY KEY, a_id INTEGER, val TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE TABLE c(id INTEGER PRIMARY KEY, b_id INTEGER, val TEXT)", NULL, NULL, NULL);
+
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    {
+        int i;
+        for (i = 1; i <= 50; i++) sqlite_exec(db, "INSERT INTO a VALUES(NULL, 'A')", NULL, NULL, NULL);
+        for (i = 1; i <= 200; i++) {
+            char sql[64], *p = sql;
+            STR_COPY(p, "INSERT INTO b VALUES(NULL, ");
+            { char n[8]; int v=(i%50)+1; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+            STR_COPY(p, ", 'B')");
+            *p = 0;
+            sqlite_exec(db, sql, NULL, NULL, NULL);
+        }
+        for (i = 1; i <= 500; i++) {
+            char sql[64], *p = sql;
+            STR_COPY(p, "INSERT INTO c VALUES(NULL, ");
+            { char n[8]; int v=(i%200)+1; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+            STR_COPY(p, ", 'C')");
+            *p = 0;
+            sqlite_exec(db, sql, NULL, NULL, NULL);
+        }
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = CountRows("SELECT a.val, b.val, c.val FROM a JOIN b ON a.id=b.a_id JOIN c ON b.id=c.b_id");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("3-way JOIN %d rows, %d ms", count);
+    return (count == 500);
+}
+
+/* Q-003: Aggregate Function Performance */
+static int test_query_aggregate_sum(void) {
+    sqlite *db;
+    int result;
+    DWORD start, elapsed;
+    sqlite *saved = g_db;
+    int i;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE nums(id INTEGER PRIMARY KEY, val INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 10000; i++) {
+        sqlite_exec(db, "INSERT INTO nums VALUES(NULL, 1)", NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    result = GetInt("SELECT SUM(val) FROM nums");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("SUM 10K rows = %d, %d ms", result);
+    return (result == 10000);
+}
+
+static int test_query_aggregate_avg(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    sqlite *saved = g_db;
+    int i, count;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE data(id INTEGER PRIMARY KEY, val INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        char sql[64], *p = sql;
+        STR_COPY(p, "INSERT INTO data VALUES(NULL, ");
+        { char n[8]; int v=i%100; char *np=n+7; *np=0; if(v==0)*--np='0'; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        STR_COPY(p, ")");
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = GetInt("SELECT AVG(val) FROM data");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("AVG = %d, %d ms", count);
+    return (count >= 49 && count <= 50);  /* Should be ~49.5 */
+}
+
+/* Q-004: INSERT Performance - batch vs individual */
+static int test_query_insert_individual(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    int i;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    for (i = 0; i < 100; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 'Test data for insert benchmark')", NULL, NULL, NULL);
+    }
+    elapsed = GetTickCount() - start;
+
+    sqlite_close(db);
+    SetDebugContext("100 inserts in %d ms", (int)elapsed);
+    return 1;
+}
+
+static int test_query_insert_batch(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    int i;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 'Test data for insert benchmark')", NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+    elapsed = GetTickCount() - start;
+
+    sqlite_close(db);
+    SetDebugContext("1000 batch inserts in %d ms", (int)elapsed);
+    return 1;
+}
+
+/* Q-005: UPDATE Performance */
+static int test_query_update_by_pk(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    int i;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, val INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 0)", NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 1; i <= 1000; i++) {
+        char sql[64], *p = sql;
+        STR_COPY(p, "UPDATE t SET val=1 WHERE id=");
+        { char n[8]; int v=i; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+    elapsed = GetTickCount() - start;
+
+    /* Verify */
+    g_db = db;
+    i = GetInt("SELECT SUM(val) FROM t");
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("1K updates in %d ms", (int)elapsed);
+    return (i == 1000);
+}
+
+/* Q-006: DELETE Performance */
+static int test_query_delete_by_pk(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    int i;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, val INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 1)", NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 1; i <= 500; i++) {
+        char sql[64], *p = sql;
+        STR_COPY(p, "DELETE FROM t WHERE id=");
+        { char n[8]; int v=i; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+    elapsed = GetTickCount() - start;
+
+    g_db = db;
+    i = GetInt("SELECT COUNT(*) FROM t");
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("500 deletes in %d ms", (int)elapsed);
+    return (i == 500);
+}
+
+/* Q-008: LIKE Pattern Matching */
+static int test_query_like_prefix(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    int i, count;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE INDEX idx_name ON t(name)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        char sql[128], *p = sql;
+        STR_COPY(p, "INSERT INTO t VALUES(NULL, 'item_");
+        { char n[8]; int v=i; char *np=n+7; *np=0; if(v==0)*--np='0'; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        STR_COPY(p, "')");
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = CountRows("SELECT * FROM t WHERE name LIKE 'item_1%'");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("LIKE prefix: %d rows, %d ms", count);
+    return (count >= 100);  /* item_1, item_10-19, item_100-199 */
+}
+
+static int test_query_like_contains(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    int i, count;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, text TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 500; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 'The quick brown fox jumps over the lazy dog')", NULL, NULL, NULL);
+    }
+    for (i = 0; i < 500; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 'Pack my box with five dozen liquor jugs')", NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = CountRows("SELECT * FROM t WHERE text LIKE '%fox%'");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("LIKE contains: %d rows, %d ms", count);
+    return (count == 500);
+}
+
+/* Q-009: ORDER BY Performance */
+static int test_query_orderby_indexed(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    int i, count;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, val INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE INDEX idx_val ON t(val)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 5000; i++) {
+        char sql[64], *p = sql;
+        STR_COPY(p, "INSERT INTO t VALUES(NULL, ");
+        { char n[8]; int v=(5000-i); char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        STR_COPY(p, ")");
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = CountRows("SELECT * FROM t ORDER BY val");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("ORDER BY indexed: %d rows, %d ms", count);
+    return (count == 5000);
+}
+
+static int test_query_orderby_unindexed(void) {
+    sqlite *db;
+    DWORD start, elapsed;
+    int i, count;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, val INTEGER, name TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 5000; i++) {
+        char sql[128], *p = sql;
+        STR_COPY(p, "INSERT INTO t VALUES(NULL, ");
+        { char n[8]; int v=(5000-i); char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        STR_COPY(p, ", 'name')");
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = CountRows("SELECT * FROM t ORDER BY name, val");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    SetDebugContext("ORDER BY unindexed: %d rows, %d ms", count);
+    return (count == 5000);
+}
+
+/*============================================================================
+** More I/O Benchmarks
+**============================================================================*/
+
+/* I-002: Random Read Performance */
+static int test_io_random_read(void) {
+    sqlite *db;
+    char path[128];
+    wchar_t pathW[128];
+    DWORD start, elapsed;
+    int i, found = 0;
+    sqlite *saved = g_db;
+
+    BuildTestPath(path, "io_random_test.db");
+    BuildTestPathW(pathW, L"io_random_test.db");
+    DeleteFileW(pathW);
+
+    db = sqlite_open(path, 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 'Random read test data for benchmark purposes')", NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    /* Close and reopen to clear cache */
+    sqlite_close(db);
+    db = sqlite_open(path, 0, NULL);
+    if (!db) return 0;
+
+    g_db = db;
+    start = GetTickCount();
+    /* Random-ish access pattern */
+    for (i = 0; i < 100; i++) {
+        char sql[64], *p = sql;
+        int id = ((i * 37) % 1000) + 1;  /* Pseudo-random */
+        STR_COPY(p, "SELECT * FROM t WHERE id=");
+        { char n[8]; int v=id; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        *p = 0;
+        if (CountRows(sql) == 1) found++;
+    }
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+    DeleteFileW(pathW);
+
+    SetDebugContext("100 random reads in %d ms", (int)elapsed);
+    return (found == 100);
+}
+
+/* I-003: Sync Mode Comparison */
+static int test_io_sync_off(void) {
+    sqlite *db;
+    char path[128];
+    wchar_t pathW[128];
+    DWORD start, elapsed;
+    int i;
+
+    BuildTestPath(path, "io_sync_off.db");
+    BuildTestPathW(pathW, L"io_sync_off.db");
+    DeleteFileW(pathW);
+
+    db = sqlite_open(path, 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "PRAGMA synchronous = OFF", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    for (i = 0; i < 100; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 'Sync mode test')", NULL, NULL, NULL);
+    }
+    elapsed = GetTickCount() - start;
+
+    sqlite_close(db);
+    DeleteFileW(pathW);
+
+    SetDebugContext("SYNC OFF: %d ms", (int)elapsed);
+    return 1;
+}
+
+static int test_io_sync_full(void) {
+    sqlite *db;
+    char path[128];
+    wchar_t pathW[128];
+    DWORD start, elapsed;
+    int i;
+
+    BuildTestPath(path, "io_sync_full.db");
+    BuildTestPathW(pathW, L"io_sync_full.db");
+    DeleteFileW(pathW);
+
+    db = sqlite_open(path, 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "PRAGMA synchronous = FULL", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    for (i = 0; i < 100; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 'Sync mode test')", NULL, NULL, NULL);
+    }
+    elapsed = GetTickCount() - start;
+
+    sqlite_close(db);
+    DeleteFileW(pathW);
+
+    SetDebugContext("SYNC FULL: %d ms", (int)elapsed);
+    return 1;
+}
+
+/* I-006: VACUUM Performance */
+static int test_io_vacuum(void) {
+    sqlite *db;
+    char path[128];
+    wchar_t pathW[128];
+    DWORD start, elapsed;
+    DWORD sizeBefore, sizeAfter;
+    HANDLE hFile;
+    int i;
+
+    BuildTestPath(path, "io_vacuum.db");
+    BuildTestPathW(pathW, L"io_vacuum.db");
+    DeleteFileW(pathW);
+
+    db = sqlite_open(path, 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE t(id INTEGER PRIMARY KEY, data TEXT)", NULL, NULL, NULL);
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        sqlite_exec(db, "INSERT INTO t VALUES(NULL, 'Data to be deleted for vacuum test benchmark')", NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    /* Delete half the rows */
+    sqlite_exec(db, "DELETE FROM t WHERE id <= 500", NULL, NULL, NULL);
+    sqlite_close(db);
+
+    /* Measure size before vacuum */
+    hFile = CreateFileW(pathW, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    sizeBefore = (hFile != INVALID_HANDLE_VALUE) ? GetFileSize(hFile, NULL) : 0;
+    if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
+
+    /* Vacuum */
+    db = sqlite_open(path, 0, NULL);
+    start = GetTickCount();
+    sqlite_exec(db, "VACUUM", NULL, NULL, NULL);
+    elapsed = GetTickCount() - start;
+    sqlite_close(db);
+
+    /* Measure size after */
+    hFile = CreateFileW(pathW, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    sizeAfter = (hFile != INVALID_HANDLE_VALUE) ? GetFileSize(hFile, NULL) : 0;
+    if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
+
+    DeleteFileW(pathW);
+
+    SetDebugContext("VACUUM %d ms, %d->%d KB", (int)elapsed);
+    return (sizeAfter < sizeBefore);
+}
+
+/*============================================================================
+** More Scalability Benchmarks
+**============================================================================*/
+
+/* S-002: Large table scaling */
+static int test_scale_50k_rows(void) {
+    sqlite *db;
+    int i, count;
+    DWORD start, elapsed;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE big(id INTEGER PRIMARY KEY, val INTEGER)", NULL, NULL, NULL);
+
+    start = GetTickCount();
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 50000; i++) {
+        sqlite_exec(db, "INSERT INTO big VALUES(NULL, 1)", NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+    elapsed = GetTickCount() - start;
+
+    g_db = db;
+    count = GetInt("SELECT COUNT(*) FROM big");
+    g_db = saved;
+
+    sqlite_close(db);
+
+    SetDebugContext("50K rows in %d ms", (int)elapsed);
+    return (count == 50000);
+}
+
+/* S-004: Complex query on large dataset */
+static int test_scale_complex_query(void) {
+    sqlite *db;
+    int count;
+    DWORD start, elapsed;
+    int i;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE data(id INTEGER PRIMARY KEY, category INTEGER, value INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE INDEX idx_cat ON data(category)", NULL, NULL, NULL);
+
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 10000; i++) {
+        char sql[64], *p = sql;
+        STR_COPY(p, "INSERT INTO data VALUES(NULL, ");
+        { char n[8]; int v=i%100; char *np=n+7; *np=0; if(v==0)*--np='0'; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        STR_COPY(p, ", ");
+        { char n[8]; int v=i; char *np=n+7; *np=0; if(v==0)*--np='0'; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        STR_COPY(p, ")");
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = CountRows("SELECT category, COUNT(*), SUM(value), AVG(value) FROM data GROUP BY category HAVING COUNT(*) > 50");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+
+    SetDebugContext("GROUP BY/HAVING: %d groups, %d ms", count);
+    return (count == 100);  /* 100 categories, each with 100 rows */
+}
+
+/* S-005: Subquery performance at scale */
+static int test_scale_subquery(void) {
+    sqlite *db;
+    int count;
+    DWORD start, elapsed;
+    int i;
+    sqlite *saved = g_db;
+
+    db = sqlite_open(":memory:", 0, NULL);
+    if (!db) return 0;
+
+    sqlite_exec(db, "CREATE TABLE orders(id INTEGER PRIMARY KEY, amount INTEGER)", NULL, NULL, NULL);
+    sqlite_exec(db, "CREATE TABLE items(id INTEGER PRIMARY KEY, order_id INTEGER, qty INTEGER)", NULL, NULL, NULL);
+
+    sqlite_exec(db, "BEGIN", NULL, NULL, NULL);
+    for (i = 0; i < 1000; i++) {
+        char sql[64], *p = sql;
+        STR_COPY(p, "INSERT INTO orders VALUES(NULL, ");
+        { char n[8]; int v=i*10; char *np=n+7; *np=0; if(v==0)*--np='0'; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        STR_COPY(p, ")");
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    for (i = 0; i < 5000; i++) {
+        char sql[64], *p = sql;
+        STR_COPY(p, "INSERT INTO items VALUES(NULL, ");
+        { char n[8]; int v=(i%1000)+1; char *np=n+7; *np=0; while(v>0){*--np='0'+(v%10);v/=10;} STR_COPY(p,np); }
+        STR_COPY(p, ", 1)");
+        *p = 0;
+        sqlite_exec(db, sql, NULL, NULL, NULL);
+    }
+    sqlite_exec(db, "COMMIT", NULL, NULL, NULL);
+
+    g_db = db;
+    start = GetTickCount();
+    count = CountRows("SELECT * FROM orders WHERE id IN (SELECT DISTINCT order_id FROM items WHERE qty > 0)");
+    elapsed = GetTickCount() - start;
+    g_db = saved;
+
+    sqlite_close(db);
+
+    SetDebugContext("IN subquery: %d rows, %d ms", count);
+    return (count == 1000);
+}
+
+/*============================================================================
 ** Test Registry
 **============================================================================*/
 
@@ -2188,13 +2887,34 @@ static TestCase g_tests[] = {
     { "M-002: Result memory 100",   test_mem_result_100,        CAT_MEMORY, PMASK_MEM },
     { "M-002: Result memory 1K",    test_mem_result_1k,         CAT_MEMORY, PMASK_MEM },
 
+    /* Query Performance benchmarks (Q-xxx) */
+    { "Q-002: 2-way JOIN",          test_query_join_2way,       CAT_QUERY, PMASK_MEM },
+    { "Q-002: 3-way JOIN",          test_query_join_3way,       CAT_QUERY, PMASK_MEM },
+    { "Q-003: Aggregate SUM 10K",   test_query_aggregate_sum,   CAT_QUERY, PMASK_MEM },
+    { "Q-003: Aggregate AVG",       test_query_aggregate_avg,   CAT_QUERY, PMASK_MEM },
+    { "Q-004: INSERT individual",   test_query_insert_individual, CAT_WRITE, PMASK_MEM },
+    { "Q-004: INSERT batch 1K",     test_query_insert_batch,    CAT_WRITE, PMASK_MEM },
+    { "Q-005: UPDATE by PK 1K",     test_query_update_by_pk,    CAT_UPDATE, PMASK_MEM },
+    { "Q-006: DELETE by PK 500",    test_query_delete_by_pk,    CAT_UPDATE, PMASK_MEM },
+    { "Q-008: LIKE prefix",         test_query_like_prefix,     CAT_QUERY, PMASK_MEM },
+    { "Q-008: LIKE contains",       test_query_like_contains,   CAT_QUERY, PMASK_MEM },
+    { "Q-009: ORDER BY indexed",    test_query_orderby_indexed, CAT_QUERY, PMASK_MEM },
+    { "Q-009: ORDER BY unindexed",  test_query_orderby_unindexed, CAT_QUERY, PMASK_MEM },
+
     /* I/O benchmarks (I-xxx) */
     { "I-001: Sequential read",     test_io_seq_read,           CAT_IO, PMASK_FILE },
+    { "I-002: Random read 100",     test_io_random_read,        CAT_IO, PMASK_FILE },
+    { "I-003: Sync OFF writes",     test_io_sync_off,           CAT_IO, PMASK_FILE },
+    { "I-003: Sync FULL writes",    test_io_sync_full,          CAT_IO, PMASK_FILE },
     { "I-004: Sorted page writes",  test_io_sorted_writes,      CAT_IO, PMASK_FILE },
+    { "I-006: VACUUM performance",  test_io_vacuum,             CAT_IO, PMASK_FILE },
 
     /* Scalability benchmarks (S-xxx) */
     { "S-001: Insert 10K rows",     test_scale_10k_rows,        CAT_SCALE, PMASK_MEM },
+    { "S-002: Insert 50K rows",     test_scale_50k_rows,        CAT_SCALE, PMASK_MEM },
     { "S-003: Query stress 1K",     test_scale_query_stress,    CAT_SCALE, PMASK_MEM },
+    { "S-004: Complex GROUP BY",    test_scale_complex_query,   CAT_SCALE, PMASK_MEM },
+    { "S-005: Subquery at scale",   test_scale_subquery,        CAT_SCALE, PMASK_MEM },
     { "S-006: Open/close 100x",     test_scale_open_close,      CAT_SCALE, PMASK_FILE },
 
     { NULL, NULL, 0, 0 }

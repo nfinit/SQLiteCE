@@ -123,7 +123,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Undo Stack Memory Usage |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Validate A-004 (undo stack optimization) with contiguous allocation |
 | **Description** | Delete rows in edit mode and measure undo stack memory consumption. Verify memory limit enforcement and eviction behavior. |
 | **Metrics** | - Memory per undo entry (bytes)<br>- Maximum undo entries before eviction<br>- Eviction trigger accuracy<br>- Memory recovery on clear |
@@ -135,7 +135,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | VDBE Memory Pre-allocation Efficiency |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Validate A-005 (VDBE aMem pre-allocation) reduces runtime allocations |
 | **Description** | Execute queries of varying complexity and count memory allocations during VDBE execution. Compare with on-demand allocation. |
 | **Metrics** | - Allocations during query execution<br>- aMem resize count<br>- Peak aMem slots used<br>- Pre-allocation accuracy |
@@ -147,7 +147,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Memory Pool Allocation Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Validate A-006 (memory pool) reduces heap fragmentation and speeds small allocations |
 | **Description** | Perform thousands of small allocations (<= 64 bytes) and measure allocation time and fragmentation. Compare pool vs direct LocalAlloc. |
 | **Metrics** | - Allocations per second<br>- Average allocation time (us)<br>- Heap fragmentation (%)<br>- Pool chunk utilization (%) |
@@ -159,7 +159,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Page Cache Memory Efficiency |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure B-tree page cache memory usage and hit rates |
 | **Description** | Execute workloads that stress the page cache and measure memory usage, hit rates, and eviction patterns. |
 | **Metrics** | - Cache memory usage (KB)<br>- Cache hit rate (%)<br>- Pages read from disk<br>- Eviction count |
@@ -171,7 +171,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Statement Cache Memory Usage |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Validate B-002 (statement cache) memory overhead is acceptable |
 | **Description** | Cache prepared statements and measure memory overhead per cached statement. Verify LRU eviction works correctly. |
 | **Metrics** | - Memory per cached statement (bytes)<br>- Cache hit rate (%)<br>- LRU eviction count<br>- Schema invalidation count |
@@ -187,7 +187,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Simple SELECT Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Establish baseline for simple query execution time |
 | **Description** | Execute simple SELECT queries (single table, no joins, indexed lookup) and measure execution time. |
 | **Metrics** | - Queries per second<br>- Average query time (ms)<br>- Min/Max query time (ms)<br>- Standard deviation |
@@ -199,7 +199,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Complex JOIN Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure multi-table join query performance |
 | **Description** | Execute queries with 2-way, 3-way, and 4-way joins and measure execution time and memory usage. |
 | **Metrics** | - Query time per join complexity (ms)<br>- Rows processed per second<br>- Temporary table usage<br>- Memory peak during query |
@@ -211,7 +211,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Aggregate Function Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure COUNT, SUM, AVG, MIN, MAX performance on large datasets |
 | **Description** | Execute aggregate queries on tables of varying sizes and measure execution time. |
 | **Metrics** | - Time per aggregate type (ms)<br>- Rows processed per second<br>- Memory usage during aggregation |
@@ -223,7 +223,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | INSERT Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure single-row and batch insert throughput |
 | **Description** | Insert rows individually and in transactions, measuring throughput and I/O patterns. |
 | **Metrics** | - Rows inserted per second (individual)<br>- Rows inserted per second (batch)<br>- Transaction commit time (ms)<br>- Journal file size |
@@ -235,7 +235,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | UPDATE Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure update throughput for indexed and non-indexed columns |
 | **Description** | Update rows by primary key and by non-indexed column, measuring throughput. |
 | **Metrics** | - Updates per second (by PK)<br>- Updates per second (by non-indexed)<br>- Updates per second (batch)<br>- Index maintenance overhead |
@@ -247,7 +247,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | DELETE Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure delete throughput and space reclamation |
 | **Description** | Delete rows individually and in batches, measuring throughput and database size changes. |
 | **Metrics** | - Deletes per second (individual)<br>- Deletes per second (batch)<br>- VACUUM time (ms)<br>- Space reclaimed (KB) |
@@ -259,7 +259,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Subquery Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure correlated and non-correlated subquery performance |
 | **Description** | Execute queries with IN, EXISTS, and scalar subqueries, measuring execution time. |
 | **Metrics** | - Time for IN subquery (ms)<br>- Time for EXISTS subquery (ms)<br>- Time for scalar subquery (ms)<br>- Time for correlated subquery (ms) |
@@ -271,7 +271,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | LIKE/GLOB Pattern Matching |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure pattern matching performance for text searches |
 | **Description** | Execute LIKE and GLOB queries with various patterns (prefix, suffix, contains, complex). |
 | **Metrics** | - Time for prefix match (ms)<br>- Time for suffix match (ms)<br>- Time for contains match (ms)<br>- Rows scanned per pattern type |
@@ -283,7 +283,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | ORDER BY and Sorting |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure sort performance for indexed and non-indexed columns |
 | **Description** | Execute queries with ORDER BY on indexed and non-indexed columns, single and multiple columns. |
 | **Metrics** | - Time for indexed sort (ms)<br>- Time for non-indexed sort (ms)<br>- Time for multi-column sort (ms)<br>- Temporary file usage |
@@ -295,7 +295,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Statement Cache Hit Rate |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Validate B-002 (statement cache) provides expected performance improvement |
 | **Description** | Compare query execution time with and without statement caching for repeated queries. |
 | **Metrics** | - Cache hit rate (%)<br>- Time with cache (ms)<br>- Time without cache (ms)<br>- Speedup factor |
@@ -323,7 +323,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Random Read Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure random access I/O patterns typical of indexed lookups |
 | **Description** | Perform random primary key lookups and measure I/O patterns and cache behavior. |
 | **Metrics** | - Random reads per second<br>- Cache hit rate (%)<br>- Average seek time (ms)<br>- Pages read from disk |
@@ -335,7 +335,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Write Performance (Sync vs Async) |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure impact of synchronous pragma on write performance |
 | **Description** | Compare write throughput with PRAGMA synchronous = OFF, NORMAL, FULL. |
 | **Metrics** | - Writes per second (each mode)<br>- Commit latency (ms)<br>- Data durability risk<br>- Journal sync count |
@@ -359,7 +359,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Journal File Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure rollback journal overhead for transactions |
 | **Description** | Measure journal creation, growth, and deletion overhead for various transaction sizes. |
 | **Metrics** | - Journal creation time (ms)<br>- Journal write throughput (KB/sec)<br>- Journal delete time (ms)<br>- Transaction overhead (%) |
@@ -371,7 +371,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Database Growth and VACUUM |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure space efficiency and VACUUM performance |
 | **Description** | Insert and delete data, measuring database size growth and VACUUM reclamation. |
 | **Metrics** | - Space efficiency (%)<br>- VACUUM time (ms/MB)<br>- Free page count<br>- Fragmentation level |
@@ -387,7 +387,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Grid Population Time |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure time to display query results in grid view |
 | **Description** | Populate grid with varying row counts and measure time from query completion to grid display. |
 | **Metrics** | - Time to first paint (ms)<br>- Time to full population (ms)<br>- Rows per second displayed<br>- Scroll responsiveness (ms) |
@@ -399,7 +399,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Grid Sorting Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure client-side grid sorting with type-aware comparison |
 | **Description** | Sort grid columns (numeric, text, mixed) and measure sort time. |
 | **Metrics** | - Sort time by column type (ms)<br>- Comparisons per second<br>- Memory during sort (KB)<br>- Redraw time after sort (ms) |
@@ -411,7 +411,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Grid Search Performance |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure Find Next performance in grid view |
 | **Description** | Search for text in grid cells across large result sets. |
 | **Metrics** | - Search time (ms)<br>- Cells searched per second<br>- Time to highlight match (ms) |
@@ -423,7 +423,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Schema Tree Expansion |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure lazy loading performance for schema tree nodes |
 | **Description** | Expand schema tree nodes and measure time to load columns and indexes. |
 | **Metrics** | - Time to expand table node (ms)<br>- Time to load all columns (ms)<br>- Time to load indexes (ms)<br>- Queries executed per expansion |
@@ -435,7 +435,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Editor Responsiveness |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure query editor input lag with large queries |
 | **Description** | Type in query editor with varying buffer sizes and measure input responsiveness. |
 | **Metrics** | - Input lag (ms)<br>- Line number update time (ms)<br>- Scroll responsiveness (ms)<br>- Memory with large buffer (KB) |
@@ -447,7 +447,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Cell Edit Commit Time |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Measure time from cell edit to database commit in edit mode |
 | **Description** | Edit cells in table edit mode and measure UPDATE execution and grid refresh time. |
 | **Metrics** | - UPDATE execution time (ms)<br>- Grid refresh time (ms)<br>- Total edit-to-display time (ms) |
@@ -475,7 +475,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Maximum Database Size |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Determine practical database size limits for CE storage |
 | **Description** | Grow database until storage limits or performance issues occur. |
 | **Metrics** | - Maximum database size (MB)<br>- Open time at limit (ms)<br>- Query performance at limit<br>- Storage card behavior |
@@ -499,7 +499,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Long-Running Query Abort |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Test query abort mechanism for long-running operations |
 | **Description** | Start long-running queries and abort via Ctrl+C, measuring abort responsiveness. |
 | **Metrics** | - Time from Ctrl+C to abort (ms)<br>- Resource cleanup completeness<br>- Database state after abort<br>- Memory freed after abort |
@@ -511,7 +511,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Memory Exhaustion Recovery |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Test graceful handling of low memory conditions |
 | **Description** | Consume memory until allocations fail and verify graceful degradation. |
 | **Metrics** | - Allocation failure handling<br>- Error message quality<br>- Database state after OOM<br>- Recovery after memory freed |
@@ -539,7 +539,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Before/After Optimization Comparison |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Quantify improvements from optimization work |
 | **Description** | Run standard benchmark suite against pre-optimization and post-optimization builds. |
 | **Metrics** | - Query time improvement (%)<br>- Memory usage reduction (%)<br>- I/O reduction (%)<br>- Overall speedup factor |
@@ -551,7 +551,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Cache Size Impact |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Determine optimal cache size for different workloads |
 | **Description** | Run benchmarks with varying page cache sizes and measure performance impact. |
 | **Metrics** | - Performance at 32 pages<br>- Performance at 64 pages<br>- Performance at 128 pages<br>- Memory vs speed tradeoff |
@@ -563,7 +563,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Flash vs RAM Database |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Compare in-memory vs persistent database performance |
 | **Description** | Run identical benchmarks on :memory: database and file-based database. |
 | **Metrics** | - Query speedup in RAM (%)<br>- Write speedup in RAM (%)<br>- Memory overhead of RAM DB<br>- Practical RAM DB size limit |
@@ -575,7 +575,7 @@ This document defines a comprehensive benchmark suite for measuring SQLite/CE pe
 | Field | Value |
 |-------|-------|
 | **Name** | Index Impact Analysis |
-| **Status** | `PENDING` |
+| **Status** | `READY` |
 | **Reason for Change** | Quantify index benefits and costs |
 | **Description** | Compare query and write performance with/without indexes on various column types. |
 | **Metrics** | - Query speedup with index (%)<br>- Write slowdown with index (%)<br>- Index size overhead (KB)<br>- Break-even point (rows) |
@@ -644,6 +644,7 @@ timestamp,benchmark_id,iteration,metric_name,metric_value,unit,notes
 |---------|------|--------|---------|
 | 1.0 | 2026-01-25 | Claude | Initial benchmark plan with 40 benchmarks across 6 categories |
 | 1.1 | 2026-01-25 | Claude | Implemented 9 benchmarks in SQLiteCEBench: M-001, M-002, I-001, I-004, S-001, S-003, S-006 |
+| 1.2 | 2026-01-25 | Claude | Added 21 more benchmarks: Q-002 through Q-009, I-002, I-003, I-006, S-002, S-004, S-005. All 39 benchmarks now READY |
 
 ---
 
