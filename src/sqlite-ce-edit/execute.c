@@ -384,7 +384,7 @@ void ExecuteQuery(void) {
             return;
         }
         
-        full = (wchar_t *)LocalAlloc(LMEM_FIXED, (fullLen + 1) * sizeof(wchar_t));
+        full = ALLOC(wchar_t, fullLen + 1);
         if (!full) {
             EnableMenuItem(g_hMenu, IDM_EXECUTE, MF_ENABLED);
             SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECUTE, TRUE);

@@ -5,6 +5,7 @@
 #include "globals.h"
 #include "constants.h"
 #include "strutils.h"
+#include "allocators.h"
 
 /*============================================================================
 ** CSV Import
@@ -93,7 +94,7 @@ void DoImportCSV(void) {
         return;
     }
     
-    buf = (char*)LocalAlloc(LMEM_FIXED, dwSize + 1);
+    buf = ALLOC(char, dwSize + 1);
     if (!buf) {
         CloseHandle(hFile);
         return;
@@ -365,7 +366,7 @@ void DoImportCEDB(void) {
     
     while ((oid = CeFindNextDatabase(hEnum)) != 0 && dbCount < 64) {
         if (CeOidGetInfo(oid, &oidInfo) && oidInfo.wObjType == OBJTYPE_DATABASE) {
-            dbNames[dbCount] = (wchar_t *)LocalAlloc(LMEM_FIXED, 64 * sizeof(wchar_t));
+            dbNames[dbCount] = ALLOC(wchar_t, 64);
             if (dbNames[dbCount]) {
                 lstrcpyW(dbNames[dbCount], oidInfo.infDatabase.szDbaseName);
                 dbOids[dbCount] = oid;

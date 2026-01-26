@@ -85,7 +85,7 @@ static void CopySelectedRow(void) {
     startCol = g_editMode ? 1 : 0;
     
     /* Build tab-separated string */
-    buf = (char *)LocalAlloc(LMEM_FIXED, 4096);
+    buf = ALLOC(char, 4096);
     if (!buf) return;
     p = buf;
     
@@ -1200,7 +1200,7 @@ static void DeleteSelectedRow(void) {
             
             len = 0;
             while (rowid[len]) len++;
-            rowids[i] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+            rowids[i] = ALLOC(char, len + 1);
             if (rowids[i]) {
                 for (j = 0; j <= len; j++) rowids[i][j] = rowid[j];
             }
@@ -1302,7 +1302,7 @@ static void StorePendingValue(int col, const char *value) {
         len = 0;
         s = value;
         while (*s++) len++;
-        g_pendingValues[col] = (char *)LocalAlloc(LMEM_FIXED, len + 1);
+        g_pendingValues[col] = ALLOC(char, len + 1);
         if (g_pendingValues[col]) {
             s = value;
             d = g_pendingValues[col];
@@ -1574,8 +1574,8 @@ static void CommitCellEdit(void) {
             s = newVal;
             while (*s++) len++;
             
-            g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol] = 
-                (char *)LocalAlloc(LMEM_FIXED, len + 1);
+            g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol] =
+                ALLOC(char, len + 1);
             if (g_lastResult[(dataRow + 1) * g_lastResultCols + dataCol]) {
                 int i;
                 for (i = 0; i <= len; i++)
