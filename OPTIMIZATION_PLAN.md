@@ -924,6 +924,7 @@ A change is rejected if:
 | 1.18 | 2026-01-25 | Claude | **Phase 5 Complete**: B-001 marked complete (already uses UpperToLower[]). Final: 40 COMPLETE, 5 PENDING, 11 DEFERRED |
 | 1.19 | 2026-01-25 | Claude | **Core Optimizations**: A-003 (string interning with FNV-1a hash), A-005 (VDBE aMem pre-allocation). Final: 42 COMPLETE, 3 PENDING, 11 DEFERRED |
 | 1.20 | 2026-01-25 | Claude | **Final Optimizations**: C-002 (sorted dirty page writes). Deferred A-007 (alignment complex), C-003 (read-ahead risk). Final: 43 COMPLETE, 0 PENDING, 13 DEFERRED |
+| 1.21 | 2026-01-25 | Claude | **Code Cleanup**: Removed trailing whitespace (36 files), standardized FREE macro usage (~15 patterns) |
 
 ---
 
@@ -1061,6 +1062,24 @@ All high-priority items are now complete. The remaining items were deferred due 
 - Quote-escaping loops retained (need special handling for escaping)
 - Wide-to-narrow char conversions retained (intentional type truncation)
 - LMEM_MOVEABLE allocations retained (required by Windows clipboard API)
+
+### Code Cleanup
+| File | Change |
+|------|--------|
+| All src/sqlite-ce-edit/*.c, *.h | Removed trailing whitespace |
+| All src/sqlite-ce/*.c, *.h | Removed trailing whitespace |
+| editor.c | Standardized memory cleanup with FREE macro |
+| execute.c | Standardized memory cleanup with FREE macro |
+| grid.c | Standardized memory cleanup with FREE macro |
+| import.c | Standardized memory cleanup with FREE macro |
+| schema.c | Standardized memory cleanup with FREE macro |
+
+**Code Cleanup Summary:**
+- Removed trailing whitespace from 36 source files
+- Converted ~15 inline LocalFree+NULL patterns to FREE macro for consistency
+- No TODO/FIXME/HACK comments found (codebase was already clean)
+- No unused static functions found
+- No significant dead code found
 
 ---
 
