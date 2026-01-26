@@ -1017,21 +1017,30 @@ These 5 items require careful implementation in core SQLite code:
 | File | Change |
 |------|--------|
 | `src/sqlite-ce-edit/allocators.h` | **NEW** - Type-safe ALLOC/ALLOC_ZERO/FREE macros |
-| `src/sqlite-ce-edit/strutils.h` | **NEW** - Safe string utilities (StrLenSafe, StrCopySafe, STR_COPY) |
+| `src/sqlite-ce-edit/strutils.h` | **NEW** - Safe string utilities (StrLenSafe, StrCopySafe, STR_COPY, STR_COPY_W) |
 | `src/sqlite-ce-edit/strutils.c` | **NEW** - String utilities implementation |
 | `src/sqlite-ce-edit/wince-compat.h` | **NEW** - Windows CE SDK compatibility defines |
 | `src/sqlite-ce-edit/globals.h` | Reduced by ~60 lines via wince-compat.h include |
 | `src/sqlite-ce-edit/settings.c` | Type-safe INT_SETTING/STR_SETTING macros |
 | `src/sqlite-ce-edit/dialogs.c` | Fixed TODO: title parameter now used |
-| `src/sqlite-ce-edit/grid.c` | ~11 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/grid.c` | ~11 ALLOC conversions, ~32 STR_COPY conversions |
 | `src/sqlite-ce-edit/execute.c` | ~9 LocalAlloc → ALLOC conversions |
-| `src/sqlite-ce-edit/schema.c` | ~5 LocalAlloc → ALLOC conversions |
-| `src/sqlite-ce-edit/fileops.c` | ~12 LocalAlloc → ALLOC conversions |
+| `src/sqlite-ce-edit/schema.c` | ~5 ALLOC conversions, ~9 STR_COPY conversions |
+| `src/sqlite-ce-edit/fileops.c` | ~12 ALLOC conversions, ~4 STR_COPY conversions |
 | `src/sqlite-ce-edit/editor.c` | ~2 LocalAlloc → ALLOC conversions |
 | `src/sqlite-ce-edit/output.c` | ~2 LocalAlloc → ALLOC conversions |
 | `src/sqlite-ce-edit/find.c` | ~4 LocalAlloc → ALLOC conversions |
-| `src/sqlite-ce-edit/import.c` | ~2 LocalAlloc → ALLOC conversions, STR_COPY usage |
-| `src/sqlite-ce/os.c` | Return value checks (DeleteFileW, SetFilePointer), safer strings |
+| `src/sqlite-ce-edit/import.c` | ~2 ALLOC conversions, ~12 STR_COPY conversions |
+| `src/sqlite-ce/os.c` | Return value checks, 7 STR_COPY conversions in sprintf |
+| `src/sqlite-ce/log.c` | 2 STR_COPY conversions |
+| `src/sqlite-ce-test/test_main.c` | 1 STR_COPY conversion |
+| `src/sqlite-ce-bench/bench_main.c` | 5 STR_COPY/STR_COPY_W conversions |
+
+**Modernization Summary:**
+- **ALLOC macros**: ~47 LocalAlloc calls converted to type-safe macros
+- **STR_COPY macro**: ~65 string copy patterns converted across all source files
+- Quote-escaping loops retained (need special handling for escaping)
+- LMEM_MOVEABLE allocations retained (required by Windows clipboard API)
 
 ---
 
