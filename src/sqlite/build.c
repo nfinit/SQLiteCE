@@ -75,7 +75,7 @@ void sqliteExec(Parse *pParse){
   if( v && pParse->nErr==0 ){
     FILE *trace = (db->flags & SQLITE_VdbeTrace)!=0 ? stdout : 0;
     sqliteVdbeTrace(v, trace);
-    sqliteVdbeMakeReady(v, pParse->nVar, pParse->explain);
+    sqliteVdbeMakeReady(v, pParse->nVar, pParse->nMem, pParse->explain);
     pParse->rc = pParse->nErr ? SQLITE_ERROR : SQLITE_DONE;
     pParse->colNamesSet = 0;
   }else if( pParse->rc==SQLITE_OK ){

@@ -589,6 +589,7 @@ int sqliteVdbeList(
 void sqliteVdbeMakeReady(
   Vdbe *p,                       /* The VDBE */
   int nVar,                      /* Number of '?' see in the SQL statement */
+  int nMem,                      /* Number of memory cells needed */
   int isExplain                  /* True if the EXPLAIN keywords is present */
 ){
   int n;
@@ -622,6 +623,17 @@ void sqliteVdbeMakeReady(
     p->azVar = (char**)&p->azColName[n];
     p->anVar = (int*)&p->azVar[p->nVar];
     p->abVar = (u8*)&p->anVar[p->nVar];
+  }
+
+  /* Pre-allocate memory cells if count is known from compilation.
+  ** This eliminates realloc calls during query execution.
+  */
+  if( nMem>0 && p->aMem==0 ){
+    p->aMem = sqliteMalloc(nMem*sizeof(p->aMem[0]));
+    if( p->aMem ){
+      memset(p->aMem, 0, nMem*sizeof(p->aMem[0]));
+      p->nMem = nMem;
+    }
   }
 
   sqliteHashInit(&p->agg.hash, SQLITE_HASH_BINARY, 0);

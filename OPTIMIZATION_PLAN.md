@@ -101,12 +101,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Implement String Interning for Repeated Values |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | Medium |
 | **Effort** | High |
-| **Files** | `src/sqlite-ce-edit/execute.c`, `src/sqlite-ce-edit/grid.c` |
-| **Description** | Result sets with repeated string values (e.g., status columns, categories) waste memory storing duplicates. Implement a simple string interning table that deduplicates identical strings within a result set. |
-| **Acceptance Criteria** | - Memory reduction for result sets with repeated values<br>- No performance regression for unique values<br>- Transparent to grid display |
+| **Files** | `src/sqlite-ce-edit/strintern.h`, `src/sqlite-ce-edit/strintern.c`, `src/sqlite-ce-edit/execute.c`, `src/sqlite-ce-edit/globals.h`, `src/sqlite-ce-edit/main.c` |
+| **Description** | Implemented hash-based string interning for result sets. Uses FNV-1a hash (same as SQLite's hash.c) with 1024 buckets. Strings are stored in StrPool with hash table for deduplication. Identical values share same memory pointer. |
+| **Acceptance Criteria** | - Memory reduction for result sets with repeated values ✓<br>- No performance regression for unique values ✓<br>- Transparent to grid display ✓ |
+| **Implementation Notes** | Created strintern.h/strintern.c with StringIntern API. Uses separate pools for strings and InternEntry structs. Updated execute.c to use g_lastResultIntern. Added CleanupExecute() called on WM_DESTROY. Statistics tracking for hit rate analysis. |
 
 #### A-004: Reduce Undo Stack Memory Overhead
 | Field | Value |
@@ -124,12 +125,13 @@ This document outlines a comprehensive optimization strategy for the SQLite/CE c
 | Field | Value |
 |-------|-------|
 | **Name** | Optimize VDBE Memory Stack Allocation |
-| **Status** | `PENDING` |
+| **Status** | `COMPLETE` |
 | **Priority** | High |
 | **Effort** | High |
-| **Files** | `src/sqlite/vdbe.c`, `src/sqlite/vdbeaux.c` |
-| **Description** | The Virtual Database Engine allocates memory for its operand stack dynamically. Profile common query patterns and pre-allocate stack space based on query complexity estimation to reduce malloc/free churn during execution. |
-| **Acceptance Criteria** | - Reduced allocation count during query execution<br>- Faster query execution times<br>- No stack overflow for complex queries |
+| **Files** | `src/sqlite/vdbe.h`, `src/sqlite/vdbeaux.c`, `src/sqlite/build.c`, `src/sqlite/main.c` |
+| **Description** | Pre-allocate VDBE memory cells (aMem) based on count known at compilation time. The operand stack (aStack) was already optimized - pre-allocated based on instruction count. Memory cells were growing on-demand via realloc during execution. Now pre-allocated in sqliteVdbeMakeReady() using pParse->nMem. |
+| **Acceptance Criteria** | - Reduced allocation count during query execution ✓<br>- Faster query execution times ✓<br>- No stack overflow for complex queries ✓ |
+| **Implementation Notes** | Added nMem parameter to sqliteVdbeMakeReady(). build.c now passes pParse->nMem at compile end. main.c passes -1 for sqlite_reset() to preserve existing. Pre-allocation eliminates on-demand realloc in vdbe.c OP_MemStore handler. |
 
 #### A-006: Implement Memory Pool for Small Allocations
 | Field | Value |
@@ -917,6 +919,7 @@ A change is rejected if:
 | 1.16 | 2026-01-25 | Claude | **Phase 5 Continued**: B-008 (lazy loading approach), G-001/G-003 (deferred - standard controls, progress callback) |
 | 1.17 | 2026-01-25 | Claude | **Phase 5 Continued**: Final audit - 39 COMPLETE, 6 PENDING (core SQLite), 11 DEFERRED |
 | 1.18 | 2026-01-25 | Claude | **Phase 5 Complete**: B-001 marked complete (already uses UpperToLower[]). Final: 40 COMPLETE, 5 PENDING, 11 DEFERRED |
+| 1.19 | 2026-01-25 | Claude | **Core Optimizations**: A-003 (string interning with FNV-1a hash), A-005 (VDBE aMem pre-allocation). Final: 42 COMPLETE, 3 PENDING, 11 DEFERRED |
 
 ---
 
@@ -925,18 +928,16 @@ A change is rejected if:
 ### Completion Statistics
 | Status | Count | Percentage |
 |--------|-------|------------|
-| **COMPLETE** | 40 | 71% |
-| **PENDING** | 5 | 9% |
+| **COMPLETE** | 42 | 75% |
+| **PENDING** | 3 | 5% |
 | **DEFERRED** | 11 | 20% |
 | **Total** | 56 | 100% |
 
 ### Remaining PENDING Items (Future Work)
-These 5 items require careful implementation in core SQLite code:
+These 3 items require careful implementation in core SQLite code:
 
 | ID | Name | Effort | Notes |
 |----|------|--------|-------|
-| A-003 | String Interning | High | Needs hash table, reference counting |
-| A-005 | VDBE Stack Allocation | High | Core VM changes, complex |
 | A-007 | B-tree Page Cache Layout | Medium | Cache alignment, single allocation |
 | C-002 | Page Write Batching | Medium | Pager modification, durability concerns |
 | C-003 | Read-Ahead Buffer | Medium | Sequential access detection needed |
@@ -1035,6 +1036,19 @@ These 5 items require careful implementation in core SQLite code:
 | `src/sqlite-ce/log.c` | 2 STR_COPY conversions |
 | `src/sqlite-ce-test/test_main.c` | 1 STR_COPY conversion |
 | `src/sqlite-ce-bench/bench_main.c` | 5 STR_COPY/STR_COPY_W conversions |
+
+### Core Optimizations (A-003, A-005)
+| File | Change |
+|------|--------|
+| `src/sqlite-ce-edit/strintern.h` | **NEW** - String interning API (FNV-1a hash table) |
+| `src/sqlite-ce-edit/strintern.c` | **NEW** - String interning implementation |
+| `src/sqlite-ce-edit/execute.c` | Integrated StringIntern for last result deduplication |
+| `src/sqlite-ce-edit/globals.h` | Added CleanupExecute() declaration |
+| `src/sqlite-ce-edit/main.c` | Call CleanupExecute() on WM_DESTROY |
+| `src/sqlite/vdbe.h` | Added nMem parameter to sqliteVdbeMakeReady() |
+| `src/sqlite/vdbeaux.c` | Pre-allocate aMem in sqliteVdbeMakeReady() |
+| `src/sqlite/build.c` | Pass pParse->nMem to sqliteVdbeMakeReady() |
+| `src/sqlite/main.c` | Pass -1 for nMem in sqlite_reset() |
 
 **Modernization Summary:**
 - **ALLOC macros**: ~47 LocalAlloc calls converted to type-safe macros

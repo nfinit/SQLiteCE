@@ -812,7 +812,7 @@ int sqlite_reset(
   char **pzErrMsg            /* OUT: Write error messages here */
 ){
   int rc = sqliteVdbeReset((Vdbe*)pVm, pzErrMsg);
-  sqliteVdbeMakeReady((Vdbe*)pVm, -1, 0);
+  sqliteVdbeMakeReady((Vdbe*)pVm, -1, -1, 0);
   sqliteStrRealloc(pzErrMsg);
   return rc;
 }
