@@ -60,7 +60,7 @@ void DoFindNext(void) {
         }
     }
     LocalFree(buf);
-    MessageBoxW(g_hwndMain, L"Text not found.", L"Find", MB_OK);
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Text not found");
 }
 
 static LRESULT CALLBACK FindEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

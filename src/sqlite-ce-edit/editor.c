@@ -43,6 +43,8 @@ int HandleGlobalKeys(UINT msg, WPARAM wParam) {
 }
 
 void UpdateLineCount(void) {
+    static DWORD lastSel = (DWORD)-1;
+    static int lastTotal = -1;
     wchar_t buf[32];
     DWORD sel;
     int cur, total, textLen, i;
@@ -70,8 +72,13 @@ void UpdateLineCount(void) {
             LocalFree(text);
         }
     }
-    wsprintfW(buf, L"Ln %d of %d", cur, total);
-    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)buf);
+    /* Only update status bar if cursor moved or line count changed */
+    if (sel != lastSel || total != lastTotal) {
+        lastSel = sel;
+        lastTotal = total;
+        wsprintfW(buf, L"Ln %d of %d", cur, total);
+        SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)buf);
+    }
 }
 
 void UpdateLineNumbers(void) {

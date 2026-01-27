@@ -452,7 +452,7 @@ void GridFindNext(void) {
             }
         }
     }
-    MessageBoxW(g_hwndMain, L"Text not found.", L"Find", MB_OK);
+    SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)L"Text not found");
 }
 
 /* Build placeholder hint for column: (auto), (TYPE null), (TYPE req), (TYPE) */
