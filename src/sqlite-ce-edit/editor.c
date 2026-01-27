@@ -33,6 +33,7 @@ int HandleGlobalKeys(UINT msg, WPARAM wParam) {
             if (wParam == '1') { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0); return 1; }
             if (wParam == '2') { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0); return 1; }
             if (wParam == '3') { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWSCHEMA, 0); return 1; }
+            if (wParam == 'G' && g_viewMode == 0) { DoGotoLine(); return 1; }
         }
         if (wParam == VK_F5) { ExecuteQuery(); return 1; }
         if (wParam == VK_F6) { SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWRESULT, 0); return 1; }

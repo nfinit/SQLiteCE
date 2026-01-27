@@ -91,6 +91,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             AppendMenuW(g_hQueryCtx, MF_STRING, IDM_EXECUTE, L"&Execute\tCtrl+Enter");
             AppendMenuW(g_hQueryCtx, MF_STRING, IDM_EXECATCURSOR, L"Execute at &Cursor");
             AppendMenuW(g_hQueryCtx, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(g_hQueryCtx, MF_STRING, IDM_GOTOLINE, L"&Go to Line...\tCtrl+G");
+            AppendMenuW(g_hQueryCtx, MF_SEPARATOR, 0, NULL);
             AppendMenuW(g_hQueryCtx, MF_STRING, IDM_CLEAR, L"C&lear Editor");
             
             g_hResultCtx = CreatePopupMenu();
@@ -348,6 +350,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_FIND:    DoFind(); break;
                 case IDM_FINDNEXT: DoFindNext(); break;
                 case IDM_REPLACE: DoReplace(); break;
+                case IDM_GOTOLINE: DoGotoLine(); break;
                 case IDM_CLEAR:
                     if (g_viewMode == VIEW_QUERY) {
                         SetWindowTextW(g_hwndQuery, L"");

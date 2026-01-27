@@ -375,3 +375,121 @@ void DoReplace(void) {
         g_hwndMain, NULL, g_hInst, NULL);
     ShowWindow(g_hwndReplaceDlg, SW_SHOW);
 }
+
+/*
+** Go to Line dialog
+*/
+static HWND g_hwndGotoDlg = NULL;
+static HWND g_hwndGotoEdit = NULL;
+static WNDPROC g_pfnGotoEditProc = NULL;
+
+static void GotoLineNumber(int lineNum) {
+    int charIdx, textLen, curLine, i;
+    wchar_t *text;
+
+    if (lineNum < 1) lineNum = 1;
+
+    textLen = GetWindowTextLengthW(g_hwndQuery);
+    if (textLen == 0) {
+        SendMessage(g_hwndQuery, EM_SETSEL, 0, 0);
+        return;
+    }
+
+    text = (wchar_t *)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
+    if (!text) return;
+    GetWindowTextW(g_hwndQuery, text, textLen + 1);
+
+    /* Find character index of target line */
+    charIdx = 0;
+    curLine = 1;
+    for (i = 0; i < textLen && curLine < lineNum; i++) {
+        if (text[i] == '\n') {
+            curLine++;
+            charIdx = i + 1;
+        }
+    }
+    if (curLine < lineNum) charIdx = textLen; /* Past end, go to last char */
+
+    LocalFree(text);
+
+    SendMessage(g_hwndQuery, EM_SETSEL, charIdx, charIdx);
+    SendMessage(g_hwndQuery, EM_SCROLLCARET, 0, 0);
+    SetFocus(g_hwndQuery);
+}
+
+static LRESULT CALLBACK GotoEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_RETURN) {
+            SendMessage(g_hwndGotoDlg, WM_COMMAND, IDOK, 0);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            SendMessage(g_hwndGotoDlg, WM_CLOSE, 0, 0);
+            return 0;
+        }
+    }
+    return CallWindowProc(g_pfnGotoEditProc, hwnd, msg, wParam, lParam);
+}
+
+static LRESULT CALLBACK GotoWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE: {
+            CreateWindowW(L"STATIC", L"Line:",
+                WS_CHILD | WS_VISIBLE,
+                5, 8, 30, 16, hwnd, NULL, g_hInst, NULL);
+            g_hwndGotoEdit = CreateWindowW(L"EDIT", L"",
+                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_NUMBER,
+                38, 5, 60, 20, hwnd, (HMENU)101, g_hInst, NULL);
+            CreateWindowW(L"BUTTON", L"Go",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+                105, 4, 40, 22, hwnd, (HMENU)IDOK, g_hInst, NULL);
+            g_pfnGotoEditProc = (WNDPROC)SetWindowLong(g_hwndGotoEdit, GWL_WNDPROC, (LONG)GotoEditProc);
+            SetFocus(g_hwndGotoEdit);
+            return 0;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK) {
+                wchar_t buf[16];
+                int lineNum;
+                GetWindowTextW(g_hwndGotoEdit, buf, 16);
+                lineNum = 0;
+                { int i; for (i = 0; buf[i]; i++) lineNum = lineNum * 10 + (buf[i] - '0'); }
+                DestroyWindow(hwnd);
+                g_hwndGotoDlg = NULL;
+                GotoLineNumber(lineNum);
+            }
+            return 0;
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            g_hwndGotoDlg = NULL;
+            SetFocus(g_hwndQuery);
+            return 0;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+void DoGotoLine(void) {
+    WNDCLASSW wc = {0};
+    RECT rc;
+
+    /* Only available in Query view */
+    if (g_viewMode != 0) return;
+
+    if (g_hwndGotoDlg) {
+        SetFocus(g_hwndGotoEdit);
+        return;
+    }
+
+    wc.lpfnWndProc = GotoWndProc;
+    wc.hInstance = g_hInst;
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszClassName = L"SQLiteCEGoto";
+    RegisterClassW(&wc);
+
+    GetWindowRect(g_hwndMain, &rc);
+    g_hwndGotoDlg = CreateWindowExW(WS_EX_TOOLWINDOW, L"SQLiteCEGoto", L"Go to Line",
+        WS_POPUP | WS_CAPTION | WS_SYSMENU,
+        rc.left + 20, rc.top + 50, 155, 52,
+        g_hwndMain, NULL, g_hInst, NULL);
+    ShowWindow(g_hwndGotoDlg, SW_SHOW);
+}

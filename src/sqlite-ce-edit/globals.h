@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.10.0.62"
+#define SQLITECEDIT_VERSION L"0.11.0.1"
 
 /*============================================================================
 ** Menu IDs
@@ -115,6 +115,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_FIND     202
 #define IDM_FINDNEXT 203
 #define IDM_REPLACE  207
+#define IDM_GOTOLINE 208
 #define IDM_EXECATCURSOR 204
 #define IDM_EXECATCURSOR_PLACEHOLDER 205
 #define IDM_STOP     206
@@ -421,6 +422,7 @@ void OpenQueryFile(const wchar_t *path);
 void DoFind(void);
 void DoFindNext(void);
 void DoReplace(void);
+void DoGotoLine(void);
 
 /*============================================================================
 ** Function Declarations - Dialogs (dialogs.c)
