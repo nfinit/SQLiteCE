@@ -82,6 +82,8 @@ void UpdateLineCount(void) {
 }
 
 void UpdateLineNumbers(void) {
+    static wchar_t *cachedText = NULL;
+    static int cachedLen = -1;
     wchar_t buf[4096];
     wchar_t *text = NULL;
     int i, visLines, firstVisible, pos = 0, textLen;
@@ -91,10 +93,18 @@ void UpdateLineNumbers(void) {
     visLines = (int)SendMessage(g_hwndQuery, EM_GETLINECOUNT, 0, 0);
     textLen = GetWindowTextLengthW(g_hwndQuery);
     
-    /* Get text once for all operations */
-    if (textLen > 0) {
-        text = (wchar_t*)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
-        if (text) GetWindowTextW(g_hwndQuery, text, textLen + 1);
+    /* Use cached text if length unchanged */
+    if (textLen == cachedLen && cachedText) {
+        text = cachedText;
+    } else {
+        /* Text changed - re-fetch and cache */
+        if (cachedText) { LocalFree(cachedText); cachedText = NULL; }
+        cachedLen = textLen;
+        if (textLen > 0) {
+            cachedText = (wchar_t*)LocalAlloc(LMEM_FIXED, (textLen + 1) * sizeof(wchar_t));
+            if (cachedText) GetWindowTextW(g_hwndQuery, cachedText, textLen + 1);
+        }
+        text = cachedText;
     }
     
     /* Count logical lines for gutter width */
@@ -149,8 +159,6 @@ void UpdateLineNumbers(void) {
     }
     buf[pos] = 0;
     SetWindowTextW(g_hwndLineNum, buf);
-    
-    if (text) LocalFree(text);
 }
 
 void SyncLineNumScroll(void) {
