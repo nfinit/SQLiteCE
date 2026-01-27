@@ -242,8 +242,9 @@ void SwitchView(int mode) {
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_execAtCursor);
     } else if (mode == VIEW_RESULT) {
         /* Results view: grid toggle - checked = grid mode */
+        /* Disabled in edit mode (can't switch away from grid while editing table) */
         SendMessage(g_hwndCB, TB_CHANGEBITMAP, IDM_EXECATCURSOR, TB_GRID);
-        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, g_lastResultRows > 0);
+        SendMessage(g_hwndCB, TB_ENABLEBUTTON, IDM_EXECATCURSOR, !g_editMode && g_lastResultRows > 0);
         SendMessage(g_hwndCB, TB_CHECKBUTTON, IDM_EXECATCURSOR, g_gridView);
     } else {
         /* Schema view: show details toggle - checked = details shown */
