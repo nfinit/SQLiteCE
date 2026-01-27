@@ -234,12 +234,94 @@ static int StrCmpNoCase(const char *a, const char *b) {
 }
 
 static int g_cmpCol;  /* Data column index for sorting */
+
+/*
+** Check if string is a valid number (integer or decimal).
+** Returns 1 if numeric, 0 otherwise. Sets *val to the parsed value.
+*/
+static int ParseNumber(const char *s, double *val) {
+    double result = 0.0;
+    double frac = 0.0;
+    double div = 1.0;
+    int neg = 0;
+    int hasDigit = 0;
+    int inFrac = 0;
+
+    if (!s || !*s) return 0;
+
+    /* Skip leading whitespace */
+    while (*s == ' ' || *s == '\t') s++;
+
+    /* Handle sign */
+    if (*s == '-') { neg = 1; s++; }
+    else if (*s == '+') { s++; }
+
+    /* Parse digits */
+    while (*s) {
+        if (*s >= '0' && *s <= '9') {
+            hasDigit = 1;
+            if (inFrac) {
+                div *= 10.0;
+                frac += (*s - '0') / div;
+            } else {
+                result = result * 10.0 + (*s - '0');
+            }
+        } else if (*s == '.' && !inFrac) {
+            inFrac = 1;
+        } else if (*s == ' ' || *s == '\t') {
+            /* Trailing whitespace OK */
+            while (*s == ' ' || *s == '\t') s++;
+            break;
+        } else {
+            return 0;  /* Invalid character */
+        }
+        s++;
+    }
+
+    if (!hasDigit) return 0;
+    if (*s) return 0;  /* Trailing non-whitespace */
+
+    *val = neg ? -(result + frac) : (result + frac);
+    return 1;
+}
+
+/*
+** Compare two values with type awareness.
+** Numbers compare numerically, strings compare case-insensitive.
+** NULL values sort first.
+*/
+static int CmpValues(const char *va, const char *vb) {
+    double na, nb;
+    int aIsNum, bIsNum;
+
+    /* Handle NULLs - sort first */
+    if (!va && !vb) return 0;
+    if (!va) return -1;
+    if (!vb) return 1;
+    if (!*va && !*vb) return 0;
+    if (!*va) return -1;
+    if (!*vb) return 1;
+
+    /* Try numeric comparison */
+    aIsNum = ParseNumber(va, &na);
+    bIsNum = ParseNumber(vb, &nb);
+
+    if (aIsNum && bIsNum) {
+        if (na < nb) return -1;
+        if (na > nb) return 1;
+        return 0;
+    }
+
+    /* Fall back to string comparison */
+    return StrCmpNoCase(va, vb);
+}
+
 static int CmpRows(const void *pa, const void *pb) {
     int ra = *(const int*)pa;
     int rb = *(const int*)pb;
     char *va = g_lastResult[(ra + 1) * g_lastResultCols + g_cmpCol];
     char *vb = g_lastResult[(rb + 1) * g_lastResultCols + g_cmpCol];
-    int cmp = StrCmpNoCase(va, vb);
+    int cmp = CmpValues(va, vb);
     return g_sortAsc ? cmp : -cmp;
 }
 
