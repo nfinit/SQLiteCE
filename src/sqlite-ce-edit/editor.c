@@ -540,9 +540,10 @@ LRESULT CALLBACK ResultEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             SendMessage(g_hwndMain, WM_COMMAND, IDM_VIEWQUERY, 0);
             return 0;
         }
-        /* Ctrl+G - Toggle grid view */
+        /* Ctrl+G - Toggle grid view (only if results exist) */
         if (ctrl && wParam == 'G') {
-            SendMessage(g_hwndMain, WM_COMMAND, IDM_EXECATCURSOR, 0);
+            if (g_lastResultRows > 0)
+                SendMessage(g_hwndMain, WM_COMMAND, IDM_EXECATCURSOR, 0);
             return 0;
         }
         return 0;  /* Block all other keys */
