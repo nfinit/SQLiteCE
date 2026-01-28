@@ -249,9 +249,9 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             g_optEditorCtrls[1] = CreateWindowW(L"BUTTON", L"Popup on SQL error",
                 WS_CHILD | BS_AUTOCHECKBOX,
                 x, y + 22, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
-            g_optEditorCtrls[2] = CreateWindowW(L"BUTTON", L"Remember last query folder",
+            g_optEditorCtrls[2] = CreateWindowW(L"BUTTON", L"Remember last query path on exit",
                 WS_CHILD | BS_AUTOCHECKBOX,
-                x, y + 44, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_REMEMBERQDIR, g_hInst, NULL);
+                x, y + 44, 220, 20, g_hwndOptTab, (HMENU)IDC_OPT_REMEMBERQDIR, g_hInst, NULL);
             
             /* Results tab controls */
             g_optResultsCtrls[0] = CreateWindowW(L"BUTTON", L"Append text output",
@@ -350,11 +350,19 @@ void DoOptions(void) {
     if (g_optResult) {
         g_clearOnExec = g_optClearExec;
         g_showErrorMsgBox = g_optErrorMsgBox;
-        g_rememberQueryDir = g_optRememberQueryDir;
         g_useStorageCard = g_optStorageCard;
         g_useStorageCardData = g_optStorageCardData;
         lstrcpyW(g_szLocalBasePath, g_optLocalPath);
         lstrcpyW(g_szCardBasePath, g_optCardPath);
+        
+        /* Reset query dir to default if option turned off */
+        if (g_rememberQueryDir && !g_optRememberQueryDir) {
+            if (GetFileAttributesW(L"\\My Documents") != 0xFFFFFFFF)
+                lstrcpyW(g_szLastQueryDir, L"\\My Documents");
+            else
+                lstrcpyW(g_szLastQueryDir, L"\\");
+        }
+        g_rememberQueryDir = g_optRememberQueryDir;
         
         /* Handle line numbers toggle */
         if (g_optLineNums != g_showLineNumbers) {

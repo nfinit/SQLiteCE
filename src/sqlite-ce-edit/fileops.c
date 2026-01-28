@@ -231,7 +231,7 @@ void DoOpenQuery(void) {
     }
 }
 
-void DoSaveQuery(void) {
+void DoSaveQueryAs(void) {
     wchar_t szFile[MAX_PATH];
     HANDLE hFile;
     DWORD dwLen, dwWritten;
@@ -239,17 +239,23 @@ void DoSaveQuery(void) {
     char *buf;
     DWORD i;
     
-    if (g_szQueryPath[0]) {
+    if (g_szQueryPath[0])
         lstrcpyW(szFile, g_szQueryPath);
-    } else {
+    else
         lstrcpyW(szFile, L"query.sql");
-        
-        if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
-                L"Save Query", L"SQL Files (*.sql)\0*.sql\0",
-                L"sql", g_szLastQueryDir, 1)) return;
-        lstrcpyW(g_szQueryPath, szFile);
-        UpdateTitle();
+    
+    if (!CustomFilePicker(g_hwndMain, szFile, MAX_PATH,
+            L"Save Query As", L"SQL Files (*.sql)\0*.sql\0",
+            L"sql", g_szLastQueryDir, 1)) return;
+    
+    /* Update last query directory */
+    lstrcpyW(g_szLastQueryDir, szFile);
+    for (i = lstrlenW(g_szLastQueryDir) - 1; i >= 0; i--) {
+        if (g_szLastQueryDir[i] == '\\') { g_szLastQueryDir[i] = 0; break; }
     }
+    
+    lstrcpyW(g_szQueryPath, szFile);
+    UpdateTitle();
     
     dwLen = GetWindowTextLengthW(g_hwndQuery);
     wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
@@ -258,6 +264,35 @@ void DoSaveQuery(void) {
         GetWindowTextW(g_hwndQuery, wbuf, dwLen + 1);
         for (i = 0; i <= dwLen; i++) buf[i] = (char)wbuf[i];
         hFile = CreateFileW(szFile, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            WriteFile(hFile, buf, dwLen, &dwWritten, NULL);
+            CloseHandle(hFile);
+            g_queryDirty = 0;
+        }
+    }
+    if (wbuf) LocalFree(wbuf);
+    if (buf) LocalFree(buf);
+}
+
+void DoSaveQuery(void) {
+    HANDLE hFile;
+    DWORD dwLen, dwWritten;
+    wchar_t *wbuf;
+    char *buf;
+    DWORD i;
+    
+    if (!g_szQueryPath[0]) {
+        DoSaveQueryAs();
+        return;
+    }
+    
+    dwLen = GetWindowTextLengthW(g_hwndQuery);
+    wbuf = (wchar_t*)LocalAlloc(LMEM_FIXED, (dwLen + 1) * sizeof(wchar_t));
+    buf = (char*)LocalAlloc(LMEM_FIXED, dwLen + 1);
+    if (wbuf && buf) {
+        GetWindowTextW(g_hwndQuery, wbuf, dwLen + 1);
+        for (i = 0; i <= dwLen; i++) buf[i] = (char)wbuf[i];
+        hFile = CreateFileW(g_szQueryPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile != INVALID_HANDLE_VALUE) {
             WriteFile(hFile, buf, dwLen, &dwWritten, NULL);
             CloseHandle(hFile);

@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.11.0.36"
+#define SQLITECEDIT_VERSION L"0.11.0.41"
 
 /*============================================================================
 ** Menu IDs
@@ -99,6 +99,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 #define IDM_EXIT     104
 #define IDM_OPENQUERY  105
 #define IDM_SAVEQUERY  106
+#define IDM_SAVEQUERYAT 119
 #define IDM_NEWQUERY   117
 #define IDM_EXPORTCSV  107
 #define IDM_EXPORTDB   108
@@ -399,6 +400,7 @@ void DoFileNew(void);
 void DoFileOpen(void);
 void DoOpenQuery(void);
 void DoSaveQuery(void);
+void DoSaveQueryAs(void);
 void DoNewQuery(void);
 void DoExportCSV(void);
 void DoExportTxt(void);

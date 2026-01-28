@@ -43,7 +43,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 hQueryFile = CreatePopupMenu();
                 AppendMenuW(hQueryFile, MF_STRING, IDM_NEWQUERY, L"&New\tCtrl+N");
                 AppendMenuW(hQueryFile, MF_STRING, IDM_OPENQUERY, L"&Open...\tCtrl+O");
-                AppendMenuW(hQueryFile, MF_STRING, IDM_SAVEQUERY, L"&Save...\tCtrl+S");
+                AppendMenuW(hQueryFile, MF_STRING, IDM_SAVEQUERY, L"&Save\tCtrl+S");
+                AppendMenuW(hQueryFile, MF_STRING, IDM_SAVEQUERYAT, L"Save &As...");
                 g_hRecentQueryMenu = CreatePopupMenu();
                 AppendMenuW(g_hRecentQueryMenu, MF_STRING | MF_GRAYED, 0, L"(none)");
                 AppendMenuW(hQueryFile, MF_POPUP, (UINT)g_hRecentQueryMenu, L"&Recent");
@@ -309,6 +310,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDM_RESTORE: DoRestoreDatabase(); break;
                 case IDM_OPENQUERY: DoOpenQuery(); break;
                 case IDM_SAVEQUERY: DoSaveQuery(); break;
+                case IDM_SAVEQUERYAT: DoSaveQueryAs(); break;
                 case IDM_NEWQUERY:  DoNewQuery(); break;
                 case IDM_EXPORTCSV: DoExportCSV(); break;
                 case IDM_EXPORTTXT: DoExportTxt(); break;
