@@ -36,9 +36,9 @@ int g_useStorageCardData = 0;
 /* Relative data path (appended to base) */
 wchar_t g_szDataRelPath[MAX_PATH] = L"\\Data";
 
-/* Base paths (hidden settings, editable via registry) */
-wchar_t g_szLocalBasePath[MAX_PATH] = L"\\My Documents";
-wchar_t g_szCardBasePath[MAX_PATH] = L"";
+/* Base paths for data storage */
+wchar_t g_szLocalBasePath[MAX_PATH] = L"\\My Documents\\Data";
+wchar_t g_szCardBasePath[MAX_PATH] = L"\\Data";
 
 /*============================================================================
 ** Get database file size

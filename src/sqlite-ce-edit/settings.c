@@ -45,8 +45,8 @@ static SettingDef g_intSettings[] = {
 static SettingDef g_strSettings[] = {
     { L"DefaultDbPath",  SET_STR, g_szDefaultDbPath,   0, L"\\My Documents\\Data" },
     { L"DataRelPath",    SET_STR, g_szDataRelPath,     0, L"\\Data" },
-    { L"LocalBasePath",  SET_STR, g_szLocalBasePath,   0, L"\\My Documents" },
-    { L"CardBasePath",   SET_STR, g_szCardBasePath,    0, L"" },
+    { L"LocalBasePath",  SET_STR, g_szLocalBasePath,   0, L"\\My Documents\\Data" },
+    { L"CardBasePath",   SET_STR, g_szCardBasePath,    0, L"\\Data" },
     { NULL, 0, NULL, 0, NULL }
 };
 
