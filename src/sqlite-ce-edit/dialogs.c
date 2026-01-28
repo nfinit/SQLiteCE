@@ -155,8 +155,9 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
 #define IDC_OPT_DBPATHLABEL  1009
 #define IDC_OPT_LOCALPATH    1010
 #define IDC_OPT_CARDPATH     1011
+#define IDC_OPT_REMEMBERQDIR 1013
 
-static int g_optClearExec, g_optLineNums, g_optErrorMsgBox;
+static int g_optClearExec, g_optLineNums, g_optErrorMsgBox, g_optRememberQueryDir;
 static int g_optStorageCard, g_optStorageCardData;
 static wchar_t g_optLocalPath[MAX_PATH];
 static wchar_t g_optCardPath[MAX_PATH];
@@ -167,13 +168,14 @@ static int g_optResult = 0;
 /* Control arrays for tab visibility */
 static HWND g_optGeneralCtrls[1];
 static HWND g_optStorageCtrls[6];
-static HWND g_optEditorCtrls[2];
+static HWND g_optEditorCtrls[3];
 static HWND g_optResultsCtrls[1];
 
 static void ApplyOptions(HWND hwnd) {
     g_optClearExec = !SendMessage(g_optResultsCtrls[0], BM_GETCHECK, 0, 0);
     g_optLineNums = SendMessage(g_optEditorCtrls[0], BM_GETCHECK, 0, 0);
     g_optErrorMsgBox = SendMessage(g_optEditorCtrls[1], BM_GETCHECK, 0, 0);
+    g_optRememberQueryDir = SendMessage(g_optEditorCtrls[2], BM_GETCHECK, 0, 0);
     g_optStorageCardData = SendMessage(g_optStorageCtrls[0], BM_GETCHECK, 0, 0);
     g_optStorageCard = SendMessage(g_optStorageCtrls[1], BM_GETCHECK, 0, 0);
     GetWindowTextW(g_optStorageCtrls[3], g_optLocalPath, MAX_PATH);
@@ -185,7 +187,7 @@ static void ShowOptionsTab(int tab) {
     int i;
     for (i = 0; i < 1; i++) ShowWindow(g_optGeneralCtrls[i], tab == 0 ? SW_SHOW : SW_HIDE);
     for (i = 0; i < 6; i++) ShowWindow(g_optStorageCtrls[i], tab == 1 ? SW_SHOW : SW_HIDE);
-    for (i = 0; i < 2; i++) ShowWindow(g_optEditorCtrls[i], tab == 2 ? SW_SHOW : SW_HIDE);
+    for (i = 0; i < 3; i++) ShowWindow(g_optEditorCtrls[i], tab == 2 ? SW_SHOW : SW_HIDE);
     for (i = 0; i < 1; i++) ShowWindow(g_optResultsCtrls[i], tab == 3 ? SW_SHOW : SW_HIDE);
 }
 
@@ -247,6 +249,9 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             g_optEditorCtrls[1] = CreateWindowW(L"BUTTON", L"Popup on SQL error",
                 WS_CHILD | BS_AUTOCHECKBOX,
                 x, y + 22, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
+            g_optEditorCtrls[2] = CreateWindowW(L"BUTTON", L"Remember last query folder",
+                WS_CHILD | BS_AUTOCHECKBOX,
+                x, y + 44, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_REMEMBERQDIR, g_hInst, NULL);
             
             /* Results tab controls */
             g_optResultsCtrls[0] = CreateWindowW(L"BUTTON", L"Append text output",
@@ -257,6 +262,7 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             SendMessage(g_optResultsCtrls[0], BM_SETCHECK, !g_optClearExec, 0);
             SendMessage(g_optEditorCtrls[0], BM_SETCHECK, g_optLineNums, 0);
             SendMessage(g_optEditorCtrls[1], BM_SETCHECK, g_optErrorMsgBox, 0);
+            SendMessage(g_optEditorCtrls[2], BM_SETCHECK, g_optRememberQueryDir, 0);
             SendMessage(g_optStorageCtrls[0], BM_SETCHECK, g_optStorageCardData, 0);
             SendMessage(g_optStorageCtrls[1], BM_SETCHECK, g_optStorageCard, 0);
             ShowOptionsTab(0);
@@ -310,6 +316,7 @@ void DoOptions(void) {
     g_optClearExec = g_clearOnExec;
     g_optLineNums = g_showLineNumbers;
     g_optErrorMsgBox = g_showErrorMsgBox;
+    g_optRememberQueryDir = g_rememberQueryDir;
     g_optStorageCard = g_useStorageCard;
     g_optStorageCardData = g_useStorageCardData;
     lstrcpyW(g_optLocalPath, g_szLocalBasePath);
@@ -343,6 +350,7 @@ void DoOptions(void) {
     if (g_optResult) {
         g_clearOnExec = g_optClearExec;
         g_showErrorMsgBox = g_optErrorMsgBox;
+        g_rememberQueryDir = g_optRememberQueryDir;
         g_useStorageCard = g_optStorageCard;
         g_useStorageCardData = g_optStorageCardData;
         lstrcpyW(g_szLocalBasePath, g_optLocalPath);

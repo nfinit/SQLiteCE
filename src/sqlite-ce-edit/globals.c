@@ -70,6 +70,7 @@ wchar_t g_szQueryPath[MAX_PATH] = L"";
 wchar_t g_szLastQueryDir[MAX_PATH] = L"\\";
 int g_queryDirty = 0;
 int g_showErrorMsgBox = 0;
+int g_rememberQueryDir = 0;
 wchar_t g_szDefaultDbPath[MAX_PATH] = L"\\My Documents\\Data";
 wchar_t g_recentFiles[MAX_RECENT_FILES][MAX_PATH] = {0};
 int g_recentCount = 0;

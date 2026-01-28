@@ -38,6 +38,7 @@ static SettingDef g_intSettings[] = {
     { L"GridAutoSize",   SET_INT, &g_gridAutoSize,     1, NULL },
     { L"UseStorageCard", SET_INT, &g_useStorageCard,   0, NULL },
     { L"UseStorageCardData", SET_INT, &g_useStorageCardData, 0, NULL },
+    { L"RememberQueryDir", SET_INT, &g_rememberQueryDir, 0, NULL },
     { NULL, 0, NULL, 0, NULL }
 };
 
@@ -47,6 +48,7 @@ static SettingDef g_strSettings[] = {
     { L"DataRelPath",    SET_STR, g_szDataRelPath,     0, L"\\Data" },
     { L"LocalBasePath",  SET_STR, g_szLocalBasePath,   0, L"\\My Documents\\Data" },
     { L"CardBasePath",   SET_STR, g_szCardBasePath,    0, L"\\Data" },
+    { L"LastQueryDir",   SET_STR, g_szLastQueryDir,    0, L"\\" },
     { NULL, 0, NULL, 0, NULL }
 };
 

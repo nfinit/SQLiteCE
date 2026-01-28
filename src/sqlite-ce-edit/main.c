@@ -701,6 +701,10 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     InitCommonControls();
     LoadSettings();
     
+    /* Set default query directory to My Documents if not remembering and it exists */
+    if (!g_rememberQueryDir && GetFileAttributesW(L"\\My Documents") != 0xFFFFFFFF)
+        lstrcpyW(g_szLastQueryDir, L"\\My Documents");
+    
     /* Build accelerator table */
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'O'; accel[nAccel].cmd = IDM_OPENQUERY; nAccel++;
     accel[nAccel].fVirt = FCONTROL | FVIRTKEY; accel[nAccel].key = 'S'; accel[nAccel].cmd = IDM_SAVEQUERY; nAccel++;

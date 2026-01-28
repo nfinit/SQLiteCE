@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.11.0.34"
+#define SQLITECEDIT_VERSION L"0.11.0.36"
 
 /*============================================================================
 ** Menu IDs
@@ -259,6 +259,7 @@ extern wchar_t g_szQueryPath[MAX_PATH];
 extern wchar_t g_szLastQueryDir[MAX_PATH];
 extern int g_queryDirty;
 extern int g_showErrorMsgBox;
+extern int g_rememberQueryDir;
 extern wchar_t g_szDefaultDbPath[MAX_PATH];
 
 #define MAX_RECENT_FILES 5
