@@ -168,7 +168,7 @@ static HWND g_optEditorCtrls[2];
 static HWND g_optResultsCtrls[1];
 
 static void ApplyOptions(HWND hwnd) {
-    g_optClearExec = SendMessage(g_optResultsCtrls[0], BM_GETCHECK, 0, 0);
+    g_optClearExec = !SendMessage(g_optResultsCtrls[0], BM_GETCHECK, 0, 0);
     g_optLineNums = SendMessage(g_optEditorCtrls[0], BM_GETCHECK, 0, 0);
     g_optErrorMsgBox = SendMessage(g_optEditorCtrls[1], BM_GETCHECK, 0, 0);
     g_optStorageCardData = SendMessage(g_optStorageCtrls[0], BM_GETCHECK, 0, 0);
@@ -234,9 +234,9 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             y = tabRc.top + 2;
             
             /* General tab controls */
-            g_optGeneralCtrls[0] = CreateWindowW(L"BUTTON", L"Clear All Settings...",
+            g_optGeneralCtrls[0] = CreateWindowW(L"BUTTON", L"Clear registry settings...",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                x, y, 140, 22, g_hwndOptTab, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
+                x, y, 160, 22, g_hwndOptTab, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
             
             /* Storage tab controls */
             g_optStorageCtrls[0] = CreateWindowW(L"BUTTON", L"Use storage card for data",
@@ -255,17 +255,17 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             g_optEditorCtrls[0] = CreateWindowW(L"BUTTON", L"Show line numbers",
                 WS_CHILD | BS_AUTOCHECKBOX,
                 x, y, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_LINENUMS, g_hInst, NULL);
-            g_optEditorCtrls[1] = CreateWindowW(L"BUTTON", L"Message box on error",
+            g_optEditorCtrls[1] = CreateWindowW(L"BUTTON", L"Popup on SQL error",
                 WS_CHILD | BS_AUTOCHECKBOX,
                 x, y + 22, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
             
             /* Results tab controls */
-            g_optResultsCtrls[0] = CreateWindowW(L"BUTTON", L"Clear results on execute",
+            g_optResultsCtrls[0] = CreateWindowW(L"BUTTON", L"Append text output",
                 WS_CHILD | BS_AUTOCHECKBOX,
                 x, y, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_CLEAREXEC, g_hInst, NULL);
             
             /* Set initial values */
-            SendMessage(g_optResultsCtrls[0], BM_SETCHECK, g_optClearExec, 0);
+            SendMessage(g_optResultsCtrls[0], BM_SETCHECK, !g_optClearExec, 0);
             SendMessage(g_optEditorCtrls[0], BM_SETCHECK, g_optLineNums, 0);
             SendMessage(g_optEditorCtrls[1], BM_SETCHECK, g_optErrorMsgBox, 0);
             SendMessage(g_optStorageCtrls[0], BM_SETCHECK, g_optStorageCardData, 0);
