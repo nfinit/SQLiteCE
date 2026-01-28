@@ -383,17 +383,16 @@ void ExecuteQuery(void) {
         for (i = 0; i < fullLen; i++) {
             wchar_t c = full[i];
             if (inStr) {
-                if (c == '\'') { if (full[i+1] == '\'') i++; else inStr = 0; }
+                if (c == inStr) { if (full[i+1] == inStr) i++; else inStr = 0; }
             } else if (inCmt == 1) {
                 if (c == '\n') inCmt = 0;
             } else if (inCmt == 2) {
                 if (c == '*' && full[i+1] == '/') { i++; inCmt = 0; }
             } else {
-                if (c == '\'') inStr = 1;
+                if (c == '\'' || c == '"') inStr = c;
                 else if (c == '-' && full[i+1] == '-') inCmt = 1;
                 else if (c == '/' && full[i+1] == '*') { i++; inCmt = 2; }
                 else if (c == ';') {
-                    /* Cursor after this semicolon = this statement's end was found */
                     if (i + 1 < cursorPos) stmtStart = i + 1;
                     else if (stmtEnd == fullLen) stmtEnd = i + 1;
                 }
@@ -476,10 +475,10 @@ void ExecuteQuery(void) {
             if (inComment == 1 && *p == '\n') inComment = 0;
             else if (inComment == 2 && *p == '*' && p[1] == '/') { inComment = 0; p++; }
         } else if (inString) {
-            if (*p == '\'' && p[1] == '\'') p++;
-            else if (*p == '\'') inString = 0;
+            if (*p == inString && p[1] == inString) p++;
+            else if (*p == inString) inString = 0;
         } else {
-            if (*p == '\'') inString = 1;
+            if (*p == '\'' || *p == '"') inString = *p;
             else if (*p == '-' && p[1] == '-') inComment = 1;
             else if (*p == '/' && p[1] == '*') { inComment = 2; p++; }
             else if (!inTrigger && (p[0]=='C'||p[0]=='c') && (p[1]=='R'||p[1]=='r') &&
