@@ -143,6 +143,7 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
 ** Options Dialog
 **============================================================================*/
 
+#define IDC_OPT_TAB          1000
 #define IDC_OPT_CLEAREXEC    1001
 #define IDC_OPT_EXECATCURSOR 1002
 #define IDC_OPT_LINENUMS     1003
@@ -157,16 +158,21 @@ static int g_optClearExec, g_optExecAtCursor, g_optLineNums, g_optErrorMsgBox;
 static int g_optStorageCard, g_optStorageCardData;
 static wchar_t g_optDbPath[MAX_PATH];
 static HWND g_hwndOptions = NULL;
+static HWND g_hwndOptTab = NULL;
 static int g_optResult = 0;
 
+/* Control arrays for tab visibility */
+static HWND g_optGeneralCtrls[5];
+static HWND g_optStorageCtrls[4];
+
 static void ApplyOptions(HWND hwnd) {
-    g_optClearExec = SendMessage(GetDlgItem(hwnd, IDC_OPT_CLEAREXEC), BM_GETCHECK, 0, 0);
-    g_optExecAtCursor = SendMessage(GetDlgItem(hwnd, IDC_OPT_EXECATCURSOR), BM_GETCHECK, 0, 0);
-    g_optLineNums = SendMessage(GetDlgItem(hwnd, IDC_OPT_LINENUMS), BM_GETCHECK, 0, 0);
-    g_optErrorMsgBox = SendMessage(GetDlgItem(hwnd, IDC_OPT_ERRORMSGBOX), BM_GETCHECK, 0, 0);
-    g_optStorageCardData = SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARDDATA), BM_GETCHECK, 0, 0);
-    g_optStorageCard = SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARD), BM_GETCHECK, 0, 0);
-    GetWindowTextW(GetDlgItem(hwnd, IDC_OPT_DBPATH), g_optDbPath, MAX_PATH);
+    g_optClearExec = SendMessage(g_optGeneralCtrls[0], BM_GETCHECK, 0, 0);
+    g_optExecAtCursor = SendMessage(g_optGeneralCtrls[1], BM_GETCHECK, 0, 0);
+    g_optLineNums = SendMessage(g_optGeneralCtrls[2], BM_GETCHECK, 0, 0);
+    g_optErrorMsgBox = SendMessage(g_optGeneralCtrls[3], BM_GETCHECK, 0, 0);
+    g_optStorageCardData = SendMessage(g_optStorageCtrls[0], BM_GETCHECK, 0, 0);
+    g_optStorageCard = SendMessage(g_optStorageCtrls[1], BM_GETCHECK, 0, 0);
+    GetWindowTextW(g_optStorageCtrls[3], g_optDbPath, MAX_PATH);
     g_optResult = 1;
 }
 
@@ -174,10 +180,9 @@ static void UpdatePathDisplay(HWND hwnd) {
     wchar_t label[128];
     WIN32_FIND_DATAW fd;
     HANDLE hFind;
-    int useCard = SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARDDATA), BM_GETCHECK, 0, 0);
+    int useCard = SendMessage(g_optStorageCtrls[0], BM_GETCHECK, 0, 0);
     
     if (useCard) {
-        /* Try to detect actual storage card */
         hFind = FindFirstFileW(L"\\Storage Card*", &fd);
         if (hFind != INVALID_HANDLE_VALUE && (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             wsprintfW(label, L"Data path (in \\%s%s):", fd.cFileName, g_szCardBasePath);
@@ -189,52 +194,84 @@ static void UpdatePathDisplay(HWND hwnd) {
     } else {
         wsprintfW(label, L"Data path (in %s):", g_szLocalBasePath);
     }
-    SetWindowTextW(GetDlgItem(hwnd, IDC_OPT_DBPATHLABEL), label);
+    SetWindowTextW(g_optStorageCtrls[2], label);
+}
+
+static void ShowOptionsTab(int tab) {
+    int i, showGen = (tab == 0), showSto = (tab == 1);
+    for (i = 0; i < 5; i++) ShowWindow(g_optGeneralCtrls[i], showGen ? SW_SHOW : SW_HIDE);
+    for (i = 0; i < 4; i++) ShowWindow(g_optStorageCtrls[i], showSto ? SW_SHOW : SW_HIDE);
 }
 
 static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
-            /* Left column - checkboxes */
-            CreateWindowW(L"BUTTON", L"Clear results on execute",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                10, 10, 165, 20, hwnd, (HMENU)IDC_OPT_CLEAREXEC, g_hInst, NULL);
-            CreateWindowW(L"BUTTON", L"Execute at cursor",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                10, 32, 165, 20, hwnd, (HMENU)IDC_OPT_EXECATCURSOR, g_hInst, NULL);
-            CreateWindowW(L"BUTTON", L"Show line numbers",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                10, 54, 165, 20, hwnd, (HMENU)IDC_OPT_LINENUMS, g_hInst, NULL);
-            CreateWindowW(L"BUTTON", L"Message box on error",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                10, 76, 165, 20, hwnd, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
-            CreateWindowW(L"BUTTON", L"Use storage card for data",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                10, 98, 190, 20, hwnd, (HMENU)IDC_OPT_STORAGECARDDATA, g_hInst, NULL);
-            CreateWindowW(L"BUTTON", L"Use storage card for backups",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                10, 120, 190, 20, hwnd, (HMENU)IDC_OPT_STORAGECARD, g_hInst, NULL);
+            TCITEMW tci = {0};
+            RECT tabRc;
+            int x, y;
             
-            /* Right column - paths */
-            CreateWindowW(L"STATIC", L"Data path:",
-                WS_CHILD | WS_VISIBLE,
-                210, 10, 230, 16, hwnd, (HMENU)IDC_OPT_DBPATHLABEL, g_hInst, NULL);
-            CreateWindowW(L"EDIT", g_optDbPath,
-                WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-                210, 28, 230, 22, hwnd, (HMENU)IDC_OPT_DBPATH, g_hInst, NULL);
+            /* Tab control */
+            g_hwndOptTab = CreateWindowW(WC_TABCONTROLW, NULL,
+                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+                4, 4, 424, 130, hwnd, (HMENU)IDC_OPT_TAB, g_hInst, NULL);
+            tci.mask = TCIF_TEXT;
+            tci.pszText = L"General";
+            SendMessage(g_hwndOptTab, TCM_INSERTITEMW, 0, (LPARAM)&tci);
+            tci.pszText = L"Storage";
+            SendMessage(g_hwndOptTab, TCM_INSERTITEMW, 1, (LPARAM)&tci);
             
-            /* Clear settings button */
-            CreateWindowW(L"BUTTON", L"Clear All Settings...",
+            /* Get tab content area (relative to tab control) */
+            SetRect(&tabRc, 0, 0, 424, 130);
+            SendMessage(g_hwndOptTab, TCM_ADJUSTRECT, FALSE, (LPARAM)&tabRc);
+            x = tabRc.left + 4;
+            y = tabRc.top + 2;
+            
+            /* General tab controls - children of tab control */
+            g_optGeneralCtrls[0] = CreateWindowW(L"BUTTON", L"Clear results on execute",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                x, y, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_CLEAREXEC, g_hInst, NULL);
+            g_optGeneralCtrls[1] = CreateWindowW(L"BUTTON", L"Execute at cursor",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                x, y + 22, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_EXECATCURSOR, g_hInst, NULL);
+            g_optGeneralCtrls[2] = CreateWindowW(L"BUTTON", L"Show line numbers",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                x, y + 44, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_LINENUMS, g_hInst, NULL);
+            g_optGeneralCtrls[3] = CreateWindowW(L"BUTTON", L"Message box on error",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                x, y + 66, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
+            g_optGeneralCtrls[4] = CreateWindowW(L"BUTTON", L"Clear All Settings...",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                210, 98, 140, 22, hwnd, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
+                x + 210, y + 66, 140, 22, g_hwndOptTab, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
             
-            SendMessage(GetDlgItem(hwnd, IDC_OPT_CLEAREXEC), BM_SETCHECK, g_optClearExec, 0);
-            SendMessage(GetDlgItem(hwnd, IDC_OPT_EXECATCURSOR), BM_SETCHECK, g_optExecAtCursor, 0);
-            SendMessage(GetDlgItem(hwnd, IDC_OPT_LINENUMS), BM_SETCHECK, g_optLineNums, 0);
-            SendMessage(GetDlgItem(hwnd, IDC_OPT_ERRORMSGBOX), BM_SETCHECK, g_optErrorMsgBox, 0);
-            SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARDDATA), BM_SETCHECK, g_optStorageCardData, 0);
-            SendMessage(GetDlgItem(hwnd, IDC_OPT_STORAGECARD), BM_SETCHECK, g_optStorageCard, 0);
+            /* Storage tab controls - children of tab control */
+            g_optStorageCtrls[0] = CreateWindowW(L"BUTTON", L"Use storage card for data",
+                WS_CHILD | BS_AUTOCHECKBOX,
+                x, y, 220, 20, g_hwndOptTab, (HMENU)IDC_OPT_STORAGECARDDATA, g_hInst, NULL);
+            g_optStorageCtrls[1] = CreateWindowW(L"BUTTON", L"Use storage card for backups",
+                WS_CHILD | BS_AUTOCHECKBOX,
+                x, y + 22, 220, 20, g_hwndOptTab, (HMENU)IDC_OPT_STORAGECARD, g_hInst, NULL);
+            g_optStorageCtrls[2] = CreateWindowW(L"STATIC", L"Data path:",
+                WS_CHILD, x, y + 50, 400, 16, g_hwndOptTab, (HMENU)IDC_OPT_DBPATHLABEL, g_hInst, NULL);
+            g_optStorageCtrls[3] = CreateWindowW(L"EDIT", g_optDbPath,
+                WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+                x, y + 68, 394, 22, g_hwndOptTab, (HMENU)IDC_OPT_DBPATH, g_hInst, NULL);
+            
+            /* Set initial values */
+            SendMessage(g_optGeneralCtrls[0], BM_SETCHECK, g_optClearExec, 0);
+            SendMessage(g_optGeneralCtrls[1], BM_SETCHECK, g_optExecAtCursor, 0);
+            SendMessage(g_optGeneralCtrls[2], BM_SETCHECK, g_optLineNums, 0);
+            SendMessage(g_optGeneralCtrls[3], BM_SETCHECK, g_optErrorMsgBox, 0);
+            SendMessage(g_optStorageCtrls[0], BM_SETCHECK, g_optStorageCardData, 0);
+            SendMessage(g_optStorageCtrls[1], BM_SETCHECK, g_optStorageCard, 0);
             UpdatePathDisplay(hwnd);
+            ShowOptionsTab(0);
+            return 0;
+        }
+        case WM_NOTIFY: {
+            NMHDR *nmh = (NMHDR *)lParam;
+            if (nmh->idFrom == IDC_OPT_TAB && nmh->code == TCN_SELCHANGE) {
+                ShowOptionsTab(TabCtrl_GetCurSel(g_hwndOptTab));
+            }
             return 0;
         }
         case WM_COMMAND:
@@ -262,6 +299,7 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             return 0;
         case WM_DESTROY:
             g_hwndOptions = NULL;
+            g_hwndOptTab = NULL;
             SetFocus(g_viewMode == 0 ? g_hwndQuery : g_hwndResult);
             return 0;
     }
@@ -297,7 +335,7 @@ void DoOptions(void) {
     g_hwndOptions = CreateWindowExW(WS_EX_CAPTIONOKBTN,
         L"SQLiteCEOptions", L"Options",
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
-        rc.left + 20, rc.top + 30, 460, 170,
+        rc.left + 16, rc.top + 30, 440, 170,
         g_hwndMain, NULL, g_hInst, NULL);
     ShowWindow(g_hwndOptions, SW_SHOW);
     
