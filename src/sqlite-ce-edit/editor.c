@@ -205,6 +205,7 @@ static void UpdateContextMenu(int mode) {
     } else if (mode == 1) {
         hCtx = g_hResultCtx;
         CheckMenuItem(hCtx, IDM_VIEWGRID, g_gridView ? MF_CHECKED : MF_UNCHECKED);
+        EnableMenuItem(hCtx, IDM_VIEWGRID, g_lastResultRows > 0 ? MF_ENABLED : MF_GRAYED);
         AppendMenuW(hNewMenu, MF_POPUP, (UINT)hCtx, L"&Results");
     } else {
         hCtx = g_hSchemaCtx;
