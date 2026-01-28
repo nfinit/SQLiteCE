@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.11.0.9"
+#define SQLITECEDIT_VERSION L"0.11.0.13"
 
 /*============================================================================
 ** Menu IDs
@@ -303,6 +303,7 @@ void ShowResultMessage(LPCWSTR msg, int clear);
 ** Function Declarations - Editor (editor.c)
 **============================================================================*/
 
+void ResetLineCountCache(void);
 void UpdateLineCount(void);
 void UpdateLineNumbers(void);
 void SyncLineNumScroll(void);

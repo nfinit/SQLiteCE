@@ -42,9 +42,16 @@ int HandleGlobalKeys(UINT msg, WPARAM wParam) {
     return 0;
 }
 
+/* Line count cache - file scope for reset access */
+static DWORD s_lastSel = (DWORD)-1;
+static int s_lastTotal = -1;
+
+void ResetLineCountCache(void) {
+    s_lastSel = (DWORD)-1;
+    s_lastTotal = -1;
+}
+
 void UpdateLineCount(void) {
-    static DWORD lastSel = (DWORD)-1;
-    static int lastTotal = -1;
     wchar_t buf[32];
     DWORD sel;
     int cur, total, textLen, i;
@@ -73,9 +80,9 @@ void UpdateLineCount(void) {
         }
     }
     /* Only update status bar if cursor moved or line count changed */
-    if (sel != lastSel || total != lastTotal) {
-        lastSel = sel;
-        lastTotal = total;
+    if (sel != s_lastSel || total != s_lastTotal) {
+        s_lastSel = sel;
+        s_lastTotal = total;
         wsprintfW(buf, L"Ln %d of %d", cur, total);
         SendMessageW(g_hwndStatus, SB_SETTEXTW, 1, (LPARAM)buf);
     }

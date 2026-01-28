@@ -283,6 +283,9 @@ void DoNewQuery(void) {
     g_szQueryPath[0] = 0;
     g_queryDirty = 0;
     UpdateTitle();
+    SetFocus(g_hwndQuery);
+    ResetLineCountCache();
+    UpdateLineCount();
 }
 
 /*============================================================================
