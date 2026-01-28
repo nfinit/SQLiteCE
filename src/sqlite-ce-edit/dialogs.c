@@ -162,13 +162,15 @@ static HWND g_hwndOptTab = NULL;
 static int g_optResult = 0;
 
 /* Control arrays for tab visibility */
-static HWND g_optGeneralCtrls[4];
+static HWND g_optGeneralCtrls[1];
 static HWND g_optStorageCtrls[4];
+static HWND g_optEditorCtrls[2];
+static HWND g_optResultsCtrls[1];
 
 static void ApplyOptions(HWND hwnd) {
-    g_optClearExec = SendMessage(g_optGeneralCtrls[0], BM_GETCHECK, 0, 0);
-    g_optLineNums = SendMessage(g_optGeneralCtrls[1], BM_GETCHECK, 0, 0);
-    g_optErrorMsgBox = SendMessage(g_optGeneralCtrls[2], BM_GETCHECK, 0, 0);
+    g_optClearExec = SendMessage(g_optResultsCtrls[0], BM_GETCHECK, 0, 0);
+    g_optLineNums = SendMessage(g_optEditorCtrls[0], BM_GETCHECK, 0, 0);
+    g_optErrorMsgBox = SendMessage(g_optEditorCtrls[1], BM_GETCHECK, 0, 0);
     g_optStorageCardData = SendMessage(g_optStorageCtrls[0], BM_GETCHECK, 0, 0);
     g_optStorageCard = SendMessage(g_optStorageCtrls[1], BM_GETCHECK, 0, 0);
     GetWindowTextW(g_optStorageCtrls[3], g_optDbPath, MAX_PATH);
@@ -197,9 +199,11 @@ static void UpdatePathDisplay(HWND hwnd) {
 }
 
 static void ShowOptionsTab(int tab) {
-    int i, showGen = (tab == 0), showSto = (tab == 1);
-    for (i = 0; i < 4; i++) ShowWindow(g_optGeneralCtrls[i], showGen ? SW_SHOW : SW_HIDE);
-    for (i = 0; i < 4; i++) ShowWindow(g_optStorageCtrls[i], showSto ? SW_SHOW : SW_HIDE);
+    int i;
+    for (i = 0; i < 1; i++) ShowWindow(g_optGeneralCtrls[i], tab == 0 ? SW_SHOW : SW_HIDE);
+    for (i = 0; i < 4; i++) ShowWindow(g_optStorageCtrls[i], tab == 1 ? SW_SHOW : SW_HIDE);
+    for (i = 0; i < 2; i++) ShowWindow(g_optEditorCtrls[i], tab == 2 ? SW_SHOW : SW_HIDE);
+    for (i = 0; i < 1; i++) ShowWindow(g_optResultsCtrls[i], tab == 3 ? SW_SHOW : SW_HIDE);
 }
 
 static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -218,6 +222,10 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             SendMessage(g_hwndOptTab, TCM_INSERTITEMW, 0, (LPARAM)&tci);
             tci.pszText = L"Storage";
             SendMessage(g_hwndOptTab, TCM_INSERTITEMW, 1, (LPARAM)&tci);
+            tci.pszText = L"Editor";
+            SendMessage(g_hwndOptTab, TCM_INSERTITEMW, 2, (LPARAM)&tci);
+            tci.pszText = L"Results";
+            SendMessage(g_hwndOptTab, TCM_INSERTITEMW, 3, (LPARAM)&tci);
             
             /* Get tab content area (relative to tab control) */
             SetRect(&tabRc, 0, 0, 424, 130);
@@ -225,21 +233,12 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             x = tabRc.left + 4;
             y = tabRc.top + 2;
             
-            /* General tab controls - children of tab control */
-            g_optGeneralCtrls[0] = CreateWindowW(L"BUTTON", L"Clear results on execute",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                x, y, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_CLEAREXEC, g_hInst, NULL);
-            g_optGeneralCtrls[1] = CreateWindowW(L"BUTTON", L"Show line numbers",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                x, y + 22, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_LINENUMS, g_hInst, NULL);
-            g_optGeneralCtrls[2] = CreateWindowW(L"BUTTON", L"Message box on error",
-                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                x, y + 44, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
-            g_optGeneralCtrls[3] = CreateWindowW(L"BUTTON", L"Clear All Settings...",
+            /* General tab controls */
+            g_optGeneralCtrls[0] = CreateWindowW(L"BUTTON", L"Clear All Settings...",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                x + 210, y + 44, 140, 22, g_hwndOptTab, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
+                x, y, 140, 22, g_hwndOptTab, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
             
-            /* Storage tab controls - children of tab control */
+            /* Storage tab controls */
             g_optStorageCtrls[0] = CreateWindowW(L"BUTTON", L"Use storage card for data",
                 WS_CHILD | BS_AUTOCHECKBOX,
                 x, y, 220, 20, g_hwndOptTab, (HMENU)IDC_OPT_STORAGECARDDATA, g_hInst, NULL);
@@ -252,10 +251,23 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
                 x, y + 68, 394, 22, g_hwndOptTab, (HMENU)IDC_OPT_DBPATH, g_hInst, NULL);
             
+            /* Editor tab controls */
+            g_optEditorCtrls[0] = CreateWindowW(L"BUTTON", L"Show line numbers",
+                WS_CHILD | BS_AUTOCHECKBOX,
+                x, y, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_LINENUMS, g_hInst, NULL);
+            g_optEditorCtrls[1] = CreateWindowW(L"BUTTON", L"Message box on error",
+                WS_CHILD | BS_AUTOCHECKBOX,
+                x, y + 22, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_ERRORMSGBOX, g_hInst, NULL);
+            
+            /* Results tab controls */
+            g_optResultsCtrls[0] = CreateWindowW(L"BUTTON", L"Clear results on execute",
+                WS_CHILD | BS_AUTOCHECKBOX,
+                x, y, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_CLEAREXEC, g_hInst, NULL);
+            
             /* Set initial values */
-            SendMessage(g_optGeneralCtrls[0], BM_SETCHECK, g_optClearExec, 0);
-            SendMessage(g_optGeneralCtrls[1], BM_SETCHECK, g_optLineNums, 0);
-            SendMessage(g_optGeneralCtrls[2], BM_SETCHECK, g_optErrorMsgBox, 0);
+            SendMessage(g_optResultsCtrls[0], BM_SETCHECK, g_optClearExec, 0);
+            SendMessage(g_optEditorCtrls[0], BM_SETCHECK, g_optLineNums, 0);
+            SendMessage(g_optEditorCtrls[1], BM_SETCHECK, g_optErrorMsgBox, 0);
             SendMessage(g_optStorageCtrls[0], BM_SETCHECK, g_optStorageCardData, 0);
             SendMessage(g_optStorageCtrls[1], BM_SETCHECK, g_optStorageCard, 0);
             UpdatePathDisplay(hwnd);
