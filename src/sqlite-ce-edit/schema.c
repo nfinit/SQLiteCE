@@ -100,7 +100,12 @@ void GetSchemaStatus(wchar_t *buf, int bufLen) {
 static WNDPROC g_pfnSchemaProc;
 
 static LRESULT CALLBACK SchemaSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    /* Global shortcuts first */
+    /* F5 to refresh schema */
+    if (msg == WM_KEYDOWN && wParam == VK_F5) {
+        RefreshSchema();
+        return 0;
+    }
+    /* Global shortcuts */
     if (HandleGlobalKeys(msg, wParam))
         return 0;
     /* Suppress beep on Enter - only eat WM_CHAR, let WM_KEYDOWN through for TVN_KEYDOWN */
