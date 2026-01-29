@@ -318,7 +318,7 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                     WS_CHILD | WS_BORDER | ES_NUMBER,
                     x + 80, y + 70, 30, 20, g_hwndOptTab, (HMENU)IDC_OPT_RETENTION, g_hInst, NULL);
             }
-            g_optStorageCtrls[11] = CreateWindowW(L"STATIC", L"(0 = unlimited)",
+            g_optStorageCtrls[11] = CreateWindowW(L"STATIC", L"(0=off, max 32)",
                 WS_CHILD, x + 115, y + 72, 100, 16, g_hwndOptTab, (HMENU)-1, g_hInst, NULL);
             
             /* Populate card combo - first item is auto-select */
@@ -461,7 +461,7 @@ void DoOptions(void) {
         g_useStorageCard = g_optStorageCard;
         g_useStorageCardData = g_optStorageCardData;
         g_useCustomCardPath = g_optCustomCard;
-        g_backupRetention = g_optRetention;
+        g_backupRetention = g_optRetention > 32 ? 32 : g_optRetention;
         lstrcpyW(g_szLocalBasePath, g_optLocalPath);
         lstrcpyW(g_szCardBasePath, g_optCardPath);
         lstrcpyW(g_szStorageCardRoot, g_optCardRoot);

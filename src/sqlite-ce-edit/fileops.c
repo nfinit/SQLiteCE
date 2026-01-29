@@ -1479,56 +1479,56 @@ void DoExportDb(void) {
 
 /*============================================================================
 ** Cleanup Old Backups
-** Keeps only the most recent g_backupRetention backups for a database
+** Keeps only the most recent g_backupRetention backups for a database.
+** Uses single-pass algorithm: maintains array of N newest files, deletes
+** older files as they're encountered. Handles unlimited backup count.
 **============================================================================*/
 
 static void CleanupOldBackups(const wchar_t *szBackupDir, const wchar_t *szDbName) {
     wchar_t szPattern[MAX_PATH];
-    wchar_t szFiles[32][MAX_PATH];
-    FILETIME ftTimes[32];
+    wchar_t szPath[MAX_PATH];
+    wchar_t szKeep[32][MAX_PATH];
+    FILETIME ftKeep[32];
     WIN32_FIND_DATAW fd;
     HANDLE hFind;
-    int count = 0, i, j;
+    int keepCount = 0, oldest, i;
     
     if (g_backupRetention <= 0) return;  /* 0 = unlimited */
     
-    /* Build pattern: BackupDir\DbName_*.db */
     wsprintfW(szPattern, L"%s\\%s_*.db", szBackupDir, szDbName);
     
-    /* Enumerate matching files (up to 32) */
     hFind = FindFirstFileW(szPattern, &fd);
     if (hFind == INVALID_HANDLE_VALUE) return;
+    
     do {
-        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && count < 32) {
-            wsprintfW(szFiles[count], L"%s\\%s", szBackupDir, fd.cFileName);
-            ftTimes[count] = fd.ftLastWriteTime;
-            count++;
-        }
-    } while (FindNextFileW(hFind, &fd));
-    FindClose(hFind);
-    
-    if (count <= g_backupRetention) return;  /* Nothing to delete */
-    
-    /* Sort by time descending (newest first) - simple bubble sort */
-    for (i = 0; i < count - 1; i++) {
-        for (j = i + 1; j < count; j++) {
-            if (CompareFileTime(&ftTimes[i], &ftTimes[j]) < 0) {
-                wchar_t tmpPath[MAX_PATH];
-                FILETIME tmpTime;
-                lstrcpyW(tmpPath, szFiles[i]);
-                lstrcpyW(szFiles[i], szFiles[j]);
-                lstrcpyW(szFiles[j], tmpPath);
-                tmpTime = ftTimes[i];
-                ftTimes[i] = ftTimes[j];
-                ftTimes[j] = tmpTime;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        
+        wsprintfW(szPath, L"%s\\%s", szBackupDir, fd.cFileName);
+        
+        if (keepCount < g_backupRetention) {
+            /* Array not full - just add */
+            lstrcpyW(szKeep[keepCount], szPath);
+            ftKeep[keepCount] = fd.ftLastWriteTime;
+            keepCount++;
+        } else {
+            /* Find oldest in keep array */
+            oldest = 0;
+            for (i = 1; i < keepCount; i++) {
+                if (CompareFileTime(&ftKeep[i], &ftKeep[oldest]) < 0) oldest = i;
+            }
+            /* If this file is newer than oldest keeper, swap and delete old */
+            if (CompareFileTime(&fd.ftLastWriteTime, &ftKeep[oldest]) > 0) {
+                DeleteFileW(szKeep[oldest]);
+                lstrcpyW(szKeep[oldest], szPath);
+                ftKeep[oldest] = fd.ftLastWriteTime;
+            } else {
+                /* This file is older than all keepers - delete it */
+                DeleteFileW(szPath);
             }
         }
-    }
+    } while (FindNextFileW(hFind, &fd));
     
-    /* Delete oldest files beyond retention count */
-    for (i = g_backupRetention; i < count; i++) {
-        DeleteFileW(szFiles[i]);
-    }
+    FindClose(hFind);
 }
 
 /*============================================================================
