@@ -1491,7 +1491,7 @@ void DoBackupDatabase(void) {
     const wchar_t *fn;
     wchar_t *d;
     HANDLE hSrc, hDst;
-    BYTE buf[4096];
+    BYTE buf[16384];  /* 16KB for ~4x throughput vs 4KB */
     DWORD dwRead, dwWritten;
     int ok = 0;
     
