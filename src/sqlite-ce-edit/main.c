@@ -744,7 +744,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPWSTR lpCmd, int nShow) {
     UpdateRecentMenu();
     UpdateRecentQueryMenu();
     
-    OpenDatabase(L":memory:");
+    /* Open last database if setting enabled and we have a recent file */
+    if (g_startWithLastDb && g_recentCount > 0 && g_recentFiles[0][0]) {
+        g_showingHint = 1;  /* Trigger hint update in OpenDatabase */
+        OpenDatabase(g_recentFiles[0]);
+    } else {
+        OpenDatabase(L":memory:");
+    }
     
     while (GetMessage(&msg, NULL, 0, 0)) {
         if (!TranslateAccelerator(g_hwndMain, g_hAccel, &msg)) {

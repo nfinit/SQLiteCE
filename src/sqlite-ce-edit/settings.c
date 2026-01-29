@@ -39,6 +39,7 @@ static SettingDef g_intSettings[] = {
     { L"UseStorageCard", SET_INT, &g_useStorageCard,   0, NULL },
     { L"UseStorageCardData", SET_INT, &g_useStorageCardData, 0, NULL },
     { L"RememberQueryDir", SET_INT, &g_rememberQueryDir, 0, NULL },
+    { L"StartWithLastDb", SET_INT, &g_startWithLastDb, 0, NULL },
     { NULL, 0, NULL, 0, NULL }
 };
 

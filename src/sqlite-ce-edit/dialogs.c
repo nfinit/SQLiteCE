@@ -157,9 +157,10 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
 #define IDC_OPT_CARDPATH     1011
 #define IDC_OPT_REMEMBERQDIR 1013
 #define IDC_OPT_GRIDAUTOSIZE 1014
+#define IDC_OPT_STARTLASTDB  1015
 
 static int g_optClearExec, g_optLineNums, g_optErrorMsgBox, g_optRememberQueryDir;
-static int g_optStorageCard, g_optStorageCardData, g_optGridAutoSize;
+static int g_optStorageCard, g_optStorageCardData, g_optGridAutoSize, g_optStartLastDb;
 static wchar_t g_optLocalPath[MAX_PATH];
 static wchar_t g_optCardPath[MAX_PATH];
 static HWND g_hwndOptions = NULL;
@@ -167,7 +168,7 @@ static HWND g_hwndOptTab = NULL;
 static int g_optResult = 0;
 
 /* Control arrays for tab visibility */
-static HWND g_optGeneralCtrls[1];
+static HWND g_optGeneralCtrls[2];
 static HWND g_optStorageCtrls[6];
 static HWND g_optEditorCtrls[3];
 static HWND g_optResultsCtrls[2];
@@ -178,6 +179,7 @@ static void ApplyOptions(HWND hwnd) {
     g_optLineNums = SendMessage(g_optEditorCtrls[0], BM_GETCHECK, 0, 0);
     g_optErrorMsgBox = SendMessage(g_optEditorCtrls[1], BM_GETCHECK, 0, 0);
     g_optRememberQueryDir = SendMessage(g_optEditorCtrls[2], BM_GETCHECK, 0, 0);
+    g_optStartLastDb = SendMessage(g_optGeneralCtrls[0], BM_GETCHECK, 0, 0);
     g_optStorageCardData = SendMessage(g_optStorageCtrls[0], BM_GETCHECK, 0, 0);
     g_optStorageCard = SendMessage(g_optStorageCtrls[1], BM_GETCHECK, 0, 0);
     GetWindowTextW(g_optStorageCtrls[3], g_optLocalPath, MAX_PATH);
@@ -187,7 +189,7 @@ static void ApplyOptions(HWND hwnd) {
 
 static void ShowOptionsTab(int tab) {
     int i;
-    for (i = 0; i < 1; i++) ShowWindow(g_optGeneralCtrls[i], tab == 0 ? SW_SHOW : SW_HIDE);
+    for (i = 0; i < 2; i++) ShowWindow(g_optGeneralCtrls[i], tab == 0 ? SW_SHOW : SW_HIDE);
     for (i = 0; i < 6; i++) ShowWindow(g_optStorageCtrls[i], tab == 1 ? SW_SHOW : SW_HIDE);
     for (i = 0; i < 3; i++) ShowWindow(g_optEditorCtrls[i], tab == 2 ? SW_SHOW : SW_HIDE);
     for (i = 0; i < 2; i++) ShowWindow(g_optResultsCtrls[i], tab == 3 ? SW_SHOW : SW_HIDE);
@@ -221,9 +223,12 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             y = tabRc.top + 2;
             
             /* General tab controls */
-            g_optGeneralCtrls[0] = CreateWindowW(L"BUTTON", L"Clear registry settings...",
+            g_optGeneralCtrls[0] = CreateWindowW(L"BUTTON", L"Start with last opened database",
+                WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                x, y, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_STARTLASTDB, g_hInst, NULL);
+            g_optGeneralCtrls[1] = CreateWindowW(L"BUTTON", L"Clear registry settings...",
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                x, y, 160, 22, g_hwndOptTab, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
+                x, y + 24, 160, 22, g_hwndOptTab, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
             
             /* Storage tab controls - left column: checkboxes */
             g_optStorageCtrls[0] = CreateWindowW(L"BUTTON", L"Prefer card for data",
@@ -264,6 +269,7 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 x, y + 22, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_GRIDAUTOSIZE, g_hInst, NULL);
             
             /* Set initial values */
+            SendMessage(g_optGeneralCtrls[0], BM_SETCHECK, g_optStartLastDb, 0);
             SendMessage(g_optResultsCtrls[0], BM_SETCHECK, !g_optClearExec, 0);
             SendMessage(g_optResultsCtrls[1], BM_SETCHECK, g_optGridAutoSize, 0);
             SendMessage(g_optEditorCtrls[0], BM_SETCHECK, g_optLineNums, 0);
@@ -324,6 +330,7 @@ void DoOptions(void) {
     g_optLineNums = g_showLineNumbers;
     g_optErrorMsgBox = g_showErrorMsgBox;
     g_optRememberQueryDir = g_rememberQueryDir;
+    g_optStartLastDb = g_startWithLastDb;
     g_optStorageCard = g_useStorageCard;
     g_optStorageCardData = g_useStorageCardData;
     lstrcpyW(g_optLocalPath, g_szLocalBasePath);
@@ -358,6 +365,7 @@ void DoOptions(void) {
         g_clearOnExec = g_optClearExec;
         g_gridAutoSize = g_optGridAutoSize;
         g_showErrorMsgBox = g_optErrorMsgBox;
+        g_startWithLastDb = g_optStartLastDb;
         g_useStorageCard = g_optStorageCard;
         g_useStorageCardData = g_optStorageCardData;
         lstrcpyW(g_szLocalBasePath, g_optLocalPath);
