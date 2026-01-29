@@ -87,7 +87,7 @@ BOOL WINAPI GetSaveFileNameW(CE_OPENFILENAME*);
 ** Version
 **============================================================================*/
 
-#define SQLITECEDIT_VERSION L"0.11.0.47"
+#define SQLITECEDIT_VERSION L"0.11.0.58"
 
 /*============================================================================
 ** Menu IDs
@@ -361,6 +361,8 @@ extern int g_useStorageCardData;
 extern wchar_t g_szDataRelPath[MAX_PATH];
 extern wchar_t g_szLocalBasePath[MAX_PATH];
 extern wchar_t g_szCardBasePath[MAX_PATH];
+extern wchar_t g_szStorageCardRoot[MAX_PATH];
+extern int g_useCustomCardPath;
 
 /* Grid options */
 extern int g_gridAutoSize;
@@ -397,6 +399,7 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
 ** Function Declarations - File Operations (fileops.c)
 **============================================================================*/
 
+int DetectStorageCards(wchar_t cards[][MAX_PATH], int maxCards);
 void DoFileNew(void);
 void DoFileOpen(void);
 void DoOpenQuery(void);

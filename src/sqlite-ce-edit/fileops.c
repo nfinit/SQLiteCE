@@ -5,21 +5,51 @@
 #include "globals.h"
 
 /*============================================================================
-** Storage Card Detection Helper
+** Storage Card Detection
 **============================================================================*/
 
-static int FindStorageCard(wchar_t *cardPath, int maxLen) {
+int DetectStorageCards(wchar_t cards[][MAX_PATH], int maxCards) {
     WIN32_FIND_DATAW fd;
     HANDLE hFind;
+    int count = 0;
     
     hFind = FindFirstFileW(L"\\Storage Card*", &fd);
-    if (hFind != INVALID_HANDLE_VALUE) {
+    if (hFind == INVALID_HANDLE_VALUE) return 0;
+    
+    do {
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            wsprintfW(cardPath, L"\\%s", fd.cFileName);
-            FindClose(hFind);
+            wsprintfW(cards[count], L"\\%s", fd.cFileName);
+            count++;
+            if (count >= maxCards) break;
+        }
+    } while (FindNextFileW(hFind, &fd));
+    
+    FindClose(hFind);
+    return count;
+}
+
+/* Get effective storage card path */
+static int GetStorageCardPath(wchar_t *cardPath, int maxLen) {
+    (void)maxLen;  /* All callers use MAX_PATH buffers */
+    /* If custom path set, use it directly */
+    if (g_useCustomCardPath && g_szStorageCardRoot[0]) {
+        lstrcpyW(cardPath, g_szStorageCardRoot);
+        return 1;
+    }
+    /* If saved root exists, verify it still exists */
+    if (g_szStorageCardRoot[0]) {
+        if (GetFileAttributesW(g_szStorageCardRoot) != 0xFFFFFFFF) {
+            lstrcpyW(cardPath, g_szStorageCardRoot);
             return 1;
         }
-        FindClose(hFind);
+    }
+    /* Fall back to first detected card */
+    {
+        wchar_t detected[8][MAX_PATH];
+        if (DetectStorageCards(detected, 8) > 0) {
+            lstrcpyW(cardPath, detected[0]);
+            return 1;
+        }
     }
     cardPath[0] = 0;
     return 0;
@@ -28,12 +58,12 @@ static int FindStorageCard(wchar_t *cardPath, int maxLen) {
 /* Get effective data path based on storage card option */
 static void GetDataPath(wchar_t *path, int maxLen) {
     wchar_t cardPath[MAX_PATH];
+    (void)maxLen;
     
-    if (g_useStorageCardData && FindStorageCard(cardPath, MAX_PATH)) {
-        /* Card base path is appended after detected card path */
-        wsprintfW(path, L"%s%s%s", cardPath, g_szCardBasePath, g_szDataRelPath);
+    if (g_useStorageCardData && GetStorageCardPath(cardPath, MAX_PATH)) {
+        wsprintfW(path, L"%s%s", cardPath, g_szCardBasePath);
     } else {
-        wsprintfW(path, L"%s%s", g_szLocalBasePath, g_szDataRelPath);
+        lstrcpyW(path, g_szLocalBasePath);
     }
     CreateDirectoryW(path, NULL);
 }
@@ -1478,12 +1508,12 @@ void DoBackupDatabase(void) {
     *d = 0;
     
     /* Build backup directory path */
-    if (g_useStorageCard && FindStorageCard(szCardPath, MAX_PATH)) {
-        wsprintfW(szBackupDir, L"%s%s%s", szCardPath, g_szCardBasePath, g_szDataRelPath);
+    if (g_useStorageCard && GetStorageCardPath(szCardPath, MAX_PATH)) {
+        wsprintfW(szBackupDir, L"%s%s", szCardPath, g_szCardBasePath);
         CreateDirectoryW(szBackupDir, NULL);
         lstrcatW(szBackupDir, L"\\Backups");
     } else {
-        wsprintfW(szBackupDir, L"%s%s", g_szLocalBasePath, g_szDataRelPath);
+        lstrcpyW(szBackupDir, g_szLocalBasePath);
         CreateDirectoryW(szBackupDir, NULL);
         lstrcatW(szBackupDir, L"\\Backups");
     }
@@ -1566,10 +1596,10 @@ void DoRestoreDatabase(void) {
     *d = 0;
     
     /* Build initial directory: Backups\<dbname>\ if exists, else Backups\ */
-    if (g_useStorageCard && FindStorageCard(szCardPath, MAX_PATH)) {
-        wsprintfW(szInitDir, L"%s%s%s\\Backups\\%s", szCardPath, g_szCardBasePath, g_szDataRelPath, szDbName);
+    if (g_useStorageCard && GetStorageCardPath(szCardPath, MAX_PATH)) {
+        wsprintfW(szInitDir, L"%s%s\\Backups\\%s", szCardPath, g_szCardBasePath, szDbName);
     } else {
-        wsprintfW(szInitDir, L"%s%s\\Backups\\%s", g_szLocalBasePath, g_szDataRelPath, szDbName);
+        wsprintfW(szInitDir, L"%s\\Backups\\%s", g_szLocalBasePath, szDbName);
     }
     /* Check if db-specific backup dir exists, fall back to Backups\ */
     hFind = FindFirstFileW(szInitDir, &fd);

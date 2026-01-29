@@ -158,39 +158,78 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
 #define IDC_OPT_REMEMBERQDIR 1013
 #define IDC_OPT_GRIDAUTOSIZE 1014
 #define IDC_OPT_STARTLASTDB  1015
+#define IDC_OPT_CARDCOMBO    1016
+#define IDC_OPT_CUSTOMCARD   1017
+#define IDC_OPT_CUSTOMPATH   1018
 
 static int g_optClearExec, g_optLineNums, g_optErrorMsgBox, g_optRememberQueryDir;
 static int g_optStorageCard, g_optStorageCardData, g_optGridAutoSize, g_optStartLastDb;
+static int g_optCustomCard;
 static wchar_t g_optLocalPath[MAX_PATH];
 static wchar_t g_optCardPath[MAX_PATH];
+static wchar_t g_optCardRoot[MAX_PATH];
+static wchar_t g_detectedCards[8][MAX_PATH];
+static int g_detectedCardCount = 0;
 static HWND g_hwndOptions = NULL;
 static HWND g_hwndOptTab = NULL;
 static int g_optResult = 0;
 
 /* Control arrays for tab visibility */
 static HWND g_optGeneralCtrls[2];
-static HWND g_optStorageCtrls[6];
+static HWND g_optStorageCtrls[9];
 static HWND g_optEditorCtrls[3];
 static HWND g_optResultsCtrls[2];
 
+static void UpdateCardPathVisibility(void) {
+    int custom = SendMessage(g_optStorageCtrls[4], BM_GETCHECK, 0, 0);
+    ShowWindow(g_optStorageCtrls[3], custom ? SW_HIDE : SW_SHOW);  /* combo */
+    ShowWindow(g_optStorageCtrls[5], custom ? SW_SHOW : SW_HIDE);  /* custom edit */
+}
+
 static void ApplyOptions(HWND hwnd) {
+    int sel;
     g_optClearExec = !SendMessage(g_optResultsCtrls[0], BM_GETCHECK, 0, 0);
     g_optGridAutoSize = SendMessage(g_optResultsCtrls[1], BM_GETCHECK, 0, 0);
     g_optLineNums = SendMessage(g_optEditorCtrls[0], BM_GETCHECK, 0, 0);
     g_optErrorMsgBox = SendMessage(g_optEditorCtrls[1], BM_GETCHECK, 0, 0);
     g_optRememberQueryDir = SendMessage(g_optEditorCtrls[2], BM_GETCHECK, 0, 0);
     g_optStartLastDb = SendMessage(g_optGeneralCtrls[0], BM_GETCHECK, 0, 0);
-    g_optStorageCardData = SendMessage(g_optStorageCtrls[0], BM_GETCHECK, 0, 0);
-    g_optStorageCard = SendMessage(g_optStorageCtrls[1], BM_GETCHECK, 0, 0);
-    GetWindowTextW(g_optStorageCtrls[3], g_optLocalPath, MAX_PATH);
-    GetWindowTextW(g_optStorageCtrls[5], g_optCardPath, MAX_PATH);
+    GetWindowTextW(g_optStorageCtrls[1], g_optLocalPath, MAX_PATH);
+    g_optCustomCard = SendMessage(g_optStorageCtrls[4], BM_GETCHECK, 0, 0);
+    GetWindowTextW(g_optStorageCtrls[6], g_optCardPath, MAX_PATH);
+    g_optStorageCardData = SendMessage(g_optStorageCtrls[7], BM_GETCHECK, 0, 0);
+    g_optStorageCard = SendMessage(g_optStorageCtrls[8], BM_GETCHECK, 0, 0);
+    /* Get card root from combo or custom field */
+    if (g_optCustomCard) {
+        GetWindowTextW(g_optStorageCtrls[5], g_optCardRoot, MAX_PATH);
+    } else {
+        sel = SendMessage(g_optStorageCtrls[3], CB_GETCURSEL, 0, 0);
+        if (sel == 0) {
+            /* First available - store empty string to trigger auto-detect */
+            g_optCardRoot[0] = 0;
+        } else if (sel > 0 && sel <= g_detectedCardCount) {
+            lstrcpyW(g_optCardRoot, g_detectedCards[sel - 1]);
+        } else {
+            g_optCardRoot[0] = 0;
+        }
+    }
     g_optResult = 1;
 }
 
 static void ShowOptionsTab(int tab) {
     int i;
     for (i = 0; i < 2; i++) ShowWindow(g_optGeneralCtrls[i], tab == 0 ? SW_SHOW : SW_HIDE);
-    for (i = 0; i < 6; i++) ShowWindow(g_optStorageCtrls[i], tab == 1 ? SW_SHOW : SW_HIDE);
+    for (i = 0; i < 9; i++) {
+        if (i == 4) continue;  /* Custom checkbox handled separately (child of dialog) */
+        ShowWindow(g_optStorageCtrls[i], tab == 1 ? SW_SHOW : SW_HIDE);
+    }
+    if (tab == 1) {
+        ShowWindow(g_optStorageCtrls[4], SW_SHOW);
+        SetWindowPos(g_optStorageCtrls[4], HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        UpdateCardPathVisibility();
+    } else {
+        ShowWindow(g_optStorageCtrls[4], SW_HIDE);
+    }
     for (i = 0; i < 3; i++) ShowWindow(g_optEditorCtrls[i], tab == 2 ? SW_SHOW : SW_HIDE);
     for (i = 0; i < 2; i++) ShowWindow(g_optResultsCtrls[i], tab == 3 ? SW_SHOW : SW_HIDE);
 }
@@ -230,24 +269,48 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                 x, y + 24, 160, 22, g_hwndOptTab, (HMENU)IDC_OPT_CLEARREG, g_hInst, NULL);
             
-            /* Storage tab controls - left column: checkboxes */
-            g_optStorageCtrls[0] = CreateWindowW(L"BUTTON", L"Prefer card for data",
-                WS_CHILD | BS_AUTOCHECKBOX,
-                x, y, 150, 20, g_hwndOptTab, (HMENU)IDC_OPT_STORAGECARDDATA, g_hInst, NULL);
-            g_optStorageCtrls[1] = CreateWindowW(L"BUTTON", L"Prefer card for backups",
-                WS_CHILD | BS_AUTOCHECKBOX,
-                x, y + 22, 150, 20, g_hwndOptTab, (HMENU)IDC_OPT_STORAGECARD, g_hInst, NULL);
-            /* Storage tab controls - right column: paths */
-            g_optStorageCtrls[2] = CreateWindowW(L"STATIC", L"Default path on device:",
-                WS_CHILD, x + 160, y, 180, 16, g_hwndOptTab, (HMENU)IDC_OPT_DBPATHLABEL, g_hInst, NULL);
-            g_optStorageCtrls[3] = CreateWindowW(L"EDIT", g_optLocalPath,
+            /* Storage tab controls */
+            /* Row 1: device path */
+            g_optStorageCtrls[0] = CreateWindowW(L"STATIC", L"Device path:",
+                WS_CHILD, x, y + 2, 75, 16, g_hwndOptTab, (HMENU)-1, g_hInst, NULL);
+            g_optStorageCtrls[1] = CreateWindowW(L"EDIT", g_optLocalPath,
                 WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
-                x + 160, y + 16, 220, 20, g_hwndOptTab, (HMENU)IDC_OPT_LOCALPATH, g_hInst, NULL);
-            g_optStorageCtrls[4] = CreateWindowW(L"STATIC", L"Default path on storage card:",
-                WS_CHILD, x + 160, y + 40, 200, 16, g_hwndOptTab, (HMENU)-1, g_hInst, NULL);
-            g_optStorageCtrls[5] = CreateWindowW(L"EDIT", g_optCardPath,
+                x + 75, y, 200, 20, g_hwndOptTab, (HMENU)IDC_OPT_LOCALPATH, g_hInst, NULL);
+            /* Row 2: storage card selection */
+            g_optStorageCtrls[2] = CreateWindowW(L"STATIC", L"Storage card:",
+                WS_CHILD, x, y + 26, 75, 16, g_hwndOptTab, (HMENU)-1, g_hInst, NULL);
+            g_optStorageCtrls[4] = CreateWindowW(L"BUTTON", L"Custom",
+                WS_CHILD | WS_CLIPSIBLINGS | BS_AUTOCHECKBOX,
+                4 + x + 75, 4 + y + 24, 60, 20, hwnd, (HMENU)IDC_OPT_CUSTOMCARD, g_hInst, NULL);
+            g_optStorageCtrls[3] = CreateWindowW(L"COMBOBOX", NULL,
+                WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL,
+                x + 140, y + 22, 140, 100, g_hwndOptTab, (HMENU)IDC_OPT_CARDCOMBO, g_hInst, NULL);
+            g_optStorageCtrls[5] = CreateWindowW(L"EDIT", g_optCardRoot,
                 WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
-                x + 160, y + 56, 220, 20, g_hwndOptTab, (HMENU)IDC_OPT_CARDPATH, g_hInst, NULL);
+                x + 140, y + 22, 140, 20, g_hwndOptTab, (HMENU)IDC_OPT_CUSTOMPATH, g_hInst, NULL);
+            /* Relative path field */
+            g_optStorageCtrls[6] = CreateWindowW(L"EDIT", g_optCardPath,
+                WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+                x + 285, y + 22, 105, 20, g_hwndOptTab, (HMENU)IDC_OPT_CARDPATH, g_hInst, NULL);
+            /* Row 3: checkboxes */
+            g_optStorageCtrls[7] = CreateWindowW(L"BUTTON", L"Prefer card for data",
+                WS_CHILD | BS_AUTOCHECKBOX,
+                x, y + 48, 150, 20, g_hwndOptTab, (HMENU)IDC_OPT_STORAGECARDDATA, g_hInst, NULL);
+            g_optStorageCtrls[8] = CreateWindowW(L"BUTTON", L"Prefer card for backups",
+                WS_CHILD | BS_AUTOCHECKBOX,
+                x + 160, y + 48, 160, 20, g_hwndOptTab, (HMENU)IDC_OPT_STORAGECARD, g_hInst, NULL);
+            
+            /* Populate card combo - first item is auto-select */
+            SendMessageW(g_optStorageCtrls[3], CB_ADDSTRING, 0, (LPARAM)L"(first available)");
+            g_detectedCardCount = DetectStorageCards(g_detectedCards, 8);
+            {
+                int i, sel = 0;  /* Default to first available */
+                for (i = 0; i < g_detectedCardCount; i++) {
+                    SendMessageW(g_optStorageCtrls[3], CB_ADDSTRING, 0, (LPARAM)(g_detectedCards[i] + 1));
+                    if (lstrcmpiW(g_detectedCards[i], g_optCardRoot) == 0) sel = i + 1;
+                }
+                SendMessage(g_optStorageCtrls[3], CB_SETCURSEL, sel, 0);
+            }
             
             /* Editor tab controls */
             g_optEditorCtrls[0] = CreateWindowW(L"BUTTON", L"Show line numbers",
@@ -275,8 +338,9 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             SendMessage(g_optEditorCtrls[0], BM_SETCHECK, g_optLineNums, 0);
             SendMessage(g_optEditorCtrls[1], BM_SETCHECK, g_optErrorMsgBox, 0);
             SendMessage(g_optEditorCtrls[2], BM_SETCHECK, g_optRememberQueryDir, 0);
-            SendMessage(g_optStorageCtrls[0], BM_SETCHECK, g_optStorageCardData, 0);
-            SendMessage(g_optStorageCtrls[1], BM_SETCHECK, g_optStorageCard, 0);
+            SendMessage(g_optStorageCtrls[4], BM_SETCHECK, g_optCustomCard, 0);
+            SendMessage(g_optStorageCtrls[7], BM_SETCHECK, g_optStorageCardData, 0);
+            SendMessage(g_optStorageCtrls[8], BM_SETCHECK, g_optStorageCard, 0);
             ShowOptionsTab(0);
             return 0;
         }
@@ -291,6 +355,10 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             if (LOWORD(wParam) == IDOK) {
                 ApplyOptions(hwnd);
                 DestroyWindow(hwnd);
+                return 0;
+            }
+            if (LOWORD(wParam) == IDC_OPT_CUSTOMCARD) {
+                UpdateCardPathVisibility();
                 return 0;
             }
             if (LOWORD(wParam) == IDC_OPT_CLEARREG) {
@@ -333,8 +401,10 @@ void DoOptions(void) {
     g_optStartLastDb = g_startWithLastDb;
     g_optStorageCard = g_useStorageCard;
     g_optStorageCardData = g_useStorageCardData;
+    g_optCustomCard = g_useCustomCardPath;
     lstrcpyW(g_optLocalPath, g_szLocalBasePath);
     lstrcpyW(g_optCardPath, g_szCardBasePath);
+    lstrcpyW(g_optCardRoot, g_szStorageCardRoot);
     g_optResult = 0;
     
     wc.lpfnWndProc = OptionsWndProc;
@@ -368,8 +438,10 @@ void DoOptions(void) {
         g_startWithLastDb = g_optStartLastDb;
         g_useStorageCard = g_optStorageCard;
         g_useStorageCardData = g_optStorageCardData;
+        g_useCustomCardPath = g_optCustomCard;
         lstrcpyW(g_szLocalBasePath, g_optLocalPath);
         lstrcpyW(g_szCardBasePath, g_optCardPath);
+        lstrcpyW(g_szStorageCardRoot, g_optCardRoot);
         
         /* Reset query dir to default if option turned off */
         if (g_rememberQueryDir && !g_optRememberQueryDir) {

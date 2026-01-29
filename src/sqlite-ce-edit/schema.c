@@ -40,6 +40,10 @@ wchar_t g_szDataRelPath[MAX_PATH] = L"\\Data";
 wchar_t g_szLocalBasePath[MAX_PATH] = L"\\My Documents\\Data";
 wchar_t g_szCardBasePath[MAX_PATH] = L"\\Data";
 
+/* Storage card root (detected or custom) */
+wchar_t g_szStorageCardRoot[MAX_PATH] = L"";
+int g_useCustomCardPath = 0;
+
 /*============================================================================
 ** Get database file size
 **============================================================================*/

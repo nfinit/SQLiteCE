@@ -40,6 +40,7 @@ static SettingDef g_intSettings[] = {
     { L"UseStorageCardData", SET_INT, &g_useStorageCardData, 0, NULL },
     { L"RememberQueryDir", SET_INT, &g_rememberQueryDir, 0, NULL },
     { L"StartWithLastDb", SET_INT, &g_startWithLastDb, 0, NULL },
+    { L"UseCustomCardPath", SET_INT, &g_useCustomCardPath, 0, NULL },
     { NULL, 0, NULL, 0, NULL }
 };
 
@@ -49,6 +50,7 @@ static SettingDef g_strSettings[] = {
     { L"DataRelPath",    SET_STR, g_szDataRelPath,     0, L"\\Data" },
     { L"LocalBasePath",  SET_STR, g_szLocalBasePath,   0, L"\\My Documents\\Data" },
     { L"CardBasePath",   SET_STR, g_szCardBasePath,    0, L"\\Data" },
+    { L"StorageCardRoot", SET_STR, g_szStorageCardRoot, 0, L"" },
     { L"LastQueryDir",   SET_STR, g_szLastQueryDir,    0, L"\\" },
     { NULL, 0, NULL, 0, NULL }
 };
