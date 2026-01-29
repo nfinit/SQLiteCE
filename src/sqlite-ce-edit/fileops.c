@@ -1478,6 +1478,60 @@ void DoExportDb(void) {
 }
 
 /*============================================================================
+** Cleanup Old Backups
+** Keeps only the most recent g_backupRetention backups for a database
+**============================================================================*/
+
+static void CleanupOldBackups(const wchar_t *szBackupDir, const wchar_t *szDbName) {
+    wchar_t szPattern[MAX_PATH];
+    wchar_t szFiles[32][MAX_PATH];
+    FILETIME ftTimes[32];
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind;
+    int count = 0, i, j;
+    
+    if (g_backupRetention <= 0) return;  /* 0 = unlimited */
+    
+    /* Build pattern: BackupDir\DbName_*.db */
+    wsprintfW(szPattern, L"%s\\%s_*.db", szBackupDir, szDbName);
+    
+    /* Enumerate matching files (up to 32) */
+    hFind = FindFirstFileW(szPattern, &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && count < 32) {
+            wsprintfW(szFiles[count], L"%s\\%s", szBackupDir, fd.cFileName);
+            ftTimes[count] = fd.ftLastWriteTime;
+            count++;
+        }
+    } while (FindNextFileW(hFind, &fd));
+    FindClose(hFind);
+    
+    if (count <= g_backupRetention) return;  /* Nothing to delete */
+    
+    /* Sort by time descending (newest first) - simple bubble sort */
+    for (i = 0; i < count - 1; i++) {
+        for (j = i + 1; j < count; j++) {
+            if (CompareFileTime(&ftTimes[i], &ftTimes[j]) < 0) {
+                wchar_t tmpPath[MAX_PATH];
+                FILETIME tmpTime;
+                lstrcpyW(tmpPath, szFiles[i]);
+                lstrcpyW(szFiles[i], szFiles[j]);
+                lstrcpyW(szFiles[j], tmpPath);
+                tmpTime = ftTimes[i];
+                ftTimes[i] = ftTimes[j];
+                ftTimes[j] = tmpTime;
+            }
+        }
+    }
+    
+    /* Delete oldest files beyond retention count */
+    for (i = g_backupRetention; i < count; i++) {
+        DeleteFileW(szFiles[i]);
+    }
+}
+
+/*============================================================================
 ** Backup Database
 **============================================================================*/
 
@@ -1564,6 +1618,7 @@ void DoBackupDatabase(void) {
     }
     
     if (ok) {
+        CleanupOldBackups(szBackupDir, szDbName);
         fn = GetFilename(szBackup);
         wsprintfW(szStatus, L"Backed up to %s", fn);
     } else {

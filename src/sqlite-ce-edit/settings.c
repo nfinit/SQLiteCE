@@ -41,6 +41,7 @@ static SettingDef g_intSettings[] = {
     { L"RememberQueryDir", SET_INT, &g_rememberQueryDir, 0, NULL },
     { L"StartWithLastDb", SET_INT, &g_startWithLastDb, 0, NULL },
     { L"UseCustomCardPath", SET_INT, &g_useCustomCardPath, 0, NULL },
+    { L"BackupRetention", SET_INT, &g_backupRetention, 5, NULL },
     { NULL, 0, NULL, 0, NULL }
 };
 

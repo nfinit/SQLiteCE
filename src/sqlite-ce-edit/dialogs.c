@@ -161,10 +161,11 @@ int PromptForPath(const wchar_t *title, const wchar_t *defPath) {
 #define IDC_OPT_CARDCOMBO    1016
 #define IDC_OPT_CUSTOMCARD   1017
 #define IDC_OPT_CUSTOMPATH   1018
+#define IDC_OPT_RETENTION    1019
 
 static int g_optClearExec, g_optLineNums, g_optErrorMsgBox, g_optRememberQueryDir;
 static int g_optStorageCard, g_optStorageCardData, g_optGridAutoSize, g_optStartLastDb;
-static int g_optCustomCard;
+static int g_optCustomCard, g_optRetention;
 static wchar_t g_optLocalPath[MAX_PATH];
 static wchar_t g_optCardPath[MAX_PATH];
 static wchar_t g_optCardRoot[MAX_PATH];
@@ -176,7 +177,7 @@ static int g_optResult = 0;
 
 /* Control arrays for tab visibility */
 static HWND g_optGeneralCtrls[2];
-static HWND g_optStorageCtrls[9];
+static HWND g_optStorageCtrls[12];  /* Expanded for retention controls */
 static HWND g_optEditorCtrls[3];
 static HWND g_optResultsCtrls[2];
 
@@ -199,6 +200,14 @@ static void ApplyOptions(HWND hwnd) {
     GetWindowTextW(g_optStorageCtrls[6], g_optCardPath, MAX_PATH);
     g_optStorageCardData = SendMessage(g_optStorageCtrls[7], BM_GETCHECK, 0, 0);
     g_optStorageCard = SendMessage(g_optStorageCtrls[8], BM_GETCHECK, 0, 0);
+    /* Read retention value */
+    {
+        wchar_t buf[16];
+        wchar_t *p;
+        g_optRetention = 0;
+        GetWindowTextW(g_optStorageCtrls[10], buf, 16);
+        for (p = buf; *p >= '0' && *p <= '9'; p++) g_optRetention = g_optRetention * 10 + (*p - '0');
+    }
     /* Get card root from combo or custom field */
     if (g_optCustomCard) {
         GetWindowTextW(g_optStorageCtrls[5], g_optCardRoot, MAX_PATH);
@@ -219,7 +228,7 @@ static void ApplyOptions(HWND hwnd) {
 static void ShowOptionsTab(int tab) {
     int i;
     for (i = 0; i < 2; i++) ShowWindow(g_optGeneralCtrls[i], tab == 0 ? SW_SHOW : SW_HIDE);
-    for (i = 0; i < 9; i++) {
+    for (i = 0; i < 12; i++) {
         if (i == 4) continue;  /* Custom checkbox handled separately (child of dialog) */
         ShowWindow(g_optStorageCtrls[i], tab == 1 ? SW_SHOW : SW_HIDE);
     }
@@ -299,6 +308,18 @@ static LRESULT CALLBACK OptionsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             g_optStorageCtrls[8] = CreateWindowW(L"BUTTON", L"Prefer card for backups",
                 WS_CHILD | BS_AUTOCHECKBOX,
                 x + 160, y + 48, 160, 20, g_hwndOptTab, (HMENU)IDC_OPT_STORAGECARD, g_hInst, NULL);
+            /* Row 4: backup retention */
+            g_optStorageCtrls[9] = CreateWindowW(L"STATIC", L"Keep backups:",
+                WS_CHILD, x, y + 72, 80, 16, g_hwndOptTab, (HMENU)-1, g_hInst, NULL);
+            {
+                wchar_t buf[16];
+                wsprintfW(buf, L"%d", g_optRetention);
+                g_optStorageCtrls[10] = CreateWindowW(L"EDIT", buf,
+                    WS_CHILD | WS_BORDER | ES_NUMBER,
+                    x + 80, y + 70, 30, 20, g_hwndOptTab, (HMENU)IDC_OPT_RETENTION, g_hInst, NULL);
+            }
+            g_optStorageCtrls[11] = CreateWindowW(L"STATIC", L"(0 = unlimited)",
+                WS_CHILD, x + 115, y + 72, 100, 16, g_hwndOptTab, (HMENU)-1, g_hInst, NULL);
             
             /* Populate card combo - first item is auto-select */
             SendMessageW(g_optStorageCtrls[3], CB_ADDSTRING, 0, (LPARAM)L"(first available)");
@@ -402,6 +423,7 @@ void DoOptions(void) {
     g_optStorageCard = g_useStorageCard;
     g_optStorageCardData = g_useStorageCardData;
     g_optCustomCard = g_useCustomCardPath;
+    g_optRetention = g_backupRetention;
     lstrcpyW(g_optLocalPath, g_szLocalBasePath);
     lstrcpyW(g_optCardPath, g_szCardBasePath);
     lstrcpyW(g_optCardRoot, g_szStorageCardRoot);
@@ -439,6 +461,7 @@ void DoOptions(void) {
         g_useStorageCard = g_optStorageCard;
         g_useStorageCardData = g_optStorageCardData;
         g_useCustomCardPath = g_optCustomCard;
+        g_backupRetention = g_optRetention;
         lstrcpyW(g_szLocalBasePath, g_optLocalPath);
         lstrcpyW(g_szCardBasePath, g_optCardPath);
         lstrcpyW(g_szStorageCardRoot, g_optCardRoot);

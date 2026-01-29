@@ -43,6 +43,7 @@ wchar_t g_szCardBasePath[MAX_PATH] = L"\\Data";
 /* Storage card root (detected or custom) */
 wchar_t g_szStorageCardRoot[MAX_PATH] = L"";
 int g_useCustomCardPath = 0;
+int g_backupRetention = 5;  /* Keep last 5 backups, 0 = unlimited */
 
 /*============================================================================
 ** Get database file size
