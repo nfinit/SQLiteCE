@@ -716,6 +716,9 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     /* Populate list */
     PopulateFileList();
     
+    /* Bring to front (needed for full-screen mode) */
+    SetForegroundWindow(g_hwndPicker);
+    
     /* Focus listbox */
     SetFocus(g_hwndList);
     
