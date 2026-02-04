@@ -15,6 +15,7 @@ static HWND g_hwndPath = NULL;
 static HWND g_hwndFilename = NULL;
 static HWND g_hwndOK = NULL;
 static HWND g_hwndCancel = NULL;
+static HWND g_hwndNewFolder = NULL;
 static wchar_t g_pickerDir[MAX_PATH];
 static wchar_t g_pickerResult[MAX_PATH];
 static const wchar_t *g_pickerFilter = NULL;
@@ -33,8 +34,11 @@ static HWND g_hwndFilter = NULL;
 static wchar_t g_typeAhead[TYPEAHEAD_MAX + 1];
 static int g_typeAheadLen = 0;
 
+#define IDC_NEWFOLDER 104
+
 /* Forward declarations */
 static void PopulateFilterCombo(const wchar_t *filter);
+static void OnNewFolder(void);
 
 /*============================================================================
 ** Helper: Get extension from current filter selection
@@ -294,6 +298,114 @@ static int MatchPrefix(const wchar_t *item, const wchar_t *prefix, int prefixLen
     return (i == prefixLen);
 }
 
+/*============================================================================
+** New Folder dialog
+**============================================================================*/
+
+static wchar_t g_newFolderName[MAX_PATH];
+static HWND g_hwndNewFolderDlg = NULL;
+static HWND g_hwndNewFolderEdit = NULL;
+static int g_newFolderOK = 0;
+
+static LRESULT CALLBACK NewFolderDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    (void)lParam;
+    switch (msg) {
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK) {
+            GetWindowTextW(g_hwndNewFolderEdit, g_newFolderName, MAX_PATH);
+            g_newFolderOK = 1;
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        if (LOWORD(wParam) == IDCANCEL) {
+            g_newFolderOK = 0;
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        break;
+    case WM_CLOSE:
+        g_newFolderOK = 0;
+        DestroyWindow(hwnd);
+        return 0;
+    case WM_DESTROY:
+        g_hwndNewFolderDlg = NULL;
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+static void OnNewFolder(void) {
+    static int classRegistered = 0;
+    WNDCLASSW wc;
+    RECT rc;
+    MSG msg;
+    wchar_t path[MAX_PATH];
+
+    if (!classRegistered) {
+        wc.style = 0;
+        wc.lpfnWndProc = NewFolderDlgProc;
+        wc.cbClsExtra = 0;
+        wc.cbWndExtra = 0;
+        wc.hInstance = g_hInst;
+        wc.hIcon = NULL;
+        wc.hCursor = NULL;
+        wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+        wc.lpszMenuName = NULL;
+        wc.lpszClassName = L"SQLiteCENewFolder";
+        RegisterClassW(&wc);
+        classRegistered = 1;
+    }
+
+    g_newFolderName[0] = 0;
+    g_newFolderOK = 0;
+
+    GetWindowRect(g_hwndPicker, &rc);
+    g_hwndNewFolderDlg = CreateWindowExW(0, L"SQLiteCENewFolder", L"New Folder",
+        WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU,
+        rc.left + 30, rc.top + 40, 200, 95,
+        g_hwndPicker, NULL, g_hInst, NULL);
+
+    CreateWindowW(L"STATIC", L"Name:",
+        WS_CHILD | WS_VISIBLE,
+        10, 10, 40, 18, g_hwndNewFolderDlg, NULL, g_hInst, NULL);
+
+    g_hwndNewFolderEdit = CreateWindowW(L"EDIT", L"",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        50, 8, 135, 20, g_hwndNewFolderDlg, NULL, g_hInst, NULL);
+
+    CreateWindowW(L"BUTTON", L"OK",
+        WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+        40, 35, 55, 22, g_hwndNewFolderDlg, (HMENU)IDOK, g_hInst, NULL);
+
+    CreateWindowW(L"BUTTON", L"Cancel",
+        WS_CHILD | WS_VISIBLE,
+        105, 35, 55, 22, g_hwndNewFolderDlg, (HMENU)IDCANCEL, g_hInst, NULL);
+
+    SetFocus(g_hwndNewFolderEdit);
+
+    /* Modal loop */
+    while (g_hwndNewFolderDlg && GetMessageW(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    SetForegroundWindow(g_hwndPicker);
+
+    if (!g_newFolderOK || !g_newFolderName[0]) return;
+
+    /* Build full path */
+    if (lstrcmpW(g_pickerDir, L"\\") == 0) {
+        wsprintfW(path, L"\\%s", g_newFolderName);
+    } else {
+        wsprintfW(path, L"%s\\%s", g_pickerDir, g_newFolderName);
+    }
+
+    if (CreateDirectoryW(path, NULL)) {
+        PopulateFileList();
+    } else {
+        MessageBoxW(g_hwndPicker, L"Could not create folder.", L"Error", MB_OK | MB_ICONERROR);
+    }
+}
+
 static void OnTypeAhead(wchar_t ch) {
     int count, i, start;
     wchar_t item[MAX_PATH];
@@ -330,7 +442,11 @@ static void OnTypeAhead(wchar_t ch) {
 static void TabNext(HWND from) {
     if (from == g_hwndList) SetFocus(g_hwndFilename);
     else if (from == g_hwndFilename) SetFocus(g_hwndFilter);
-    else if (from == g_hwndFilter) SetFocus(g_hwndOK);
+    else if (from == g_hwndFilter) {
+        if (g_pickerSaveMode) SetFocus(g_hwndNewFolder);
+        else SetFocus(g_hwndOK);
+    }
+    else if (from == g_hwndNewFolder) SetFocus(g_hwndOK);
     else if (from == g_hwndOK) SetFocus(g_hwndCancel);
     else SetFocus(g_hwndList);
 }
@@ -339,7 +455,11 @@ static void TabPrev(HWND from) {
     if (from == g_hwndList) SetFocus(g_hwndCancel);
     else if (from == g_hwndFilename) SetFocus(g_hwndList);
     else if (from == g_hwndFilter) SetFocus(g_hwndFilename);
-    else if (from == g_hwndOK) SetFocus(g_hwndFilter);
+    else if (from == g_hwndNewFolder) SetFocus(g_hwndFilter);
+    else if (from == g_hwndOK) {
+        if (g_pickerSaveMode) SetFocus(g_hwndNewFolder);
+        else SetFocus(g_hwndFilter);
+    }
     else SetFocus(g_hwndOK);
 }
 
@@ -571,6 +691,10 @@ static LRESULT CALLBACK PickerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                 PopulateFileList();
                 return 0;
             }
+            if (cmd == IDC_NEWFOLDER) {
+                OnNewFolder();
+                return 0;
+            }
             break;
         }
         case WM_KEYDOWN:
@@ -702,6 +826,9 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     g_pfnComboProc = (WNDPROC)SetWindowLong(g_hwndFilter, GWL_WNDPROC, (LONG)PickerComboProc);
     
     /* Buttons */
+    g_hwndNewFolder = CreateWindowW(L"BUTTON", L"New folder",
+        WS_CHILD | (saveMode ? WS_VISIBLE : 0),
+        10, 140, 75, 22, g_hwndPicker, (HMENU)IDC_NEWFOLDER, g_hInst, NULL);
     g_hwndOK = CreateWindowW(L"BUTTON", saveMode ? L"Save" : L"Open",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
         dlgW - 160, 140, 70, 22, g_hwndPicker, (HMENU)IDOK, g_hInst, NULL);
@@ -712,6 +839,7 @@ int CustomFilePicker(HWND hwndOwner, wchar_t *filePath, int maxPath,
     /* Subclass buttons */
     g_pfnBtnProc = (WNDPROC)SetWindowLong(g_hwndOK, GWL_WNDPROC, (LONG)PickerBtnProc);
     SetWindowLong(g_hwndCancel, GWL_WNDPROC, (LONG)PickerBtnProc);
+    SetWindowLong(g_hwndNewFolder, GWL_WNDPROC, (LONG)PickerBtnProc);
     
     /* Populate list */
     PopulateFileList();
